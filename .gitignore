@@ -1,0 +1,12 @@
+bin/
+obj/
+out/
+.vs/
+*.user
+local.props
+.env
+.env.*
+node_modules/
+.vercel/
+*.pfx
+*.pem
