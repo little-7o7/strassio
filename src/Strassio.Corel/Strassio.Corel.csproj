@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Strassio.Corel</RootNamespace>
+    <AssemblyName>Strassio.Corel</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Интероп собран tlbimp'ом из VGCoreAuto.tlb САМОЙ СТАРОЙ доступной версии CorelDRAW (2018, v20) —
+      см. решение по совместимости в docs/SPEC.md, раздел "Совместимость с CorelDRAW".
+      EmbedInteropTypes=true встраивает нужные типы прямо в Strassio.Corel.dll, отдельная Interop.VGCore.dll
+      в выходе сборки не нужна и в Addons не копируется.
+    -->
+    <Reference Include="Corel.Interop.VGCore">
+      <HintPath>interop\Corel.Interop.VGCore.dll</HintPath>
+      <EmbedInteropTypes>true</EmbedInteropTypes>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Strassio.Core\Strassio.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Кнопка-камень, докер и маркер аддона — CorelDRAW читает их из папки Addons\Strassio рядом с DLL. -->
+    <Content Include="AppUI.xslt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="UserUI.xslt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="CorelDrw.addon">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+</Project>
