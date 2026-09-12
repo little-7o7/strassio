@@ -87,13 +87,67 @@ namespace Strassio.Corel
             }
         }
 
+        /// <summary>Тестовая кнопка: L1 «по линии» на выделенной кривой (разомкнутой или замкнутой).</summary>
+        private void ScatterSelectedCurve_Click(object sender, RoutedEventArgs e) =>
+            CreateFromSelectedCurve(
+                "Strassio: L1 по выделенной кривой", "Strassio: L1 по линии",
+                curve => LineScatterer.Scatter(
+                    curve, new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven }),
+                requireClosed: false);
+
+        /// <summary>Тестовая кнопка: L2 «вокруг линии» — 3 ряда (центр ss8 крупнее, края ss6) на замкнутой фигуре.</summary>
+        private void RingSelectedShape_Click(object sender, RoutedEventArgs e) =>
+            CreateFromSelectedCurve(
+                "Strassio: L2 по выделенной фигуре", "Strassio: L2 кольца",
+                curve =>
+                {
+                    var rows = new[]
+                    {
+                        new RowSpec
+                        {
+                            OffsetMm = -3.4,
+                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
+                        },
+                        new RowSpec
+                        {
+                            OffsetMm = 0,
+                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 3.2, GapMm = 0.2, Mode = StepMode.FitEven },
+                        },
+                        new RowSpec
+                        {
+                            OffsetMm = 3.4,
+                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
+                        },
+                    };
+                    return IntersectionFixer.RemoveOverlaps(RingScatterer.Scatter(curve, rows));
+                },
+                requireClosed: true);
+
+        /// <summary>Тестовая кнопка: F2 «соты» на замкнутой фигуре (может быть с отверстиями — не проверяем тут).</summary>
+        private void FillHoneycombSelectedShape_Click(object sender, RoutedEventArgs e) =>
+            CreateFromSelectedCurve(
+                "Strassio: заливка сотами по выделенной фигуре", "Strassio: заливка (соты)",
+                curve => GridFiller.Fill(
+                    curve, new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb }),
+                requireClosed: true);
+
+        /// <summary>Тестовая кнопка: F3 «контурная» на замкнутой фигуре — ряды от края внутрь, центр добит сеткой.</summary>
+        private void ContourFillSelectedShape_Click(object sender, RoutedEventArgs e) =>
+            CreateFromSelectedCurve(
+                "Strassio: контурная заливка по выделенной фигуре", "Strassio: заливка (контурная)",
+                curve => ContourFiller.Fill(curve, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
+                requireClosed: true);
+
         /// <summary>
-        /// Тестовая кнопка Этапа 1: читает кривую выделенной фигуры (узлы и контрольные точки Безье —
-        /// один раз, дальше вся геометрия считается в Strassio.Core, см. CLAUDE.md), расставляет по ней
-        /// стразы методом L1 «по линии» и создаёт круги одной группой. Параметры — заглушка (ss6,
-        /// подгонка); выбор размера/цвета/метода появится в докере на Этапе 2.
+        /// Общая часть всех тестовых кнопок Этапа 1: читает кривую выделенной фигуры (узлы и
+        /// контрольные точки Безье — один раз, дальше вся геометрия считается в Strassio.Core, см.
+        /// CLAUDE.md), прогоняет её через переданный метод расстановки и создаёт круги одной группой
+        /// отмены. Параметры — заглушка (ss6/ss8, подгонка); выбор размера/цвета/метода появится
+        /// в докере на Этапе 2.
         /// </summary>
-        private void ScatterSelectedCurve_Click(object sender, RoutedEventArgs e)
+        private void CreateFromSelectedCurve(
+            string commandGroupName, string resultGroupCaption,
+            Func<CoreCurve, IReadOnlyList<PlacedStone>> scatter, bool requireClosed)
         {
             if (app == null)
             {
@@ -111,7 +165,7 @@ namespace Strassio.Corel
             Shape selected = doc.ActiveShape;
             if (selected == null)
             {
-                StatusText.Text = "Сначала выделите одну линию (кривую).";
+                StatusText.Text = "Сначала выделите фигуру.";
                 return;
             }
 
@@ -128,27 +182,25 @@ namespace Strassio.Corel
                 global::Corel.Interop.VGCore.Curve corelCurve = selected.Curve;
                 if (corelCurve == null || corelCurve.SubPaths.Count == 0)
                 {
-                    StatusText.Text = "У выделенной фигуры нет кривой (это не линия?).";
+                    StatusText.Text = "У выделенной фигуры нет кривой.";
                     return;
                 }
 
                 CoreCurve coreCurve = ReadSubPath(corelCurve.SubPaths[1]);
-
-                var options = new LineScatterOptions
+                if (requireClosed && !coreCurve.IsClosed)
                 {
-                    StoneDiameterMm = 2.4, // ss6, см. docs/SPEC.md, раздел 3.1
-                    GapMm = 0.2,
-                    Mode = StepMode.FitEven,
-                };
-
-                IReadOnlyList<PlacedStone> stones = LineScatterer.Scatter(coreCurve, options);
-                if (stones.Count == 0)
-                {
-                    StatusText.Text = "Метод L1 не расставил ни одной стразы — кривая слишком короткая?";
+                    StatusText.Text = "Этому методу нужна замкнутая фигура (эллипс, прямоугольник, замкнутая кривая).";
                     return;
                 }
 
-                doc.BeginCommandGroup("Strassio: L1 по выделенной кривой");
+                IReadOnlyList<PlacedStone> stones = scatter(coreCurve);
+                if (stones.Count == 0)
+                {
+                    StatusText.Text = "Не расставлено ни одной стразы — фигура слишком маленькая?";
+                    return;
+                }
+
+                doc.BeginCommandGroup(commandGroupName);
                 try
                 {
                     Layer layer = doc.ActiveLayer;
@@ -167,14 +219,14 @@ namespace Strassio.Corel
 
                     ShapeRange range = doc.CreateShapeRangeFromArray(ref created);
                     Shape group = range.Group();
-                    group.Name = "Strassio: L1 по линии";
+                    group.Name = resultGroupCaption;
                 }
                 finally
                 {
                     doc.EndCommandGroup();
                 }
 
-                StatusText.Text = $"Готово: {stones.Count} страз по выделенной кривой. Ctrl+Z — отменить.";
+                StatusText.Text = $"Готово: {stones.Count} страз. Ctrl+Z — отменить.";
             }
             catch (Exception ex)
             {

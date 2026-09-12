@@ -15,6 +15,16 @@
                    Text="Выделите нарисованную линию (перо/кривая Безье) и нажмите — обведёт её стразами ss6 методом L1 «по линии», одной группой отмены."/>
         <Button x:Name="ScatterSelectedCurveButton" Padding="8,4" Click="ScatterSelectedCurve_Click"
                 Content="Обвести выделенную кривую (L1, тест)"/>
+
+        <TextBlock TextWrapping="Wrap" Margin="0,10,0,4" Opacity="0.8"
+                   Text="Ниже — нужна ЗАМКНУТАЯ фигура (эллипс, прямоугольник, замкнутая кривая)."/>
+        <Button x:Name="RingSelectedShapeButton" Padding="8,4" Margin="0,0,0,4" Click="RingSelectedShape_Click"
+                Content="Кольца вокруг фигуры (L2/L3, тест)"/>
+        <Button x:Name="FillHoneycombButton" Padding="8,4" Margin="0,0,0,4" Click="FillHoneycombSelectedShape_Click"
+                Content="Залить сотами (F2, тест)"/>
+        <Button x:Name="ContourFillButton" Padding="8,4" Click="ContourFillSelectedShape_Click"
+                Content="Залить контурно (F3, тест)"/>
+
         <TextBlock x:Name="StatusText" Margin="0,10,0,0" TextWrapping="Wrap"/>
     </StackPanel>
 </UserControl>
