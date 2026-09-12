@@ -16,6 +16,17 @@ namespace Strassio.Preview
             double marginMm = 5,
             double pixelsPerMm = 8)
         {
+            return RenderMulti(
+                new[] { (Points: referencePolyline, Color: "#cccccc") },
+                stones, marginMm, pixelsPerMm);
+        }
+
+        public static string RenderMulti(
+            IReadOnlyList<(IReadOnlyList<Point2D> Points, string Color)> polylines,
+            IReadOnlyList<PlacedStone> stones,
+            double marginMm = 5,
+            double pixelsPerMm = 8)
+        {
             double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
 
             void Expand(Point2D p, double r)
@@ -26,9 +37,12 @@ namespace Strassio.Preview
                 if (p.Y + r > maxY) maxY = p.Y + r;
             }
 
-            foreach (Point2D p in referencePolyline)
+            foreach ((IReadOnlyList<Point2D> pts, _) in polylines)
             {
-                Expand(p, 0);
+                foreach (Point2D p in pts)
+                {
+                    Expand(p, 0);
+                }
             }
 
             foreach (PlacedStone s in stones)
@@ -52,15 +66,20 @@ namespace Strassio.Preview
             double X(double mmX) => (mmX - minX) * pixelsPerMm;
             double Y(double mmY) => (mmY - minY) * pixelsPerMm;
 
-            if (referencePolyline.Count >= 2)
+            foreach ((IReadOnlyList<Point2D> pts, string color) in polylines)
             {
+                if (pts.Count < 2)
+                {
+                    continue;
+                }
+
                 sb.Append("<polyline points=\"");
-                foreach (Point2D p in referencePolyline)
+                foreach (Point2D p in pts)
                 {
                     sb.Append(X(p.X).ToString("0.##", ci)).Append(',').Append(Y(p.Y).ToString("0.##", ci)).Append(' ');
                 }
 
-                sb.AppendLine("\" fill=\"none\" stroke=\"#cccccc\" stroke-width=\"1\"/>");
+                sb.AppendLine($"\" fill=\"none\" stroke=\"{color}\" stroke-width=\"1\"/>");
             }
 
             foreach (PlacedStone s in stones)
