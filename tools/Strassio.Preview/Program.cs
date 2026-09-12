@@ -187,16 +187,21 @@ static void RenderRingScenario(string scenario)
     };
 
     IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, rows);
+    List<PlacedStone> fixedStones = IntersectionFixer.RemoveOverlaps(stones);
 
     FlattenedCurve flat = CurveFlattener.Flatten(curve);
     string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
     Directory.CreateDirectory(outDir);
     string outPath = Path.Combine(outDir, scenario + ".svg");
+    string outPathFixed = Path.Combine(outDir, scenario + "-fixed.svg");
 
     string svg = SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, stones);
     File.WriteAllText(outPath, svg);
+    string svgFixed = SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, fixedStones);
+    File.WriteAllText(outPathFixed, svgFixed);
 
-    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах.");
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}).");
+    Console.WriteLine($"SVG сохранён: {outPathFixed}");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 
