@@ -84,6 +84,39 @@ public class IntersectionFixerTests
     }
 
     [Fact]
+    public void LonelySurvivor_BetweenTwoGaps_IsAlsoRemoved()
+    {
+        // Ряд 0: пять страз подряд, не пересекаются друг с другом. Ряд 1 (условные «угловые»
+        // конкуренты) сбивают стразы 1 и 3 своего ряда — страза 2 остаётся одна между двумя
+        // дырками. Без прохода «одиночек» получился бы рваный край: дырка-страза-дырка.
+        var row0 = new[]
+        {
+            new PlacedStone(new Point2D(0, 0), 2.4, false, rowId: 0),
+            new PlacedStone(new Point2D(3, 0), 2.4, false, rowId: 0),
+            new PlacedStone(new Point2D(6, 0), 2.4, false, rowId: 0),
+            new PlacedStone(new Point2D(9, 0), 2.4, false, rowId: 0),
+            new PlacedStone(new Point2D(12, 0), 2.4, false, rowId: 0),
+        };
+        var intruders = new[]
+        {
+            new PlacedStone(new Point2D(3, 0.5), 2.4, true, rowId: 1),
+            new PlacedStone(new Point2D(9, 0.5), 2.4, true, rowId: 1),
+        };
+
+        var stones = row0.Concat(intruders).ToList();
+        var result = IntersectionFixer.RemoveOverlaps(stones);
+
+        // Стразы 1 и 3 своего ряда убраны (сбиты угловыми "чужаками"), и страза 2 — тоже, хотя
+        // сама по себе ни с кем не конфликтовала: она осталась бы висеть одна между двумя дырками.
+        Assert.DoesNotContain(result, s => s.RowId == 0 && Math.Abs(s.Center.X - 3) < 1e-6);
+        Assert.DoesNotContain(result, s => s.RowId == 0 && Math.Abs(s.Center.X - 6) < 1e-6);
+        Assert.DoesNotContain(result, s => s.RowId == 0 && Math.Abs(s.Center.X - 9) < 1e-6);
+        Assert.Contains(result, s => s.RowId == 0 && Math.Abs(s.Center.X - 0) < 1e-6);
+        Assert.Contains(result, s => s.RowId == 0 && Math.Abs(s.Center.X - 12) < 1e-6);
+        Assert.Equal(2, result.Count(s => s.RowId == 1));
+    }
+
+    [Fact]
     public void RingStar_ThreeRows_NoOverlapsAnywhereAfterFix()
     {
         // Тот самый сценарий из Preview (ring-star), где автор заметил наложение рядов у острых

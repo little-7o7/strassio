@@ -128,7 +128,57 @@ namespace Strassio.Core.Placement
                 }
             }
 
+            RemoveLonelySurvivors(stones, removed);
+
             return removed;
+        }
+
+        /// <summary>
+        /// Убирает «одиночек» — стразу своего ряда (RowId), у которой сосед до и после в этом же
+        /// ряду уже убраны. Без этого прохода первый проход мог оставить рваный край: дырка,
+        /// страза, снова дырка — вместо ровного, пусть и более короткого, ряда. Соседство ищем
+        /// по исходному порядку списка (ряды у RingScatterer идут подряд, внутри ряда — по ходу
+        /// кривой), с оборачиванием на случай замкнутого контура.
+        /// </summary>
+        private static void RemoveLonelySurvivors(IReadOnlyList<PlacedStone> stones, bool[] removed)
+        {
+            var rows = Enumerable.Range(0, stones.Count)
+                .GroupBy(i => stones[i].RowId)
+                .Select(g => g.ToArray())
+                .ToArray();
+
+            bool changed = true;
+            while (changed)
+            {
+                changed = false;
+
+                foreach (int[] row in rows)
+                {
+                    int count = row.Length;
+                    if (count < 3)
+                    {
+                        continue;
+                    }
+
+                    for (int k = 0; k < count; k++)
+                    {
+                        int idx = row[k];
+                        if (removed[idx])
+                        {
+                            continue;
+                        }
+
+                        bool prevRemoved = removed[row[(k - 1 + count) % count]];
+                        bool nextRemoved = removed[row[(k + 1) % count]];
+
+                        if (prevRemoved && nextRemoved)
+                        {
+                            removed[idx] = true;
+                            changed = true;
+                        }
+                    }
+                }
+            }
         }
     }
 }

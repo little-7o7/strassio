@@ -16,8 +16,9 @@ namespace Strassio.Core.Placement
         {
             var result = new List<PlacedStone>();
 
-            foreach (RowSpec row in rows)
+            for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
+                RowSpec row = rows[rowIndex];
                 Curve rowCurve = curve;
 
                 if (System.Math.Abs(row.OffsetMm) > 1e-9)
@@ -29,7 +30,10 @@ namespace Strassio.Core.Placement
                     rowCurve = Curve.FromPolyline(offsetPoints, flat.IsClosed);
                 }
 
-                result.AddRange(LineScatterer.Scatter(rowCurve, row.ScatterOptions));
+                foreach (PlacedStone s in LineScatterer.Scatter(rowCurve, row.ScatterOptions))
+                {
+                    result.Add(new PlacedStone(s.Center, s.DiameterMm, s.IsCorner, rowIndex));
+                }
             }
 
             return result;
