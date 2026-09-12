@@ -20,7 +20,8 @@ if (scenario.StartsWith("offset-", StringComparison.Ordinal))
     "zigzag" => BuildZigzag(),
     "square" => BuildSquare(),
     "star" => BuildStar(),
-    _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'. Доступные: line, zigzag, square, star, offset-square, offset-star."),
+    "spike" => BuildSpike(),
+    _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'. Доступные: line, zigzag, square, star, spike, offset-square, offset-star."),
 };
 
 FlattenedCurve flat = CurveFlattener.Flatten(built.Curve, built.Options.FlattenToleranceMm);
@@ -35,6 +36,14 @@ File.WriteAllText(outPath, svg);
 
 Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз, из них {stones.Count(s => s.IsCorner)} в углах.");
 Console.WriteLine($"SVG сохранён: {outPath}");
+
+if (Environment.GetEnvironmentVariable("STRASSIO_DUMP") == "1")
+{
+    for (int i = 0; i < stones.Count; i++)
+    {
+        Console.WriteLine($"{i}: ({stones[i].Center.X:0.###}, {stones[i].Center.Y:0.###}) corner={stones[i].IsCorner}");
+    }
+}
 
 static (Curve, LineScatterOptions) BuildLine()
 {
@@ -146,6 +155,26 @@ static Curve BuildStarCurve()
     }
 
     return Curve.FromPolyline(points, isClosed: true);
+}
+
+static (Curve, LineScatterOptions) BuildSpike()
+{
+    var points = new[]
+    {
+        new Point2D(-30, 0),
+        new Point2D(0, 0),
+        new Point2D(0, 40),
+        new Point2D(30, 0),
+    };
+    var curve = Curve.FromPolyline(points);
+    var options = new LineScatterOptions
+    {
+        StoneDiameterMm = 2.4,
+        GapMm = 0.2,
+        Mode = StepMode.FitEven,
+        CornerAngleThresholdDeg = 20,
+    };
+    return (curve, options);
 }
 
 static string FindRepoRoot()

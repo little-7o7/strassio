@@ -56,6 +56,23 @@ namespace Strassio.Core.Placement
 
             int segCount = loopCloses ? breakpoints.Count : breakpoints.Count - 1;
 
+            // У очень острых углов страза слева и страза справа от вершины физически близки друг
+            // к другу, даже если каждая идеально стоит на своём отрезке (геометрия угла, не ошибка
+            // расстановки). Отступаем от таких вершин настолько, чтобы соседние стразы не касались:
+            // 1) страза в самой вершине и ближайшая к ней на любом из отрезков — расстояние вдоль
+            //    отрезка, должно быть ≥ stoneStep;
+            // 2) ближайшие стразы по разные стороны угла φ, обе на расстоянии reserve от вершины —
+            //    расстояние между ними 2·reserve·sin(φ/2), тоже должно быть ≥ stoneStep.
+            var cornerReserve = new Dictionary<double, double>();
+            foreach (double d in cornerDistances)
+            {
+                double interiorAngle = InteriorAngleAt(flat, d, total, flat.IsClosed);
+                double reserve = interiorAngle < 1e-3
+                    ? double.MaxValue
+                    : Math.Max(stoneStep, stoneStep / (2 * Math.Sin(interiorAngle / 2)));
+                cornerReserve[d] = reserve;
+            }
+
             int[]? gapsPerSegment = null;
             if (options.Mode == StepMode.ExactCount && options.ExactCount.HasValue && segCount > 0)
             {
@@ -76,15 +93,18 @@ namespace Strassio.Core.Placement
                 double aDist = breakpoints[i].Distance;
                 bool bIsCorner;
                 double bDist;
+                double bRawDist;
 
                 if (loopCloses && i == segCount - 1)
                 {
-                    bDist = breakpoints[0].Distance + total;
+                    bRawDist = breakpoints[0].Distance;
+                    bDist = bRawDist + total;
                     bIsCorner = breakpoints[0].IsCorner;
                 }
                 else
                 {
-                    bDist = breakpoints[i + 1].Distance;
+                    bRawDist = breakpoints[i + 1].Distance;
+                    bDist = bRawDist;
                     bIsCorner = breakpoints[i + 1].IsCorner;
                 }
 
@@ -92,7 +112,11 @@ namespace Strassio.Core.Placement
                 bool endForced = bIsCorner || options.Mode != StepMode.ExactStep;
                 int? gapsForSegment = gapsPerSegment?[i];
 
-                List<double> positions = FillSubSegment(subLength, options, stoneStep, endForced, gapsForSegment);
+                double reserveStart = breakpoints[i].IsCorner ? cornerReserve[breakpoints[i].Distance] : 0;
+                double reserveEnd = bIsCorner ? cornerReserve[bRawDist] : 0;
+
+                List<double> positions = FillSubSegment(
+                    subLength, options, stoneStep, endForced, gapsForSegment, reserveStart, reserveEnd);
 
                 bool isLastSegment = i == segCount - 1;
                 bool skipEndPoint = loopCloses && isLastSegment;
@@ -132,8 +156,60 @@ namespace Strassio.Core.Placement
             return b - a;
         }
 
-        /// <summary>Позиции страз внутри одного независимого отрезка (0 — его начало, всегда включается вызывающим кодом).</summary>
+        /// <summary>Угол между направлениями кривой до и после точки distance (0 — разворот на месте, π — прямая).</summary>
+        private static double InteriorAngleAt(FlattenedCurve flat, double distance, double total, bool closed)
+        {
+            const double eps = 1e-3;
+            double before = closed ? Mod(distance - eps, total) : Math.Max(0, distance - eps);
+            double after = closed ? Mod(distance + eps, total) : Math.Min(total, distance + eps);
+            Point2D dPrev = flat.TangentAtDistance(before);
+            Point2D dNext = flat.TangentAtDistance(after);
+            double cos = Math.Max(-1, Math.Min(1, dPrev.Dot(dNext)));
+            return Math.PI - Math.Acos(cos);
+        }
+
+        /// <summary>
+        /// Позиции страз внутри одного независимого отрезка (0 — его начало, всегда включается вызывающим
+        /// кодом). reserveStart/reserveEnd — сколько мм у соответствующего конца не трогать (острый угол
+        /// там же, обычной стразе там не хватит места, см. комментарий в Scatter).
+        /// </summary>
         private static List<double> FillSubSegment(
+            double subLength, LineScatterOptions options, double stoneStep, bool endForced, int? gapsOverride,
+            double reserveStart, double reserveEnd)
+        {
+            reserveStart = Math.Max(0, Math.Min(reserveStart, subLength));
+            reserveEnd = Math.Max(0, Math.Min(reserveEnd, subLength - reserveStart));
+
+            if (reserveStart <= 1e-9 && reserveEnd <= 1e-9)
+            {
+                return FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsOverride);
+            }
+
+            double usable = subLength - reserveStart - reserveEnd;
+            var withReserve = new List<double> { 0 };
+
+            if (usable > 1e-9)
+            {
+                List<double> interior = FillSubSegmentCore(usable, options, stoneStep, true, gapsOverride);
+                foreach (double p in interior)
+                {
+                    double abs = reserveStart + p;
+                    if (abs > 1e-6 && abs < subLength - 1e-6)
+                    {
+                        withReserve.Add(abs);
+                    }
+                }
+            }
+
+            if (endForced)
+            {
+                withReserve.Add(subLength);
+            }
+
+            return withReserve;
+        }
+
+        private static List<double> FillSubSegmentCore(
             double subLength, LineScatterOptions options, double stoneStep, bool endForced, int? gapsOverride)
         {
             var positions = new List<double>();
