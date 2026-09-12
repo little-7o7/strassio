@@ -89,6 +89,18 @@ namespace Strassio.Core.Geometry
         }
 
         private static double Clamp(double v, double min, double max) => v < min ? min : v > max ? max : v;
+
+        /// <summary>Та же кривая в обратном порядке точек — используется для направления «в обратную сторону».</summary>
+        public FlattenedCurve Reverse()
+        {
+            var reversed = new List<FlattenedPoint>(Points.Count);
+            for (int i = Points.Count - 1; i >= 0; i--)
+            {
+                reversed.Add(Points[i]);
+            }
+
+            return new FlattenedCurve(reversed, IsClosed);
+        }
     }
 
     public static class CurveFlattener
