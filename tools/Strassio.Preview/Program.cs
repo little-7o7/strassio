@@ -20,6 +20,12 @@ if (scenario.StartsWith("ring-", StringComparison.Ordinal))
     return;
 }
 
+if (scenario.StartsWith("fill-", StringComparison.Ordinal))
+{
+    RenderFillScenario(scenario);
+    return;
+}
+
 (Curve Curve, LineScatterOptions Options) built = scenario switch
 {
     "line" => BuildLine(),
@@ -202,6 +208,67 @@ static void RenderRingScenario(string scenario)
 
     Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}).");
     Console.WriteLine($"SVG сохранён: {outPathFixed}");
+    Console.WriteLine($"SVG сохранён: {outPath}");
+}
+
+static void RenderFillScenario(string scenario)
+{
+    var options = new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, AngleDeg = 0 };
+    Curve[] boundaries;
+
+    switch (scenario)
+    {
+        case "fill-square":
+            options.Pattern = GridPattern.Square;
+            boundaries = new[]
+            {
+                Curve.FromPolyline(
+                    new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                    isClosed: true),
+            };
+            break;
+        case "fill-honeycomb":
+            options.Pattern = GridPattern.Honeycomb;
+            boundaries = new[]
+            {
+                Curve.FromPolyline(
+                    new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                    isClosed: true),
+            };
+            break;
+        case "fill-star":
+            options.Pattern = GridPattern.Honeycomb;
+            options.AngleDeg = 12;
+            boundaries = new[] { BuildStarCurve() };
+            break;
+        case "fill-letter-o":
+            options.Pattern = GridPattern.Honeycomb;
+            boundaries = new[]
+            {
+                Curve.FromPolyline(
+                    new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                    isClosed: true),
+                Curve.FromPolyline(
+                    new[] { new Point2D(12, 12), new Point2D(28, 12), new Point2D(28, 28), new Point2D(12, 28) },
+                    isClosed: true),
+            };
+            break;
+        default:
+            throw new ArgumentException($"Неизвестный сценарий '{scenario}'.");
+    }
+
+    List<PlacedStone> stones = GridFiller.Fill(boundaries, options);
+
+    var polylines = boundaries
+        .Select(b => (Points: (IReadOnlyList<Point2D>)CurveFlattener.Flatten(b).Points.Select(p => p.Position).ToList(), Color: "#cccccc"))
+        .ToArray();
+
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
+    Directory.CreateDirectory(outDir);
+    string outPath = Path.Combine(outDir, scenario + ".svg");
+    File.WriteAllText(outPath, SvgWriter.RenderMulti(polylines, stones));
+
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз ({options.Pattern}, угол {options.AngleDeg}°).");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 
