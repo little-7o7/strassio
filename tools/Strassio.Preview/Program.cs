@@ -26,6 +26,12 @@ if (scenario.StartsWith("fill-", StringComparison.Ordinal))
     return;
 }
 
+if (scenario.StartsWith("contour-", StringComparison.Ordinal))
+{
+    RenderContourScenario(scenario);
+    return;
+}
+
 (Curve Curve, LineScatterOptions Options) built = scenario switch
 {
     "line" => BuildLine(),
@@ -269,6 +275,49 @@ static void RenderFillScenario(string scenario)
     File.WriteAllText(outPath, SvgWriter.RenderMulti(polylines, stones));
 
     Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз ({options.Pattern}, угол {options.AngleDeg}°).");
+    Console.WriteLine($"SVG сохранён: {outPath}");
+}
+
+static void RenderContourScenario(string scenario)
+{
+    var options = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+    Curve boundary;
+
+    switch (scenario)
+    {
+        case "contour-square":
+            boundary = Curve.FromPolyline(
+                new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                isClosed: true);
+            break;
+        case "contour-star":
+            boundary = BuildStarCurve();
+            break;
+        case "contour-edge-only":
+            boundary = Curve.FromPolyline(
+                new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                isClosed: true);
+            options.MaxRings = 2;
+            options.FillCenter = false;
+            break;
+        case "contour-combined":
+            boundary = BuildStarCurve();
+            options.MaxRings = 2;
+            options.FillCenter = true;
+            break;
+        default:
+            throw new ArgumentException($"Неизвестный сценарий '{scenario}'.");
+    }
+
+    List<PlacedStone> stones = ContourFiller.Fill(boundary, options);
+
+    FlattenedCurve flat = CurveFlattener.Flatten(boundary);
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
+    Directory.CreateDirectory(outDir);
+    string outPath = Path.Combine(outDir, scenario + ".svg");
+    File.WriteAllText(outPath, SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, stones));
+
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз.");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 

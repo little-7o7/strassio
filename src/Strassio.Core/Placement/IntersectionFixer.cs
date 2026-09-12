@@ -142,7 +142,10 @@ namespace Strassio.Core.Placement
         /// </summary>
         private static void RemoveLonelySurvivors(IReadOnlyList<PlacedStone> stones, bool[] removed)
         {
+            // RowId < 0 — не ряд вдоль кривой (например, плоская 2D-сетка из GridFiller), соседство
+            // по индексу в списке для неё ничего не значит — такие группы не трогаем.
             var rows = Enumerable.Range(0, stones.Count)
+                .Where(i => stones[i].RowId >= 0)
                 .GroupBy(i => stones[i].RowId)
                 .Select(g => g.ToArray())
                 .ToArray();

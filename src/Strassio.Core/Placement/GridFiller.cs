@@ -113,7 +113,10 @@ namespace Strassio.Core.Placement
                         continue;
                     }
 
-                    result.Add(new PlacedStone(world, options.StoneDiameterMm, false));
+                    // rowId: -1 — сетка не ряд вдоль кривой, а плоская 2D-раскладка; «одиночек»
+                    // (IntersectionFixer.RemoveLonelySurvivors) для неё считать не нужно и нельзя —
+                    // соседство по индексу в списке ничего не говорит о соседстве на сетке.
+                    result.Add(new PlacedStone(world, options.StoneDiameterMm, false, rowId: -1));
                 }
             }
 
