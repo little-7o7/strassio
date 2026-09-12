@@ -179,16 +179,18 @@ public class LineScattererTests
     }
 
     [Fact]
-    public void VerySharpCorner_NudgeIsSmoothAcrossSeveralStones()
+    public void VerySharpCorner_StraightArmUntouched_DiagonalArmAbsorbsSmoothly()
     {
-        // По замечанию автора: сдвиг у угла не должен выглядеть как один резкий скачок — несколько
-        // страз подряд должны сдвигаться на постепенно уменьшающуюся величину.
+        // По замечанию автора: если один из двух отрезков у угла строго горизонтален или
+        // вертикален (опорная линия дизайна), его лучше не трогать вообще — весь сдвиг плавно
+        // (на несколько страз, без единого резкого скачка) берёт на себя соседний, уже наклонный
+        // отрезок.
         var spike = Curve.FromPolyline(new[]
         {
             new Point2D(-30, 0),
             new Point2D(0, 0),
-            new Point2D(0, 40),
-            new Point2D(30, 0),
+            new Point2D(0, 40), // строго вертикальный отрезок ниже — трогать нельзя
+            new Point2D(30, 0), // наклонный отрезок — берёт весь сдвиг на себя
         });
         var options = new LineScatterOptions
         {
@@ -200,32 +202,37 @@ public class LineScattererTests
 
         var stones = new List<PlacedStone>(LineScatterer.Scatter(spike, options));
         var tip = new Point2D(0, 40);
-
-        // "Естественные" (без острого угла на конце) позиции того же вертикального отрезка —
-        // считаем отдельно на прямой той же длины, без соседнего шипа. Сравниваем по порядку
-        // добавления (не по координатам — плавный сдвиг у угла специально немного уводит стразу
-        // не только вдоль ряда, но и в сторону, так что сортировка по Y после сдвига ненадёжна).
-        var straightArm = Curve.FromPolyline(new[] { new Point2D(0, 0), new Point2D(0, 40) });
-        var straightNatural = LineScatterer.Scatter(straightArm, options);
-        int n = straightNatural.Count;
-
         int tipIndex = stones.FindIndex(s => s.IsCorner && Point2D.Distance(s.Center, tip) < 1e-6);
         Assert.True(tipIndex > 0, "Не нашли угловую стразу в вершине шипа.");
+
+        // Вертикальный отрезок — строго на линии X=0, ни одна страза перед углом не сдвинута.
+        for (int k = 1; k <= options.CornerTaperCount; k++)
+        {
+            int idx = tipIndex - k;
+            if (idx < 0) break;
+            Assert.Equal(0, stones[idx].Center.X, 6);
+        }
+
+        // "Естественные" (без острого угла на другом конце) позиции того же наклонного отрезка —
+        // считаем отдельно, без соседнего вертикального отрезка. Сравниваем по порядку добавления,
+        // не по координатам (плавный сдвиг уводит стразу в сторону, сортировка станет ненадёжной).
+        var straightDiagonalArm = Curve.FromPolyline(new[] { new Point2D(0, 40), new Point2D(30, 0) });
+        var naturalDiagonal = LineScatterer.Scatter(straightDiagonalArm, options);
 
         var displacements = new List<double>();
         for (int k = 0; k < options.CornerTaperCount; k++)
         {
-            int actualIdx = tipIndex - 1 - k;
-            int naturalIdx = n - 2 - k; // n-1 у прямой — сама конечная точка (в шипе это угол, не сравниваем)
-            if (actualIdx < 0 || naturalIdx < 0)
+            int actualIdx = tipIndex + 1 + k;
+            int naturalIdx = 1 + k; // индекс 0 у прямой — сама вершина (в шипе это угол, не сравниваем)
+            if (actualIdx >= stones.Count || naturalIdx >= naturalDiagonal.Count)
             {
                 break;
             }
 
-            displacements.Add(Point2D.Distance(stones[actualIdx].Center, straightNatural[naturalIdx].Center));
+            displacements.Add(Point2D.Distance(stones[actualIdx].Center, naturalDiagonal[naturalIdx].Center));
         }
 
-        Assert.True(displacements[0] > 1e-6, "Ближайшая к углу страза должна быть сдвинута.");
+        Assert.True(displacements[0] > 1e-6, "Ближайшая к углу страза наклонного отрезка должна быть сдвинута.");
         for (int i = 1; i < displacements.Count; i++)
         {
             Assert.True(displacements[i] <= displacements[i - 1] + 1e-6,

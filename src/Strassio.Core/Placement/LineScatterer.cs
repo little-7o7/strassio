@@ -133,7 +133,7 @@ namespace Strassio.Core.Placement
             }
 
             NudgeStonesNearSharpCorners(
-                result, perSegmentStones, breakpoints, segCount,
+                flat, result, perSegmentStones, breakpoints, segCount,
                 options.StoneDiameterMm, options.CornerMinGapMm, options.MaxCornerNudgeMm, options.CornerTaperCount);
 
             return result;
@@ -145,11 +145,17 @@ namespace Strassio.Core.Placement
         /// По замечанию автора: не оставляем дырку, не растягиваем весь ряд и не сдвигаем одну стразу
         /// резко — вместо этого расходимся до небольшого зазора (CornerMinGapMm, обычно меньше обычного
         /// зазора ряда — у самого острия это не бросается в глаза) и распределяем сдвиг по нескольким
-        /// стразам подряд с каждой стороны угла (CornerTaperCount), плавно затухая к нулю, чтобы не было
-        /// видно, что вообще что-то сдвинули. Сама угловая страза остаётся точно в вершине (раздел 4 ТЗ).
+        /// стразам подряд с каждой стороны угла (CornerTaperCount), плавно затухая к нулю. Сама угловая
+        /// страза остаётся точно в вершине (раздел 4 ТЗ).
+        ///
+        /// Если один из двух отрезков у угла идёт строго горизонтально или строго вертикально — это,
+        /// как правило, «опорная» линия дизайна, и трогать её нежелательно даже чуть-чуть (по замечанию
+        /// автора: соседний, уже наклонный отрезок может взять на себя весь сдвиг незаметно, а прямая
+        /// линия — нет). Поэтому доля сдвига между двумя отрезками не всегда 50/50: чем ближе отрезок
+        /// к горизонтали/вертикали, тем меньше его доля, а строго горизонтальный/вертикальный получает 0.
         /// </summary>
         private static void NudgeStonesNearSharpCorners(
-            List<PlacedStone> result, List<(int ResultIndex, double LocalDist)>[] perSegmentStones,
+            FlattenedCurve flat, List<PlacedStone> result, List<(int ResultIndex, double LocalDist)>[] perSegmentStones,
             List<(double Distance, bool IsCorner)> breakpoints, int segCount,
             double stoneDiameterMm, double cornerMinGapMm, double maxNudgeMm, int cornerTaperCount)
         {
@@ -188,11 +194,29 @@ namespace Strassio.Core.Placement
                 }
 
                 Point2D dir = dist0 > 1e-9 ? (a0 - b0) * (1.0 / dist0) : new Point2D(1, 0);
-                double pushEach = deficit / 2;
 
-                ApplyCornerTaper(result, incoming, dir, pushEach, taperCount, appliedNudge, maxNudgeMm);
-                ApplyCornerTaper(result, outgoing, dir * -1, pushEach, taperCount, appliedNudge, maxNudgeMm);
+                Point2D cornerPos = flat.PointAtDistance(breakpoints[i].Distance);
+                double diagonalityA = ArmDiagonality(a0 - cornerPos);
+                double diagonalityB = ArmDiagonality(b0 - cornerPos);
+                double totalDiagonality = diagonalityA + diagonalityB;
+                double shareA = totalDiagonality > 1e-9 ? diagonalityA / totalDiagonality : 0.5;
+                double shareB = totalDiagonality > 1e-9 ? diagonalityB / totalDiagonality : 0.5;
+
+                ApplyCornerTaper(result, incoming, dir, deficit * shareA, taperCount, appliedNudge, maxNudgeMm);
+                ApplyCornerTaper(result, outgoing, dir * -1, deficit * shareB, taperCount, appliedNudge, maxNudgeMm);
             }
+        }
+
+        /// <summary>
+        /// 0 — направление строго горизонтальное или строго вертикальное (опорная линия, лучше не
+        /// трогать), 1 — направление ровно диагональное (45°, трогать не жалко).
+        /// </summary>
+        private static double ArmDiagonality(Point2D direction)
+        {
+            Point2D d = direction.Normalized();
+            double angleFromHorizontalDeg = Math.Atan2(Math.Abs(d.Y), Math.Abs(d.X)) * 180 / Math.PI;
+            double distanceFromNearestAxisDeg = Math.Min(angleFromHorizontalDeg, 90 - angleFromHorizontalDeg);
+            return distanceFromNearestAxisDeg / 45.0;
         }
 
         /// <summary>
