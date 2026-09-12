@@ -56,23 +56,6 @@ namespace Strassio.Core.Placement
 
             int segCount = loopCloses ? breakpoints.Count : breakpoints.Count - 1;
 
-            // У очень острых углов страза слева и страза справа от вершины физически близки друг
-            // к другу, даже если каждая идеально стоит на своём отрезке (геометрия угла, не ошибка
-            // расстановки). Отступаем от таких вершин настолько, чтобы соседние стразы не касались:
-            // 1) страза в самой вершине и ближайшая к ней на любом из отрезков — расстояние вдоль
-            //    отрезка, должно быть ≥ stoneStep;
-            // 2) ближайшие стразы по разные стороны угла φ, обе на расстоянии reserve от вершины —
-            //    расстояние между ними 2·reserve·sin(φ/2), тоже должно быть ≥ stoneStep.
-            var cornerReserve = new Dictionary<double, double>();
-            foreach (double d in cornerDistances)
-            {
-                double interiorAngle = InteriorAngleAt(flat, d, total, flat.IsClosed);
-                double reserve = interiorAngle < 1e-3
-                    ? double.MaxValue
-                    : Math.Max(stoneStep, stoneStep / (2 * Math.Sin(interiorAngle / 2)));
-                cornerReserve[d] = reserve;
-            }
-
             int[]? gapsPerSegment = null;
             if (options.Mode == StepMode.ExactCount && options.ExactCount.HasValue && segCount > 0)
             {
@@ -87,6 +70,7 @@ namespace Strassio.Core.Placement
             }
 
             var result = new List<PlacedStone>();
+            var perSegmentStones = new List<(int ResultIndex, double LocalDist)>[segCount];
 
             for (int i = 0; i < segCount; i++)
             {
@@ -112,14 +96,11 @@ namespace Strassio.Core.Placement
                 bool endForced = bIsCorner || options.Mode != StepMode.ExactStep;
                 int? gapsForSegment = gapsPerSegment?[i];
 
-                double reserveStart = breakpoints[i].IsCorner ? cornerReserve[breakpoints[i].Distance] : 0;
-                double reserveEnd = bIsCorner ? cornerReserve[bRawDist] : 0;
-
-                List<double> positions = FillSubSegment(
-                    subLength, options, stoneStep, endForced, gapsForSegment, reserveStart, reserveEnd);
+                List<double> positions = FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsForSegment);
 
                 bool isLastSegment = i == segCount - 1;
                 bool skipEndPoint = loopCloses && isLastSegment;
+                var segmentStones = new List<(int ResultIndex, double LocalDist)>();
 
                 foreach (double pos in positions)
                 {
@@ -142,10 +123,79 @@ namespace Strassio.Core.Placement
                     bool isCorner = (pos <= 1e-9 && breakpoints[i].IsCorner) || (pos >= subLength - 1e-9 && bIsCorner);
 
                     result.Add(new PlacedStone(flat.PointAtDistance(distance), options.StoneDiameterMm, isCorner));
+                    if (!isCorner)
+                    {
+                        segmentStones.Add((result.Count - 1, pos));
+                    }
                 }
+
+                perSegmentStones[i] = segmentStones;
             }
 
+            NudgeStonesNearSharpCorners(result, perSegmentStones, breakpoints, segCount, loopCloses, stoneStep, options.MaxCornerNudgeMm);
+
             return result;
+        }
+
+        /// <summary>
+        /// У очень острых углов страза слева и страза справа от вершины физически близки друг к другу,
+        /// даже если каждая идеально стоит на своём отрезке (геометрия угла, не ошибка расстановки).
+        /// Вместо дырки или растягивания всего ряда — по замечанию автора — точечно, плавно сдвигаем
+        /// в сторону буквально одну-две ближайшие к углу стразы с каждой стороны, ровно настолько,
+        /// сколько нужно, но не больше maxNudgeMm. Ряд остаётся частым и без пропусков.
+        /// </summary>
+        private static void NudgeStonesNearSharpCorners(
+            List<PlacedStone> result, List<(int ResultIndex, double LocalDist)>[] perSegmentStones,
+            List<(double Distance, bool IsCorner)> breakpoints, int segCount, bool loopCloses, double stoneStep,
+            double maxNudgeMm)
+        {
+            var appliedNudge = new double[result.Count];
+
+            for (int i = 0; i < segCount; i++)
+            {
+                if (!breakpoints[i].IsCorner)
+                {
+                    continue;
+                }
+
+                int incomingSeg = i == 0 ? segCount - 1 : i - 1;
+                int outgoingSeg = i;
+
+                // Ближе к углу — в конце входящего отрезка (по убыванию LocalDist) и в начале
+                // исходящего (по возрастанию LocalDist).
+                var incoming = perSegmentStones[incomingSeg].OrderByDescending(t => t.LocalDist).ToList();
+                var outgoing = perSegmentStones[outgoingSeg].OrderBy(t => t.LocalDist).ToList();
+
+                int pairs = Math.Min(incoming.Count, outgoing.Count);
+                for (int k = 0; k < pairs; k++)
+                {
+                    int idxA = incoming[k].ResultIndex;
+                    int idxB = outgoing[k].ResultIndex;
+
+                    Point2D a = result[idxA].Center;
+                    Point2D b = result[idxB].Center;
+                    double dist = Point2D.Distance(a, b);
+                    double deficit = stoneStep - dist;
+
+                    if (deficit <= 1e-9)
+                    {
+                        break; // дальше от угла зазор только растёт — можно не проверять
+                    }
+
+                    Point2D dir = dist > 1e-9 ? (a - b) * (1.0 / dist) : new Point2D(1, 0);
+                    double pushEach = deficit / 2;
+
+                    double budgetA = Math.Max(0, maxNudgeMm - appliedNudge[idxA]);
+                    double budgetB = Math.Max(0, maxNudgeMm - appliedNudge[idxB]);
+                    double applyA = Math.Min(pushEach, budgetA);
+                    double applyB = Math.Min(pushEach, budgetB);
+
+                    result[idxA] = new PlacedStone(a + dir * applyA, result[idxA].DiameterMm, false);
+                    result[idxB] = new PlacedStone(b - dir * applyB, result[idxB].DiameterMm, false);
+                    appliedNudge[idxA] += applyA;
+                    appliedNudge[idxB] += applyB;
+                }
+            }
         }
 
         private static double SegmentLength(
@@ -154,55 +204,6 @@ namespace Strassio.Core.Placement
             double a = breakpoints[i].Distance;
             double b = loopCloses && i == segCount - 1 ? breakpoints[0].Distance + total : breakpoints[i + 1].Distance;
             return b - a;
-        }
-
-        /// <summary>Угол между направлениями кривой до и после точки distance (0 — разворот на месте, π — прямая).</summary>
-        private static double InteriorAngleAt(FlattenedCurve flat, double distance, double total, bool closed)
-        {
-            const double eps = 1e-3;
-            double before = closed ? Mod(distance - eps, total) : Math.Max(0, distance - eps);
-            double after = closed ? Mod(distance + eps, total) : Math.Min(total, distance + eps);
-            Point2D dPrev = flat.TangentAtDistance(before);
-            Point2D dNext = flat.TangentAtDistance(after);
-            double cos = Math.Max(-1, Math.Min(1, dPrev.Dot(dNext)));
-            return Math.PI - Math.Acos(cos);
-        }
-
-        /// <summary>
-        /// Позиции страз внутри одного независимого отрезка (0 — его начало, всегда включается вызывающим
-        /// кодом). reserveStart/reserveEnd — сколько мм у соответствующего конца не трогать (острый угол
-        /// там же, обычной стразе там не хватит места, см. комментарий в Scatter).
-        /// </summary>
-        private static List<double> FillSubSegment(
-            double subLength, LineScatterOptions options, double stoneStep, bool endForced, int? gapsOverride,
-            double reserveStart, double reserveEnd)
-        {
-            // Резерв у острого угла — это требование к ПЕРВОМУ промежутку у этого конца. Пытаться
-            // впихнуть его локально (сдвинуть только ближайшую стразу-две) не выходит: если ряд уже
-            // заполнен впритык (шаг FitEven у сегмента и так на пределе), подвинуть один промежуток
-            // можно только «съев» место у соседних — а его нет, отовсюду взять неоткуда. Поэтому вместо
-            // точечной правки чуть уменьшаем шаг РАВНОМЕРНО по всему отрезку — ряд остаётся полностью
-            // заполненным (без дырки у угла), просто чуть менее плотным, и это незаметно на глаз
-            // (доли миллиметра на страз в 2-3 мм).
-            double requiredStep = Math.Max(stoneStep, Math.Max(reserveStart, reserveEnd));
-            if (requiredStep <= stoneStep + 1e-9)
-            {
-                return FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsOverride);
-            }
-
-            var positions = new List<double>();
-            if (subLength <= 1e-9)
-            {
-                positions.Add(0);
-                return positions;
-            }
-
-            // Считаем количество через floor (не round, как в обычном FitEven), чтобы фактический шаг
-            // гарантированно вышел не меньше requiredStep — округление до ближайшего иногда даёт чуть
-            // меньший шаг, а тут это как раз недопустимо (столкнём стразы у самого угла).
-            int count = Math.Max(2, (int)Math.Floor(subLength / requiredStep) + 1);
-            AddEvenlySpaced(positions, subLength, count);
-            return positions;
         }
 
         private static List<double> FillSubSegmentCore(
