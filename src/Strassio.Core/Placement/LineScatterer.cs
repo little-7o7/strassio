@@ -177,36 +177,32 @@ namespace Strassio.Core.Placement
             double subLength, LineScatterOptions options, double stoneStep, bool endForced, int? gapsOverride,
             double reserveStart, double reserveEnd)
         {
-            reserveStart = Math.Max(0, Math.Min(reserveStart, subLength));
-            reserveEnd = Math.Max(0, Math.Min(reserveEnd, subLength - reserveStart));
-
-            if (reserveStart <= 1e-9 && reserveEnd <= 1e-9)
+            // Резерв у острого угла — это требование к ПЕРВОМУ промежутку у этого конца. Пытаться
+            // впихнуть его локально (сдвинуть только ближайшую стразу-две) не выходит: если ряд уже
+            // заполнен впритык (шаг FitEven у сегмента и так на пределе), подвинуть один промежуток
+            // можно только «съев» место у соседних — а его нет, отовсюду взять неоткуда. Поэтому вместо
+            // точечной правки чуть уменьшаем шаг РАВНОМЕРНО по всему отрезку — ряд остаётся полностью
+            // заполненным (без дырки у угла), просто чуть менее плотным, и это незаметно на глаз
+            // (доли миллиметра на страз в 2-3 мм).
+            double requiredStep = Math.Max(stoneStep, Math.Max(reserveStart, reserveEnd));
+            if (requiredStep <= stoneStep + 1e-9)
             {
                 return FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsOverride);
             }
 
-            double usable = subLength - reserveStart - reserveEnd;
-            var withReserve = new List<double> { 0 };
-
-            if (usable > 1e-9)
+            var positions = new List<double>();
+            if (subLength <= 1e-9)
             {
-                List<double> interior = FillSubSegmentCore(usable, options, stoneStep, true, gapsOverride);
-                foreach (double p in interior)
-                {
-                    double abs = reserveStart + p;
-                    if (abs > 1e-6 && abs < subLength - 1e-6)
-                    {
-                        withReserve.Add(abs);
-                    }
-                }
+                positions.Add(0);
+                return positions;
             }
 
-            if (endForced)
-            {
-                withReserve.Add(subLength);
-            }
-
-            return withReserve;
+            // Считаем количество через floor (не round, как в обычном FitEven), чтобы фактический шаг
+            // гарантированно вышел не меньше requiredStep — округление до ближайшего иногда даёт чуть
+            // меньший шаг, а тут это как раз недопустимо (столкнём стразы у самого угла).
+            int count = Math.Max(2, (int)Math.Floor(subLength / requiredStep) + 1);
+            AddEvenlySpaced(positions, subLength, count);
+            return positions;
         }
 
         private static List<double> FillSubSegmentCore(
