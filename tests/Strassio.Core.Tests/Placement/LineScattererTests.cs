@@ -160,23 +160,78 @@ public class LineScattererTests
             }
         }
 
-        // Прицельная проверка самого шипа: ближайшие стразы по разные стороны его вершины должны
-        // стоять на полный зазор друг от друга — именно это чинит резерв у острых углов.
+        // Прицельная проверка самого шипа: две ближайшие к вершине стразы (по разные стороны угла)
+        // должны стоять хотя бы на маленький зазор CornerMinGapMm друг от друга. Ищем по фактическому
+        // расстоянию до вершины, а не по координате X — плавный сдвиг (раздел 6.1 ТЗ) специально
+        // немного уводит несколько ближайших страз в сторону от исходной линии.
         var tip = new Point2D(0, 40);
-        PlacedStone tipStone = stones.Single(s => s.IsCorner && Point2D.Distance(s.Center, tip) < 1e-6);
-        PlacedStone nearestOnVerticalArm = stones
-            .Where(s => !s.IsCorner && Math.Abs(s.Center.X) < 1e-6)
-            .OrderBy(s => tip.Y - s.Center.Y)
-            .First();
-        PlacedStone nearestOnDiagonalArm = stones
-            .Where(s => !s.IsCorner && s.Center.X > 1e-6)
-            .OrderBy(s => s.Center.X)
-            .First();
+        Assert.Contains(stones, s => s.IsCorner && Point2D.Distance(s.Center, tip) < 1e-6);
+        var nearestTwo = stones
+            .Where(s => !s.IsCorner)
+            .OrderBy(s => Point2D.Distance(s.Center, tip))
+            .Take(2)
+            .ToList();
 
-        double requiredMinDistance = options.StoneDiameterMm + options.GapMm;
-        double armDistance = Point2D.Distance(nearestOnVerticalArm.Center, nearestOnDiagonalArm.Center);
-        Assert.True(armDistance >= requiredMinDistance - 1e-6,
-            $"Ближайшие стразы по разные стороны шипа слишком близко: {armDistance:0.###} мм (нужно ≥ {requiredMinDistance} мм).");
+        double targetMinDistance = options.StoneDiameterMm + options.CornerMinGapMm;
+        double armDistance = Point2D.Distance(nearestTwo[0].Center, nearestTwo[1].Center);
+        Assert.True(armDistance >= targetMinDistance - 1e-6,
+            $"Ближайшие стразы по разные стороны шипа слишком близко: {armDistance:0.###} мм (нужно ≥ {targetMinDistance} мм).");
+    }
+
+    [Fact]
+    public void VerySharpCorner_NudgeIsSmoothAcrossSeveralStones()
+    {
+        // По замечанию автора: сдвиг у угла не должен выглядеть как один резкий скачок — несколько
+        // страз подряд должны сдвигаться на постепенно уменьшающуюся величину.
+        var spike = Curve.FromPolyline(new[]
+        {
+            new Point2D(-30, 0),
+            new Point2D(0, 0),
+            new Point2D(0, 40),
+            new Point2D(30, 0),
+        });
+        var options = new LineScatterOptions
+        {
+            StoneDiameterMm = 2.4,
+            GapMm = 0.2,
+            Mode = StepMode.FitEven,
+            CornerAngleThresholdDeg = 20,
+        };
+
+        var stones = new List<PlacedStone>(LineScatterer.Scatter(spike, options));
+        var tip = new Point2D(0, 40);
+
+        // "Естественные" (без острого угла на конце) позиции того же вертикального отрезка —
+        // считаем отдельно на прямой той же длины, без соседнего шипа. Сравниваем по порядку
+        // добавления (не по координатам — плавный сдвиг у угла специально немного уводит стразу
+        // не только вдоль ряда, но и в сторону, так что сортировка по Y после сдвига ненадёжна).
+        var straightArm = Curve.FromPolyline(new[] { new Point2D(0, 0), new Point2D(0, 40) });
+        var straightNatural = LineScatterer.Scatter(straightArm, options);
+        int n = straightNatural.Count;
+
+        int tipIndex = stones.FindIndex(s => s.IsCorner && Point2D.Distance(s.Center, tip) < 1e-6);
+        Assert.True(tipIndex > 0, "Не нашли угловую стразу в вершине шипа.");
+
+        var displacements = new List<double>();
+        for (int k = 0; k < options.CornerTaperCount; k++)
+        {
+            int actualIdx = tipIndex - 1 - k;
+            int naturalIdx = n - 2 - k; // n-1 у прямой — сама конечная точка (в шипе это угол, не сравниваем)
+            if (actualIdx < 0 || naturalIdx < 0)
+            {
+                break;
+            }
+
+            displacements.Add(Point2D.Distance(stones[actualIdx].Center, straightNatural[naturalIdx].Center));
+        }
+
+        Assert.True(displacements[0] > 1e-6, "Ближайшая к углу страза должна быть сдвинута.");
+        for (int i = 1; i < displacements.Count; i++)
+        {
+            Assert.True(displacements[i] <= displacements[i - 1] + 1e-6,
+                $"Сдвиг должен плавно убывать по мере удаления от угла: " +
+                $"{string.Join(", ", displacements.Select(o => o.ToString("0.###")))}");
+        }
     }
 
     [Fact]

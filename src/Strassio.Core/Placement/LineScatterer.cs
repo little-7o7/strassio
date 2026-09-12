@@ -132,7 +132,9 @@ namespace Strassio.Core.Placement
                 perSegmentStones[i] = segmentStones;
             }
 
-            NudgeStonesNearSharpCorners(result, perSegmentStones, breakpoints, segCount, loopCloses, stoneStep, options.MaxCornerNudgeMm);
+            NudgeStonesNearSharpCorners(
+                result, perSegmentStones, breakpoints, segCount,
+                options.StoneDiameterMm, options.CornerMinGapMm, options.MaxCornerNudgeMm, options.CornerTaperCount);
 
             return result;
         }
@@ -140,16 +142,20 @@ namespace Strassio.Core.Placement
         /// <summary>
         /// У очень острых углов страза слева и страза справа от вершины физически близки друг к другу,
         /// даже если каждая идеально стоит на своём отрезке (геометрия угла, не ошибка расстановки).
-        /// Вместо дырки или растягивания всего ряда — по замечанию автора — точечно, плавно сдвигаем
-        /// в сторону буквально одну-две ближайшие к углу стразы с каждой стороны, ровно настолько,
-        /// сколько нужно, но не больше maxNudgeMm. Ряд остаётся частым и без пропусков.
+        /// По замечанию автора: не оставляем дырку, не растягиваем весь ряд и не сдвигаем одну стразу
+        /// резко — вместо этого расходимся до небольшого зазора (CornerMinGapMm, обычно меньше обычного
+        /// зазора ряда — у самого острия это не бросается в глаза) и распределяем сдвиг по нескольким
+        /// стразам подряд с каждой стороны угла (CornerTaperCount), плавно затухая к нулю, чтобы не было
+        /// видно, что вообще что-то сдвинули. Сама угловая страза остаётся точно в вершине (раздел 4 ТЗ).
         /// </summary>
         private static void NudgeStonesNearSharpCorners(
             List<PlacedStone> result, List<(int ResultIndex, double LocalDist)>[] perSegmentStones,
-            List<(double Distance, bool IsCorner)> breakpoints, int segCount, bool loopCloses, double stoneStep,
-            double maxNudgeMm)
+            List<(double Distance, bool IsCorner)> breakpoints, int segCount,
+            double stoneDiameterMm, double cornerMinGapMm, double maxNudgeMm, int cornerTaperCount)
         {
+            double targetMinDistance = stoneDiameterMm + cornerMinGapMm;
             var appliedNudge = new double[result.Count];
+            int taperCount = Math.Max(1, cornerTaperCount);
 
             for (int i = 0; i < segCount; i++)
             {
@@ -166,35 +172,59 @@ namespace Strassio.Core.Placement
                 var incoming = perSegmentStones[incomingSeg].OrderByDescending(t => t.LocalDist).ToList();
                 var outgoing = perSegmentStones[outgoingSeg].OrderBy(t => t.LocalDist).ToList();
 
-                int pairs = Math.Min(incoming.Count, outgoing.Count);
-                for (int k = 0; k < pairs; k++)
+                if (incoming.Count == 0 || outgoing.Count == 0)
                 {
-                    int idxA = incoming[k].ResultIndex;
-                    int idxB = outgoing[k].ResultIndex;
-
-                    Point2D a = result[idxA].Center;
-                    Point2D b = result[idxB].Center;
-                    double dist = Point2D.Distance(a, b);
-                    double deficit = stoneStep - dist;
-
-                    if (deficit <= 1e-9)
-                    {
-                        break; // дальше от угла зазор только растёт — можно не проверять
-                    }
-
-                    Point2D dir = dist > 1e-9 ? (a - b) * (1.0 / dist) : new Point2D(1, 0);
-                    double pushEach = deficit / 2;
-
-                    double budgetA = Math.Max(0, maxNudgeMm - appliedNudge[idxA]);
-                    double budgetB = Math.Max(0, maxNudgeMm - appliedNudge[idxB]);
-                    double applyA = Math.Min(pushEach, budgetA);
-                    double applyB = Math.Min(pushEach, budgetB);
-
-                    result[idxA] = new PlacedStone(a + dir * applyA, result[idxA].DiameterMm, false);
-                    result[idxB] = new PlacedStone(b - dir * applyB, result[idxB].DiameterMm, false);
-                    appliedNudge[idxA] += applyA;
-                    appliedNudge[idxB] += applyB;
+                    continue;
                 }
+
+                Point2D a0 = result[incoming[0].ResultIndex].Center;
+                Point2D b0 = result[outgoing[0].ResultIndex].Center;
+                double dist0 = Point2D.Distance(a0, b0);
+                double deficit = targetMinDistance - dist0;
+
+                if (deficit <= 1e-9)
+                {
+                    continue; // ближайшая пара и так не теснее нужного — дальше от угла подавно
+                }
+
+                Point2D dir = dist0 > 1e-9 ? (a0 - b0) * (1.0 / dist0) : new Point2D(1, 0);
+                double pushEach = deficit / 2;
+
+                ApplyCornerTaper(result, incoming, dir, pushEach, taperCount, appliedNudge, maxNudgeMm);
+                ApplyCornerTaper(result, outgoing, dir * -1, pushEach, taperCount, appliedNudge, maxNudgeMm);
+            }
+        }
+
+        /// <summary>
+        /// Сдвигает до taperCount ближайших к углу страз одного ряда в направлении dir: у самой ближней —
+        /// полный необходимый сдвиг peak, дальше — плавно (по косинусу) убывающий до нуля. Так после угла
+        /// нет одной резко смещённой стразы — есть незаметный плавный изгиб на несколько страз.
+        /// </summary>
+        private static void ApplyCornerTaper(
+            List<PlacedStone> result, List<(int ResultIndex, double LocalDist)> arm, Point2D dir, double peak,
+            int taperCount, double[] appliedNudge, double maxNudgeMm)
+        {
+            int n = Math.Min(taperCount, arm.Count);
+            for (int k = 0; k < n; k++)
+            {
+                double weight = 0.5 * (1 + Math.Cos(Math.PI * k / taperCount));
+                double want = peak * weight;
+                if (want <= 1e-9)
+                {
+                    continue;
+                }
+
+                int idx = arm[k].ResultIndex;
+                double budget = Math.Max(0, maxNudgeMm - appliedNudge[idx]);
+                double apply = Math.Min(want, budget);
+                if (apply <= 1e-9)
+                {
+                    continue;
+                }
+
+                Point2D c = result[idx].Center;
+                result[idx] = new PlacedStone(c + dir * apply, result[idx].DiameterMm, false);
+                appliedNudge[idx] += apply;
             }
         }
 
