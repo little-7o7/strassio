@@ -14,7 +14,12 @@ namespace Strassio.Core.Geometry
     /// </summary>
     public static class CurveOffsetter
     {
-        public static List<Point2D> Offset(FlattenedCurve flat, double distance, double toleranceMm = 0.02)
+        /// <summary>
+        /// roundOuterCorners — снаружи угла дуга (по умолчанию, как в описании выше) или тоже срез
+        /// (митр), как изнутри — для L3 «по смещённой кривой», где автор выбирает стиль угла (раздел 4 ТЗ).
+        /// </summary>
+        public static List<Point2D> Offset(
+            FlattenedCurve flat, double distance, double toleranceMm = 0.02, bool roundOuterCorners = true)
         {
             IReadOnlyList<FlattenedPoint> pts = flat.Points;
             int n = pts.Count;
@@ -69,15 +74,15 @@ namespace Strassio.Core.Geometry
 
                 bool isOuterSide = (turn > 0) != (distance > 0);
 
-                if (isOuterSide)
+                if (isOuterSide && roundOuterCorners)
                 {
                     AddArc(result, pts[i].Position, incomingEnd, outgoingStart, distance, toleranceMm);
                 }
                 else
                 {
-                    // Обрезка (митр) изнутри угла: точка пересечения смещённых прямых. На очень острых
-                    // углах (как у тонкого шипа звезды) она улетает далеко от вершины — вместо этого
-                    // делаем срез (bevel), как принято в графических редакторах (аналог stroke-miterlimit
+                    // Обрезка (митр) до точки пересечения смещённых прямых. На очень острых углах
+                    // (как у тонкого шипа звезды) она улетает далеко от вершины — вместо этого делаем
+                    // срез (bevel), как принято в графических редакторах (аналог stroke-miterlimit
                     // в SVG), иначе получается самопересекающийся мусор вместо аккуратного контура.
                     const double miterLimit = 3.0;
                     Point2D? trimmed = LineIntersection(incomingEnd, dPrev, outgoingStart, dNext);

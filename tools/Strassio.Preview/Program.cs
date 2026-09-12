@@ -14,6 +14,12 @@ if (scenario.StartsWith("offset-", StringComparison.Ordinal))
     return;
 }
 
+if (scenario.StartsWith("ring-", StringComparison.Ordinal))
+{
+    RenderRingScenario(scenario);
+    return;
+}
+
 (Curve Curve, LineScatterOptions Options) built = scenario switch
 {
     "line" => BuildLine(),
@@ -137,6 +143,60 @@ static void RenderOffsetScenario(string scenario)
     File.WriteAllText(outPath, svg);
 
     Console.WriteLine($"Сценарий '{scenario}': исходная кривая (серая), смещение +{distance} мм (синее), смещение -{distance} мм (красное).");
+    Console.WriteLine($"SVG сохранён: {outPath}");
+}
+
+static void RenderRingScenario(string scenario)
+{
+    Curve curve = scenario switch
+    {
+        "ring-star" => BuildStarCurve(),
+        "ring-square" => Curve.FromPolyline(
+            new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+            isClosed: true),
+        _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'."),
+    };
+
+    // L2 «вокруг линии»: крупный центральный ряд + два ряда по краям поменьше — docs/SPEC.md, раздел 4.
+    var rows = new[]
+    {
+        new RowSpec
+        {
+            OffsetMm = -3.4,
+            ScatterOptions = new LineScatterOptions
+            {
+                StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven, CornerAngleThresholdDeg = 20,
+            },
+        },
+        new RowSpec
+        {
+            OffsetMm = 0,
+            ScatterOptions = new LineScatterOptions
+            {
+                StoneDiameterMm = 3.2, GapMm = 0.2, Mode = StepMode.FitEven, CornerAngleThresholdDeg = 20,
+            },
+        },
+        new RowSpec
+        {
+            OffsetMm = 3.4,
+            ScatterOptions = new LineScatterOptions
+            {
+                StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven, CornerAngleThresholdDeg = 20,
+            },
+        },
+    };
+
+    IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, rows);
+
+    FlattenedCurve flat = CurveFlattener.Flatten(curve);
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
+    Directory.CreateDirectory(outDir);
+    string outPath = Path.Combine(outDir, scenario + ".svg");
+
+    string svg = SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, stones);
+    File.WriteAllText(outPath, svg);
+
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах.");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 
