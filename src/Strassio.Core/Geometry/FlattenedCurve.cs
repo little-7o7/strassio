@@ -136,7 +136,66 @@ namespace Strassio.Core.Geometry
                 }
             }
 
-            return new FlattenedCurve(points, curve.IsClosed);
+            return new FlattenedCurve(Cleanup(points, curve.IsClosed), curve.IsClosed);
+        }
+
+        /// <summary>
+        /// Две точки ближе этого расстояния считаются одной и той же точкой. 0,0001 мм — в тысячу раз
+        /// меньше, чем CorelDRAW показывает пользователю (0,001 мм), и в десятки тысяч раз меньше
+        /// самой мелкой стразы, поэтому реальную геометрию такая склейка не портит.
+        /// </summary>
+        public const double DuplicateToleranceMm = 1e-4;
+
+        /// <summary>
+        /// Убирает вырожденные (нулевой длины) участки полилинии и приводит замкнутую кривую к виду,
+        /// который ждут остальные алгоритмы: последняя точка РОВНО совпадает с первой, и только она.
+        ///
+        /// Зачем: CorelDRAW почти всегда отдаёт замкнутую кривую с последним узлом в той же точке, что
+        /// и первый, но отличающейся в 16-м знаке. Без чистки такой «нулевой» отрезок давал направление
+        /// (0, 0), стык считался острым углом ДВАЖДЫ (в начале и в конце), и в вершине оказывались
+        /// две стразы ровно друг на друге. Поймано на Preview-сценарии «сердце».
+        /// </summary>
+        private static List<FlattenedPoint> Cleanup(List<FlattenedPoint> points, bool isClosed)
+        {
+            var cleaned = new List<FlattenedPoint>(points.Count);
+            foreach (FlattenedPoint p in points)
+            {
+                if (cleaned.Count > 0 &&
+                    Point2D.Distance(cleaned[cleaned.Count - 1].Position, p.Position) <= DuplicateToleranceMm)
+                {
+                    // Точка-дубликат: саму её не добавляем, но если она была границей сегмента —
+                    // переносим эту пометку на оставшуюся точку, иначе потеряется настоящий угол.
+                    if (p.IsSegmentJoint && !cleaned[cleaned.Count - 1].IsSegmentJoint)
+                    {
+                        cleaned[cleaned.Count - 1] = new FlattenedPoint(cleaned[cleaned.Count - 1].Position, true);
+                    }
+
+                    continue;
+                }
+
+                cleaned.Add(p);
+            }
+
+            if (!isClosed || cleaned.Count < 2)
+            {
+                return cleaned.Count >= 2 ? cleaned : points;
+            }
+
+            FlattenedPoint first = cleaned[0];
+            FlattenedPoint last = cleaned[cleaned.Count - 1];
+
+            if (Point2D.Distance(first.Position, last.Position) <= DuplicateToleranceMm)
+            {
+                // Стык почти сомкнут — досаживаем последнюю точку ровно на первую.
+                cleaned[cleaned.Count - 1] = new FlattenedPoint(first.Position, true);
+            }
+            else
+            {
+                // Кривая замкнута, но точки замыкания нет — добавляем её.
+                cleaned.Add(new FlattenedPoint(first.Position, true));
+            }
+
+            return cleaned;
         }
 
         private static void FlattenCubic(

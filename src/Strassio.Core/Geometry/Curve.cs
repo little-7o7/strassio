@@ -31,12 +31,25 @@ namespace Strassio.Core.Geometry
             var segments = new List<CurveSegment>();
             for (int i = 0; i < points.Count - 1; i++)
             {
+                // Отрезки нулевой длины (два одинаковых узла подряд) пропускаем: у них нет направления,
+                // а от направления зависят и углы, и смещение контура.
+                if (Point2D.Distance(points[i], points[i + 1]) <= CurveFlattener.DuplicateToleranceMm)
+                {
+                    continue;
+                }
+
                 segments.Add(CurveSegment.Line(points[i], points[i + 1]));
             }
 
-            if (isClosed && points[0] != points[points.Count - 1])
+            if (isClosed &&
+                Point2D.Distance(points[points.Count - 1], points[0]) > CurveFlattener.DuplicateToleranceMm)
             {
                 segments.Add(CurveSegment.Line(points[points.Count - 1], points[0]));
+            }
+
+            if (segments.Count == 0)
+            {
+                throw new ArgumentException("Все точки совпадают — кривой нулевой длины не бывает.", nameof(points));
             }
 
             return new Curve(segments, isClosed);

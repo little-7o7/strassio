@@ -50,6 +50,14 @@ namespace Strassio.Core.Geometry
 
                 Point2D inDir = (curPos - prevPos).Normalized();
                 Point2D outDir = (nextPos - curPos).Normalized();
+
+                // Нулевой длины участок направления не задаёт — такая точка не угол (защита на случай,
+                // если FlattenedCurve собрали вручную, минуя чистку в CurveFlattener).
+                if (inDir == Point2D.Zero || outDir == Point2D.Zero)
+                {
+                    continue;
+                }
+
                 double cos = Math.Max(-1, Math.Min(1, inDir.Dot(outDir)));
                 double turnRad = Math.Acos(cos);
 

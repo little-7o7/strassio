@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -61,6 +61,9 @@ Console.WriteLine($"SVG сохранён: {outPath}");
 
 if (Environment.GetEnvironmentVariable("STRASSIO_DUMP") == "1")
 {
+    Console.WriteLine($"Длина кривой: {flat.TotalLength:0.###} мм, замкнута: {flat.IsClosed}, точек: {flat.Points.Count}");
+    Console.WriteLine("Острые углы (расстояние от начала): " + string.Join(", ",
+        CornerDetector.FindSharpCornerDistances(flat, built.Options.CornerAngleThresholdDeg).Select(d => d.ToString("0.###"))));
     for (int i = 0; i < stones.Count; i++)
     {
         Console.WriteLine($"{i}: ({stones[i].Center.X:0.###}, {stones[i].Center.Y:0.###}) corner={stones[i].IsCorner}");

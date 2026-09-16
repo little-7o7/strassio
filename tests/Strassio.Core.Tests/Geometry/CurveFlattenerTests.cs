@@ -1,3 +1,4 @@
+using System.Linq;
 using Strassio.Core.Geometry;
 
 namespace Strassio.Core.Tests.Geometry;
@@ -79,5 +80,51 @@ public class CurveFlattenerTests
 
         Assert.Equal(flat.Points[0].Position, flat.Points[flat.Points.Count - 1].Position);
         Assert.Equal(40, flat.TotalLength, 6);
+    }
+
+    [Fact]
+    public void ClosedCurve_RepeatedLastNode_IsNotCountedTwice()
+    {
+        // Замкнутая кривая, у которой последний узел совпадает с первым с точностью до 16-го знака —
+        // ровно так CorelDRAW отдаёт замкнутые кривые. Стык должен остаться ОДНОЙ точкой.
+        var curve = Curve.FromPolyline(
+            new[]
+            {
+                new Point2D(0, 0),
+                new Point2D(20, 0),
+                new Point2D(20, 20),
+                new Point2D(1e-16, -1e-16),
+            },
+            isClosed: true);
+
+        FlattenedCurve flat = CurveFlattener.Flatten(curve);
+
+        // Точки: стык, (20,0), (20,20) и точка замыкания — ровно та же, что стык.
+        Assert.Equal(4, flat.Points.Count);
+        Assert.Equal(flat.Points[0].Position, flat.Points[flat.Points.Count - 1].Position);
+
+        // И сам стык считается острым углом только один раз, а не дважды (в начале и в конце).
+        System.Collections.Generic.List<double> corners =
+            CornerDetector.FindSharpCornerDistances(flat, thresholdDeg: 20);
+        Assert.Single(corners.Where(d => d <= 1e-9 || System.Math.Abs(d - flat.TotalLength) <= 1e-9));
+    }
+
+    [Fact]
+    public void ClosedCurve_WithDuplicateNodeInTheMiddle_DropsIt()
+    {
+        var curve = Curve.FromPolyline(
+            new[]
+            {
+                new Point2D(0, 0),
+                new Point2D(20, 0),
+                new Point2D(20, 0),
+                new Point2D(20, 20),
+            },
+            isClosed: true);
+
+        FlattenedCurve flat = CurveFlattener.Flatten(curve);
+
+        Assert.Equal(4, flat.Points.Count);
+        Assert.Equal(20 + 20 + System.Math.Sqrt(20 * 20 + 20 * 20), flat.TotalLength, 6);
     }
 }
