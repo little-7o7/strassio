@@ -108,4 +108,40 @@ public class RingScattererTests
         // отдельно уже покрыт тестами LineScattererTests.
         Assert.True(stones.Count > 0);
     }
+
+    [Fact]
+    public void OversizedInwardOffset_OnSmallShape_SkipsRowInsteadOfGarbage()
+    {
+        // По замечанию автора (реальный тест в CorelDRAW на маленьком лепестке): смещение внутрь
+        // больше половины ширины самой формы выворачивало контур наизнанку, и стразы всех рядов
+        // сваливались в кучу друг на друга. Маленький квадрат 10x10, смещение внутрь 8 мм —
+        // заведомо больше половины стороны (5 мм). Точки заданы против часовой стрелки (как и
+        // Square40mm() выше), поэтому по соглашению CurveOffsetter (см. ContourFiller) внутрь —
+        // это положительное расстояние.
+        var smallSquare = Curve.FromPolyline(
+            new[] { new Point2D(0, 0), new Point2D(10, 0), new Point2D(10, 10), new Point2D(0, 10) },
+            isClosed: true);
+
+        var rows = new[]
+        {
+            new RowSpec
+            {
+                OffsetMm = 8,
+                ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
+            },
+            new RowSpec
+            {
+                OffsetMm = 0,
+                ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
+            },
+        };
+
+        var stones = RingScatterer.Scatter(smallSquare, rows);
+
+        // Ряд с разумным смещением (0) должен остаться, а схлопнувшийся (8) — тихо пропущен,
+        // а не превращён в мусорные стразы где попало.
+        Assert.True(stones.Count > 0);
+        Assert.DoesNotContain(stones, s => s.RowId == 0);
+        Assert.Contains(stones, s => s.RowId == 1);
+    }
 }

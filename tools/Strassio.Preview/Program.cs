@@ -39,7 +39,11 @@ if (scenario.StartsWith("contour-", StringComparison.Ordinal))
     "square" => BuildSquare(),
     "star" => BuildStar(),
     "spike" => BuildSpike(),
-    _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'. Доступные: line, zigzag, square, star, spike, offset-square, offset-star."),
+    "heart" => BuildHeart(),
+    "spiral" => BuildSpiral(),
+    "s-curve" => BuildSCurve(),
+    "letters" => BuildLetters(),
+    _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'. Доступные: line, zigzag, square, star, spike, heart, spiral, s-curve, letters, offset-square, offset-star."),
 };
 
 FlattenedCurve flat = CurveFlattener.Flatten(built.Curve, built.Options.FlattenToleranceMm);
@@ -166,6 +170,9 @@ static void RenderRingScenario(string scenario)
         "ring-square" => Curve.FromPolyline(
             new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
             isClosed: true),
+        "ring-petal" => BuildPetalCurve(),
+        "ring-petal-sharp" => BuildSharpPetalCurve(1.0),
+        "ring-petal-small" => BuildSharpPetalCurve(0.4),
         _ => throw new ArgumentException($"Неизвестный сценарий '{scenario}'."),
     };
 
@@ -258,6 +265,10 @@ static void RenderFillScenario(string scenario)
                     new[] { new Point2D(12, 12), new Point2D(28, 12), new Point2D(28, 28), new Point2D(12, 28) },
                     isClosed: true),
             };
+            break;
+        case "fill-letters":
+            options.Pattern = GridPattern.Honeycomb;
+            boundaries = new[] { BuildLettersCurve() };
             break;
         default:
             throw new ArgumentException($"Неизвестный сценарий '{scenario}'.");
@@ -356,6 +367,119 @@ static (Curve, LineScatterOptions) BuildSpike()
         CornerAngleThresholdDeg = 20,
     };
     return (curve, options);
+}
+
+static (Curve, LineScatterOptions) BuildHeart()
+{
+    // Классическая параметрическая формула сердца — острый угол снизу (настоящий математический
+    // "клюв", не приближение) и мягкая выемка сверху — обязательный сценарий (SPEC 6.5).
+    var points = new List<Point2D>();
+    const int n = 200;
+    for (int i = 0; i <= n; i++)
+    {
+        double t = 2 * Math.PI * i / n;
+        double x = 16 * Math.Pow(Math.Sin(t), 3);
+        double y = 13 * Math.Cos(t) - 5 * Math.Cos(2 * t) - 2 * Math.Cos(3 * t) - Math.Cos(4 * t);
+        points.Add(new Point2D(x * 1.8, -y * 1.8));
+    }
+
+    var curve = Curve.FromPolyline(points, isClosed: true);
+    var options = new LineScatterOptions
+    {
+        StoneDiameterMm = 2.4,
+        GapMm = 0.2,
+        Mode = StepMode.FitEven,
+        CornerAngleThresholdDeg = 20,
+    };
+    return (curve, options);
+}
+
+static (Curve, LineScatterOptions) BuildSpiral()
+{
+    // Тугая спираль (архимедова) — соседние витки всего в нескольких мм друг от друга.
+    var points = new List<Point2D>();
+    const int n = 400;
+    const double a = 3.0, b = 0.9;
+    const double thetaMax = 8 * Math.PI;
+    for (int i = 0; i <= n; i++)
+    {
+        double theta = thetaMax * i / n;
+        double r = a + b * theta;
+        points.Add(new Point2D(r * Math.Cos(theta), r * Math.Sin(theta)));
+    }
+
+    var curve = Curve.FromPolyline(points);
+    var options = new LineScatterOptions
+    {
+        StoneDiameterMm = 2.4,
+        GapMm = 0.2,
+        Mode = StepMode.FitEven,
+        CornerAngleThresholdDeg = 20,
+    };
+    return (curve, options);
+}
+
+static (Curve, LineScatterOptions) BuildSCurve()
+{
+    // Гладкая S-образная кривая Безье — проверка смещения и расстановки в точке перегиба
+    // (там, где кривая меняет сторону изгиба).
+    var seg = CurveSegment.Cubic(
+        new Point2D(-30, 0), new Point2D(-10, 40), new Point2D(10, -40), new Point2D(30, 0));
+    var curve = new Curve(new[] { seg }, isClosed: false);
+    var options = new LineScatterOptions
+    {
+        StoneDiameterMm = 2.4,
+        GapMm = 0.2,
+        Mode = StepMode.FitEven,
+        CornerAngleThresholdDeg = 20,
+    };
+    return (curve, options);
+}
+
+static Curve BuildPetalCurve()
+{
+    // Лист/лепесток — гладкая кривая Безье с острыми кончиками слева и справа, похожая на форму
+    // из отчёта автора (реальная кривая, нарисованная в CorelDRAW пером).
+    var seg1 = CurveSegment.Cubic(new Point2D(-25, 0), new Point2D(-12, 22), new Point2D(12, 22), new Point2D(25, 0));
+    var seg2 = CurveSegment.Cubic(new Point2D(25, 0), new Point2D(12, -22), new Point2D(-12, -22), new Point2D(-25, 0));
+    return new Curve(new[] { seg1, seg2 }, isClosed: true);
+}
+
+static Curve BuildSharpPetalCurve(double scale)
+{
+    // Острее и/или мельче — управляющие точки ближе к оси, кончики более "клювастые".
+    var seg1 = CurveSegment.Cubic(
+        new Point2D(-25 * scale, 0), new Point2D(-18 * scale, 10 * scale),
+        new Point2D(18 * scale, 10 * scale), new Point2D(25 * scale, 0));
+    var seg2 = CurveSegment.Cubic(
+        new Point2D(25 * scale, 0), new Point2D(18 * scale, -10 * scale),
+        new Point2D(-18 * scale, -10 * scale), new Point2D(-25 * scale, 0));
+    return new Curve(new[] { seg1, seg2 }, isClosed: true);
+}
+
+static Curve BuildLettersCurve()
+{
+    // "Гантель" — два широких блина на узкой перемычке, как у соединённых букв или у "талии"
+    // буквы S/B, где соседние штрихи почти соприкасаются.
+    var points = new[]
+    {
+        new Point2D(-20, -15), new Point2D(-8, -15), new Point2D(-3, -3), new Point2D(3, -3),
+        new Point2D(8, -15), new Point2D(20, -15), new Point2D(20, 15), new Point2D(8, 15),
+        new Point2D(3, 3), new Point2D(-3, 3), new Point2D(-8, 15), new Point2D(-20, 15),
+    };
+    return Curve.FromPolyline(points, isClosed: true);
+}
+
+static (Curve, LineScatterOptions) BuildLetters()
+{
+    var options = new LineScatterOptions
+    {
+        StoneDiameterMm = 2.4,
+        GapMm = 0.2,
+        Mode = StepMode.FitEven,
+        CornerAngleThresholdDeg = 20,
+    };
+    return (BuildLettersCurve(), options);
 }
 
 static string FindRepoRoot()

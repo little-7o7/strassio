@@ -15,6 +15,9 @@ namespace Strassio.Core.Placement
         public static IReadOnlyList<PlacedStone> Scatter(Curve curve, IReadOnlyList<RowSpec> rows)
         {
             var result = new List<PlacedStone>();
+            FlattenedCurve originalFlat = CurveFlattener.Flatten(curve);
+            double originalArea = originalFlat.IsClosed ? CurveMetrics.SignedArea(originalFlat) : 0;
+            (double originalWidth, double originalHeight) = CurveMetrics.BoundingSize(originalFlat);
 
             for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
@@ -27,6 +30,32 @@ namespace Strassio.Core.Placement
                     List<Point2D> offsetPoints = CurveOffsetter.Offset(
                         flat, row.OffsetMm, row.ScatterOptions.FlattenToleranceMm,
                         roundOuterCorners: row.CornerStyle == CornerStyle.Round);
+
+                    bool isValid = IsValidRing(
+                        offsetPoints, flat.IsClosed, originalArea, row.ScatterOptions.StoneDiameterMm);
+
+                    // Смещение внутрь больше половины меньшей стороны исходной фигуры — линии смещения
+                    // пересекаются "зеркально" и образуют геометрически опрятный, но бессмысленный
+                    // контур (тот же трюк, что и площадь/знак не ловят: см. тест
+                    // OversizedInwardOffset_OnSmallShape_SkipsRowInsteadOfGarbage). Проверяем расстояние
+                    // смещения напрямую относительно ИСХОДНОЙ (не смещённой) фигуры. "Внутрь" — когда
+                    // знак смещения совпадает со знаком площади контура (см. пояснение в ContourFiller).
+                    bool isInward = flat.IsClosed && originalArea != 0 &&
+                        System.Math.Sign(row.OffsetMm) == System.Math.Sign(originalArea);
+                    if (isInward && System.Math.Abs(row.OffsetMm) * 2 >= System.Math.Min(originalWidth, originalHeight))
+                    {
+                        isValid = false;
+                    }
+
+                    if (flat.IsClosed && !isValid)
+                    {
+                        // Смещение больше, чем позволяет размер самой формы — контур схлопнулся или
+                        // вывернулся наизнанку (например, смещение внутрь больше половины ширины
+                        // маленькой фигуры). Пропускаем этот ряд целиком, а не расставляем стразы
+                        // по бессмысленной кривой — иначе получится каша из наложенных кругов.
+                        continue;
+                    }
+
                     rowCurve = Curve.FromPolyline(offsetPoints, flat.IsClosed);
                 }
 
@@ -37,6 +66,21 @@ namespace Strassio.Core.Placement
             }
 
             return result;
+        }
+
+        private static bool IsValidRing(List<Point2D> offsetPoints, bool isClosed, double originalSignedArea, double stoneDiameterMm)
+        {
+            var offsetFlat = new FlattenedCurve(
+                offsetPoints.ConvertAll(p => new FlattenedPoint(p, true)), isClosed);
+
+            double area = CurveMetrics.SignedArea(offsetFlat);
+            if (originalSignedArea != 0 && System.Math.Sign(area) != System.Math.Sign(originalSignedArea))
+            {
+                return false; // контур вывернулся наизнанку
+            }
+
+            (double width, double height) = CurveMetrics.BoundingSize(offsetFlat);
+            return System.Math.Min(width, height) >= stoneDiameterMm;
         }
     }
 }

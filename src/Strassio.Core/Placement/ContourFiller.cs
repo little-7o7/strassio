@@ -16,7 +16,7 @@ namespace Strassio.Core.Placement
         public static List<PlacedStone> Fill(Curve boundary, ContourFillOptions options)
         {
             FlattenedCurve flat = CurveFlattener.Flatten(boundary, options.FlattenToleranceMm);
-            double signedArea = SignedArea(flat);
+            double signedArea = CurveMetrics.SignedArea(flat);
             if (Math.Abs(signedArea) < 1e-9)
             {
                 return new List<PlacedStone>();
@@ -46,7 +46,7 @@ namespace Strassio.Core.Placement
 
             // Верхняя граница числа колец с запасом: даже для тонкой длинной формы кольца не могут
             // осмысленно идти дальше половины меньшей стороны её ограничивающего прямоугольника.
-            (double width, double height) = BoundingSize(flat);
+            (double width, double height) = CurveMetrics.BoundingSize(flat);
             int safetyMaxRings = Math.Max(4, (int)(Math.Min(width, height) / (2 * rowSpacing)) + 4);
 
             for (int ring = 0; ring < safetyMaxRings; ring++)
@@ -63,8 +63,8 @@ namespace Strassio.Core.Placement
                 var offsetFlat = new FlattenedCurve(
                     offsetPoints.Select(p => new FlattenedPoint(p, true)).ToList(), flat.IsClosed);
 
-                (double ringWidth, double ringHeight) = BoundingSize(offsetFlat);
-                double ringArea = Math.Abs(SignedArea(offsetFlat));
+                (double ringWidth, double ringHeight) = CurveMetrics.BoundingSize(offsetFlat);
+                double ringArea = Math.Abs(CurveMetrics.SignedArea(offsetFlat));
 
                 // Схлопнувшаяся или самопересёкшаяся (после слишком сильного сжатия) форма: либо
                 // площадь слишком мала, либо ограничивающий прямоугольник уже не годится в стразу —
@@ -133,32 +133,5 @@ namespace Strassio.Core.Placement
             return new Point2D(sx / n, sy / n);
         }
 
-        private static (double Width, double Height) BoundingSize(FlattenedCurve flat)
-        {
-            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
-            foreach (FlattenedPoint p in flat.Points)
-            {
-                if (p.Position.X < minX) minX = p.Position.X;
-                if (p.Position.X > maxX) maxX = p.Position.X;
-                if (p.Position.Y < minY) minY = p.Position.Y;
-                if (p.Position.Y > maxY) maxY = p.Position.Y;
-            }
-
-            return (maxX - minX, maxY - minY);
-        }
-
-        private static double SignedArea(FlattenedCurve flat)
-        {
-            double sum = 0;
-            IReadOnlyList<FlattenedPoint> pts = flat.Points;
-            for (int i = 0; i < pts.Count - 1; i++)
-            {
-                Point2D a = pts[i].Position;
-                Point2D b = pts[i + 1].Position;
-                sum += a.X * b.Y - b.X * a.Y;
-            }
-
-            return sum / 2;
-        }
     }
 }
