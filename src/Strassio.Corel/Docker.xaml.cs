@@ -182,10 +182,11 @@ namespace Strassio.Corel
                 app.EventsEnabled = false;
                 doc.Unit = cdrUnit.cdrMillimeter;
 
-                global::Corel.Interop.VGCore.Curve corelCurve = selected.Curve;
+                global::Corel.Interop.VGCore.Curve corelCurve = GetCurveOf(selected);
                 if (corelCurve == null || corelCurve.SubPaths.Count == 0)
                 {
-                    StatusText.Text = "У выделенной фигуры нет кривой.";
+                    StatusText.Text = $"Не удалось прочитать форму объекта ({selected.Type}). " +
+                        "Попробуйте «Упорядочить → Преобразовать в кривые» (Ctrl+Q) и повторите.";
                     return;
                 }
 
@@ -247,6 +248,43 @@ namespace Strassio.Corel
                 app.EventsEnabled = prevEventsEnabled;
                 app.Optimization = prevOptimization;
                 app.Refresh();
+            }
+        }
+
+        /// <summary>
+        /// Достаёт кривую любого объекта.
+        ///
+        /// Важно: свойство Shape.Curve есть ТОЛЬКО у объекта-кривой (cdrCurveShape). У прямоугольника,
+        /// эллипса, многоугольника/звезды и текста его нет — из-за этого все методы, кроме «по линии»,
+        /// не работали на обычных фигурах. У таких объектов есть Shape.DisplayCurve: та же форма,
+        /// уже в виде кривой, причём сам документ при этом не меняется (в отличие от ConvertToCurves,
+        /// который молча переделал бы фигуру пользователя).
+        /// </summary>
+        private static global::Corel.Interop.VGCore.Curve GetCurveOf(Shape shape)
+        {
+            if (shape.Type == cdrShapeType.cdrCurveShape)
+            {
+                try
+                {
+                    global::Corel.Interop.VGCore.Curve curve = shape.Curve;
+                    if (curve != null && curve.SubPaths.Count > 0)
+                    {
+                        return curve;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Ниже пробуем DisplayCurve — он работает у всех типов объектов.
+                }
+            }
+
+            try
+            {
+                return shape.DisplayCurve;
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
