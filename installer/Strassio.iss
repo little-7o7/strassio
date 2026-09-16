@@ -11,7 +11,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.1.1"
+#define AppVersion "0.1.2"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
@@ -325,6 +325,29 @@ begin
   Result := True;
 end;
 
+{ Убирает то, что этот же установщик поставил в прошлый раз. Нужно при установке поверх:
+  иначе, если версию CorelDRAW сняли галочкой, плагин остался бы в ней навсегда — и деинсталлятор
+  про него бы уже не знал. Чужого не трогаем: удаляются только записанные нами папки. }
+procedure RemovePreviousInstall;
+var
+  I: Integer;
+  OldCount: Cardinal;
+  OldDir: string;
+begin
+  if not RegQueryDWordValue(HKLM, 'Software\Strassio', 'TargetCount', OldCount) then
+    Exit;
+
+  for I := 0 to Integer(OldCount) - 1 do
+  begin
+    if RegQueryStringValue(HKLM, 'Software\Strassio', 'Target' + IntToStr(I), OldDir) then
+      DelTree(OldDir, True, True, True);
+
+    RegDeleteValue(HKLM, 'Software\Strassio', 'Target' + IntToStr(I));
+  end;
+
+  RegDeleteValue(HKLM, 'Software\Strassio', 'TargetCount');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   I, Installed: Integer;
@@ -332,6 +355,8 @@ var
 begin
   if CurStep <> ssPostInstall then
     Exit;
+
+  RemovePreviousInstall;
 
   Installed := 0;
   for I := 0 to CorelAddonDirs.Count - 1 do
