@@ -91,15 +91,16 @@ namespace Strassio.Corel
         private void ScatterSelectedCurve_Click(object sender, RoutedEventArgs e) =>
             CreateFromSelectedCurve(
                 "Strassio: L1 по выделенной кривой", "Strassio: L1 по линии",
-                curve => LineScatterer.Scatter(
-                    curve, new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven }),
+                contours => LineScatterer.Scatter(
+                    OuterContour(contours),
+                    new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven }),
                 requireClosed: false);
 
         /// <summary>Тестовая кнопка: L2 «вокруг линии» — 3 ряда (центр ss8 крупнее, края ss6) на замкнутой фигуре.</summary>
         private void RingSelectedShape_Click(object sender, RoutedEventArgs e) =>
             CreateFromSelectedCurve(
                 "Strassio: L2 по выделенной фигуре", "Strassio: L2 кольца",
-                curve =>
+                contours =>
                 {
                     var rows = new[]
                     {
@@ -119,23 +120,25 @@ namespace Strassio.Corel
                             ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
                         },
                     };
-                    return IntersectionFixer.RemoveOverlaps(RingScatterer.Scatter(curve, rows));
+                    return IntersectionFixer.RemoveOverlaps(RingScatterer.Scatter(OuterContour(contours), rows));
                 },
                 requireClosed: true);
 
-        /// <summary>Тестовая кнопка: F2 «соты» на замкнутой фигуре (может быть с отверстиями — не проверяем тут).</summary>
+        /// <summary>Тестовая кнопка: F2 «соты» на замкнутой фигуре. Отверстия (буква «О», кольцо) остаются пустыми.</summary>
         private void FillHoneycombSelectedShape_Click(object sender, RoutedEventArgs e) =>
             CreateFromSelectedCurve(
                 "Strassio: заливка сотами по выделенной фигуре", "Strassio: заливка (соты)",
-                curve => GridFiller.Fill(
-                    curve, new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb }),
+                contours => GridFiller.Fill(
+                    contours,
+                    new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb }),
                 requireClosed: true);
 
         /// <summary>Тестовая кнопка: F3 «контурная» на замкнутой фигуре — ряды от края внутрь, центр добит сеткой.</summary>
         private void ContourFillSelectedShape_Click(object sender, RoutedEventArgs e) =>
             CreateFromSelectedCurve(
                 "Strassio: контурная заливка по выделенной фигуре", "Strassio: заливка (контурная)",
-                curve => ContourFiller.Fill(curve, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
+                contours => ContourFiller.Fill(
+                    OuterContour(contours), new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
                 requireClosed: true);
 
         /// <summary>
@@ -147,7 +150,7 @@ namespace Strassio.Corel
         /// </summary>
         private void CreateFromSelectedCurve(
             string commandGroupName, string resultGroupCaption,
-            Func<CoreCurve, IReadOnlyList<PlacedStone>> scatter, bool requireClosed)
+            Func<IReadOnlyList<CoreCurve>, IReadOnlyList<PlacedStone>> scatter, bool requireClosed)
         {
             if (app == null)
             {
@@ -186,14 +189,20 @@ namespace Strassio.Corel
                     return;
                 }
 
-                CoreCurve coreCurve = ReadSubPath(corelCurve.SubPaths[1]);
-                if (requireClosed && !coreCurve.IsClosed)
+                List<CoreCurve> contours = ReadAllSubPaths(corelCurve);
+                if (contours.Count == 0)
+                {
+                    StatusText.Text = "У выделенной фигуры нет пригодных контуров.";
+                    return;
+                }
+
+                if (requireClosed && !OuterContour(contours).IsClosed)
                 {
                     StatusText.Text = "Этому методу нужна замкнутая фигура (эллипс, прямоугольник, замкнутая кривая).";
                     return;
                 }
 
-                IReadOnlyList<PlacedStone> stones = scatter(coreCurve);
+                IReadOnlyList<PlacedStone> stones = scatter(contours);
                 if (stones.Count == 0)
                 {
                     StatusText.Text = "Не расставлено ни одной стразы — фигура слишком маленькая?";
@@ -239,6 +248,64 @@ namespace Strassio.Corel
                 app.Optimization = prevOptimization;
                 app.Refresh();
             }
+        }
+
+        /// <summary>
+        /// Читает ВСЕ подпути фигуры. У буквы «О», кольца или любой фигуры с отверстием подпутей
+        /// несколько: внешняя граница и дырки. Заливка (раздел 5 ТЗ) умеет работать со всеми сразу
+        /// и оставляет отверстия пустыми.
+        /// </summary>
+        private static List<CoreCurve> ReadAllSubPaths(global::Corel.Interop.VGCore.Curve corelCurve)
+        {
+            var contours = new List<CoreCurve>();
+            SubPaths subPaths = corelCurve.SubPaths;
+
+            for (int i = 1; i <= subPaths.Count; i++)
+            {
+                CoreCurve contour = TryReadSubPath(subPaths[i]);
+                if (contour != null)
+                {
+                    contours.Add(contour);
+                }
+            }
+
+            return contours;
+        }
+
+        /// <summary>Подпуть без сегментов (мусорная точка) кривой не является — такой просто пропускаем.</summary>
+        private static CoreCurve TryReadSubPath(SubPath subPath)
+        {
+            try
+            {
+                return ReadSubPath(subPath);
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Внешний контур фигуры — самый большой по габаритам. Методы по линии (L1-L3) и контурная
+        /// заливка работают именно по нему, дырки им пока не нужны.
+        /// </summary>
+        private static CoreCurve OuterContour(IReadOnlyList<CoreCurve> contours)
+        {
+            CoreCurve best = contours[0];
+            double bestSize = -1;
+
+            foreach (CoreCurve contour in contours)
+            {
+                (double width, double height) = CurveMetrics.BoundingSize(CurveFlattener.Flatten(contour));
+                double size = width * height;
+                if (size > bestSize)
+                {
+                    bestSize = size;
+                    best = contour;
+                }
+            }
+
+            return best;
         }
 
         /// <summary>
