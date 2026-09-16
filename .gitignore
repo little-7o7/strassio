@@ -10,3 +10,9 @@ node_modules/
 .vercel/
 *.pfx
 *.pem
+dist/
+
+# Рабочие файлы автора в корне проекта (скриншоты, архивы) — в репозиторий не нужны
+*.zip
+Screen Shot*.png
+strassio-stone-256.png
