@@ -112,4 +112,83 @@ public class ContourFillerTests
         Assert.True(stones.Count > 20);
         Assert.False(HasAnyOverlap(stones));
     }
+    [Fact]
+    public void LetterO_RingsGoAroundHole_HoleStaysEmpty()
+    {
+        // Квадрат 40×40 с квадратной дыркой 16×16 посередине — как буква «О».
+        var outer = Square(40);
+        var hole = Curve.FromPolyline(
+            new[] { new Point2D(12, 12), new Point2D(28, 12), new Point2D(28, 28), new Point2D(12, 28) },
+            isClosed: true);
+        var options = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+
+        var stones = ContourFiller.Fill(new[] { outer, hole }, options);
+
+        Assert.False(HasAnyOverlap(stones));
+
+        FlattenedCurve holeFlat = CurveFlattener.Flatten(hole);
+        FlattenedCurve outerFlat = CurveFlattener.Flatten(outer);
+        foreach (PlacedStone s in stones)
+        {
+            // Ни одна страза не залезает в дырку и не вылезает за внешний край.
+            Assert.False(PointInPolygon.IsInside(holeFlat, s.Center), $"Страза в дырке: {s.Center}.");
+            Assert.True(PointInPolygon.DistanceToBoundary(holeFlat, s.Center) >= 1.2 - 0.05);
+            Assert.True(PointInPolygon.DistanceToBoundary(outerFlat, s.Center) >= 1.2 - 0.05);
+        }
+
+        // Первый ряд вокруг дырки есть: вдоль её края стоят стразы (у стороны y=12 снизу).
+        Assert.Contains(stones, s => Math.Abs(s.Center.Y - (12 - 1.2)) < 0.3 && s.Center.X > 14 && s.Center.X < 26);
+    }
+
+    [Fact]
+    public void StarShape_ContourFill_LeavesNoBigGaps()
+    {
+        // Раньше ряды на звезде выворачивались наизнанку и оставляли дыры. Проверяем: в любой
+        // точке звезды, где страза поместилась бы, до ближайшей стразы недалеко.
+        const int spikes = 5;
+        var points = new System.Collections.Generic.List<Point2D>();
+        for (int i = 0; i < spikes * 2; i++)
+        {
+            double r = i % 2 == 0 ? 40 : 15;
+            double angle = Math.PI / 2 + i * Math.PI / spikes;
+            points.Add(new Point2D(r * Math.Cos(angle), -r * Math.Sin(angle)));
+        }
+
+        var star = Curve.FromPolyline(points, isClosed: true);
+        FlattenedCurve flat = CurveFlattener.Flatten(star);
+        var options = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+
+        var stones = ContourFiller.Fill(star, options);
+
+        Assert.False(HasAnyOverlap(stones));
+
+        for (double x = -40; x <= 40; x += 0.5)
+        {
+            for (double y = -40; y <= 40; y += 0.5)
+            {
+                var p = new Point2D(x, y);
+                if (!PointInPolygon.IsInside(flat, p) || PointInPolygon.DistanceToBoundary(flat, p) < 1.2)
+                {
+                    continue;
+                }
+
+                double nearest = stones.Min(s => Point2D.Distance(s.Center, p));
+                // Шаг ряда 2,6 мм: в плотной расстановке любая точка ближе ~2,6 мм к центру стразы.
+                Assert.True(nearest < 2.9, $"Дыра около ({x}; {y}): ближайшая страза в {nearest:0.##} мм.");
+            }
+        }
+    }
+    [Fact]
+    public void BigSquare_TenThousandStones_IsFast()
+    {
+        // Цель из CLAUDE.md: 10 000 камней, расчёт в Core — доли секунды (с запасом на медленный компьютер).
+        var options = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var stones = ContourFiller.Fill(Square(260), options);
+        watch.Stop();
+
+        Assert.True(stones.Count > 9000, $"Ожидали около 10 000 страз, получили {stones.Count}.");
+        Assert.True(watch.ElapsedMilliseconds < 3000, $"Слишком долго: {watch.ElapsedMilliseconds} мс на {stones.Count} страз.");
+    }
 }

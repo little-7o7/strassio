@@ -106,7 +106,7 @@ public class CurveFlattenerTests
         // И сам стык считается острым углом только один раз, а не дважды (в начале и в конце).
         System.Collections.Generic.List<double> corners =
             CornerDetector.FindSharpCornerDistances(flat, thresholdDeg: 20);
-        Assert.Single(corners.Where(d => d <= 1e-9 || System.Math.Abs(d - flat.TotalLength) <= 1e-9));
+        Assert.Single(corners, d => d <= 1e-9 || System.Math.Abs(d - flat.TotalLength) <= 1e-9);
     }
 
     [Fact]

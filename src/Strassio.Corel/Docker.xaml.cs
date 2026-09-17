@@ -133,12 +133,12 @@ namespace Strassio.Corel
                     new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb }),
                 requireClosed: true);
 
-        /// <summary>Тестовая кнопка: F3 «контурная» на замкнутой фигуре — ряды от края внутрь, центр добит сеткой.</summary>
+        /// <summary>Тестовая кнопка: F3 «контурная» на замкнутой фигуре — ряды от края внутрь, вокруг отверстий тоже.</summary>
         private void ContourFillSelectedShape_Click(object sender, RoutedEventArgs e) =>
             CreateFromSelectedCurve(
                 "Strassio: контурная заливка по выделенной фигуре", "Strassio: заливка (контурная)",
                 contours => ContourFiller.Fill(
-                    OuterContour(contours), new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
+                    contours, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
                 requireClosed: true);
 
         /// <summary>

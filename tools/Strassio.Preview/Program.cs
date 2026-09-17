@@ -295,43 +295,98 @@ static void RenderFillScenario(string scenario)
 static void RenderContourScenario(string scenario)
 {
     var options = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
-    Curve boundary;
+    Curve square40 = Curve.FromPolyline(
+        new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+        isClosed: true);
+    Curve[] boundaries;
 
     switch (scenario)
     {
         case "contour-square":
-            boundary = Curve.FromPolyline(
-                new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
-                isClosed: true);
+            boundaries = new[] { square40 };
             break;
         case "contour-star":
-            boundary = BuildStarCurve();
+            boundaries = new[] { BuildStarCurve() };
             break;
         case "contour-edge-only":
-            boundary = Curve.FromPolyline(
-                new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
-                isClosed: true);
+            boundaries = new[] { square40 };
             options.MaxRings = 2;
             options.FillCenter = false;
             break;
         case "contour-combined":
-            boundary = BuildStarCurve();
+            boundaries = new[] { BuildStarCurve() };
             options.MaxRings = 2;
             options.FillCenter = true;
+            break;
+        case "contour-letter-o":
+            boundaries = new[]
+            {
+                square40,
+                Curve.FromPolyline(
+                    new[] { new Point2D(12, 12), new Point2D(28, 12), new Point2D(28, 28), new Point2D(12, 28) },
+                    isClosed: true),
+            };
+            break;
+        case "contour-heart":
+            boundaries = new[] { BuildHeart().Item1 };
+            break;
+        case "contour-letters":
+            boundaries = new[] { BuildLettersCurve() };
             break;
         default:
             throw new ArgumentException($"Неизвестный сценарий '{scenario}'.");
     }
 
-    List<PlacedStone> stones = ContourFiller.Fill(boundary, options);
+    var watch = System.Diagnostics.Stopwatch.StartNew();
+    List<PlacedStone> stones = ContourFiller.Fill(boundaries, options);
+    watch.Stop();
 
-    FlattenedCurve flat = CurveFlattener.Flatten(boundary);
+    List<FlattenedCurve> flats = boundaries.Select(b => CurveFlattener.Flatten(b)).ToList();
+
+    // Проверка числами, а не на глаз: наложения и самая большая дыра, куда влезла бы страза.
+    int overlaps = 0;
+    for (int i = 0; i < stones.Count; i++)
+    {
+        for (int j = i + 1; j < stones.Count; j++)
+        {
+            if (Point2D.Distance(stones[i].Center, stones[j].Center) < options.StoneDiameterMm - 0.02)
+            {
+                overlaps++;
+            }
+        }
+    }
+
+    SignedDistanceField field = SignedDistanceField.Build(flats, 0.25);
+    double step = options.StoneDiameterMm + options.GapMm;
+    int freeSpots = 0;
+    for (int iy = 0; iy < field.Height; iy++)
+    {
+        for (int ix = 0; ix < field.Width; ix++)
+        {
+            if (field.ValueAt(ix, iy) < options.StoneDiameterMm / 2 + 0.05)
+            {
+                continue;
+            }
+
+            Point2D p = field.PositionOf(ix, iy);
+            if (stones.All(s => Point2D.Distance(s.Center, p) >= step + 0.05))
+            {
+                freeSpots++;
+            }
+        }
+    }
+
+    var polylines = flats
+        .Select(f => (Points: (IReadOnlyList<Point2D>)f.Points.Select(p => p.Position).ToList(), Color: "#cccccc"))
+        .ToArray();
+
     string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
     Directory.CreateDirectory(outDir);
     string outPath = Path.Combine(outDir, scenario + ".svg");
-    File.WriteAllText(outPath, SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, stones));
+    File.WriteAllText(outPath, SvgWriter.RenderMulti(polylines, stones));
 
-    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз.");
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз за {watch.ElapsedMilliseconds} мс; " +
+        $"наложений {overlaps}; мест, куда влезла бы ещё страза, {freeSpots}.");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 
