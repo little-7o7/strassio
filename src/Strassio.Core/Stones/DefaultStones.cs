@@ -37,5 +37,45 @@ namespace Strassio.Core.Stones
                 },
             };
         }
+
+        /// <summary>
+        /// Чинит таблицу, которую первая версия Этапа 2 записала без файлов языков: вместо названий
+        /// там остались ключи вида "[stones.default.red]". Меняет только такие названия (свои
+        /// названия пользователя не трогает). true — что-то исправлено, таблицу надо сохранить.
+        /// </summary>
+        public static bool RepairUntranslatedNames(StoneTable table, Func<string, string> text)
+        {
+            bool changed = false;
+
+            string Fix(string name)
+            {
+                if (name != null && name.StartsWith("[stones.default.", StringComparison.Ordinal) && name.EndsWith("]", StringComparison.Ordinal))
+                {
+                    string key = name.Substring(1, name.Length - 2);
+                    string translated = text(key);
+                    if (!translated.StartsWith("[", StringComparison.Ordinal))
+                    {
+                        changed = true;
+                        return translated;
+                    }
+                }
+
+                return name!;
+            }
+
+            foreach (StoneSet set in table.Sets)
+            {
+                set.Name = Fix(set.Name);
+                foreach (StoneSize size in set.Sizes)
+                {
+                    foreach (StoneColor color in size.Colors)
+                    {
+                        color.Name = Fix(color.Name);
+                    }
+                }
+            }
+
+            return changed;
+        }
     }
 }

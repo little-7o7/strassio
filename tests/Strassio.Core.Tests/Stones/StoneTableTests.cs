@@ -82,6 +82,29 @@ public class StoneTableTests
         }
     }
 
+    [Fact]
+    public void RepairUntranslatedNames_ReplacesOnlyLeftoverKeys()
+    {
+        StoneTable table = DefaultStones.Create(key => "[" + key + "]"); // так её записала версия без файлов языков
+        table.Sets[0].Sizes[0].Colors.Add(new StoneColor { Name = "[мой цвет]", Rgb = "#000000" });
+        var texts = new Dictionary<string, string>
+        {
+            ["stones.default.set"] = "Основной",
+            ["stones.default.red"] = "Красный",
+            ["stones.default.crystal"] = "Кристалл",
+            ["stones.default.green"] = "Зелёный",
+            ["stones.default.gold"] = "Золото",
+        };
+
+        bool changed = DefaultStones.RepairUntranslatedNames(table, key => texts.TryGetValue(key, out string? t) ? t : "[" + key + "]");
+
+        Assert.True(changed);
+        Assert.Equal("Основной", table.Sets[0].Name);
+        Assert.Contains(table.Sets[0].Sizes[1].Colors, c => c.Name == "Красный");
+        Assert.Contains(table.Sets[0].Sizes[0].Colors, c => c.Name == "[мой цвет]"); // своё название не трогаем
+        Assert.False(DefaultStones.RepairUntranslatedNames(table, key => texts[key]));
+    }
+
     [Theory]
     [InlineData("#E53935", 229, 57, 53)]
     [InlineData("43a047", 67, 160, 71)]

@@ -30,6 +30,9 @@ namespace Strassio.Core.Localization
     /// Нет текста в выбранном языке — берётся английский, нет и там — «[ключ]», чтобы пропуск
     /// было видно сразу. Язык меняется на лету: WPF-привязки вида {Binding [ключ]} обновляются
     /// сами по событию PropertyChanged("Item[]") — перезапуск CorelDRAW не нужен.
+    /// Запас: если файла языка в папке нет (например, установщик не положил папку lang), текст
+    /// берётся из копии, встроенной в сборку (<c>builtIn</c>). Файл в папке всегда главнее — его
+    /// можно поправить без пересборки.
     /// </summary>
     public sealed class Localizer : INotifyPropertyChanged
     {
@@ -38,12 +41,17 @@ namespace Strassio.Core.Localization
         private const string LanguageNameKey = "_language";
 
         private readonly string directory;
+        private readonly Func<string, string?> builtIn;
+        private readonly IReadOnlyList<string> builtInCodes;
         private Dictionary<string, string> texts = new Dictionary<string, string>();
         private Dictionary<string, string> fallback = new Dictionary<string, string>();
 
-        public Localizer(string directory, string languageCode)
+        public Localizer(
+            string directory, string languageCode, Func<string, string?>? builtIn = null, IReadOnlyList<string>? builtInCodes = null)
         {
             this.directory = directory;
+            this.builtIn = builtIn ?? (code => null);
+            this.builtInCodes = builtInCodes ?? Array.Empty<string>();
             LanguageCode = FallbackLanguage;
             Load(languageCode);
         }
@@ -70,17 +78,27 @@ namespace Strassio.Core.Localization
         {
             get
             {
-                var result = new List<LanguageInfo>();
-                if (!Directory.Exists(directory))
+                var codes = new List<string>(builtInCodes);
+                if (Directory.Exists(directory))
                 {
-                    return result;
+                    foreach (string file in Directory.GetFiles(directory, "*.json"))
+                    {
+                        string code = Path.GetFileNameWithoutExtension(file);
+                        if (!codes.Contains(code))
+                        {
+                            codes.Add(code);
+                        }
+                    }
                 }
 
-                foreach (string file in Directory.GetFiles(directory, "*.json"))
+                var result = new List<LanguageInfo>();
+                foreach (string code in codes)
                 {
-                    string code = Path.GetFileNameWithoutExtension(file);
-                    Dictionary<string, string> dict = TryLoadFile(file);
-                    result.Add(new LanguageInfo(code, dict.TryGetValue(LanguageNameKey, out string? name) ? name : code));
+                    Dictionary<string, string>? dict = TryLoad(code);
+                    if (dict != null)
+                    {
+                        result.Add(new LanguageInfo(code, dict.TryGetValue(LanguageNameKey, out string? name) ? name : code));
+                    }
                 }
 
                 result.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.CurrentCulture));
@@ -110,12 +128,12 @@ namespace Strassio.Core.Localization
 
         private void Load(string languageCode)
         {
-            fallback = TryLoadFile(Path.Combine(directory, FallbackLanguage + ".json"));
+            fallback = TryLoad(FallbackLanguage) ?? new Dictionary<string, string>();
 
-            string path = Path.Combine(directory, languageCode + ".json");
-            if (File.Exists(path))
+            Dictionary<string, string>? chosen = TryLoad(languageCode);
+            if (chosen != null)
             {
-                texts = TryLoadFile(path);
+                texts = chosen;
                 LanguageCode = languageCode;
             }
             else
@@ -125,16 +143,30 @@ namespace Strassio.Core.Localization
             }
         }
 
-        private static Dictionary<string, string> TryLoadFile(string path)
+        /// <summary>Тексты языка: файл из папки, иначе встроенная копия; null — такого языка нет.</summary>
+        private Dictionary<string, string>? TryLoad(string code)
         {
+            // Испорченный файл языка не должен ронять плагин — пробуем встроенную копию.
             try
             {
-                return File.Exists(path) ? Parse(File.ReadAllText(path, Encoding.UTF8)) : new Dictionary<string, string>();
+                string path = Path.Combine(directory, code + ".json");
+                if (File.Exists(path))
+                {
+                    return Parse(File.ReadAllText(path, Encoding.UTF8));
+                }
             }
             catch (Exception)
             {
-                // Испорченный файл языка не должен ронять плагин — будут видны «[ключи]» или английский.
-                return new Dictionary<string, string>();
+            }
+
+            try
+            {
+                string? json = builtIn(code);
+                return json == null ? null : Parse(json);
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
     }

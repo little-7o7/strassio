@@ -11,7 +11,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.1.2"
+#define AppVersion "0.1.3"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
@@ -308,6 +308,7 @@ function CopyAddonTo(const TargetDir: string): Boolean;
 var
   I: Integer;
   SourceFile: string;
+  FindRec: TFindRec;
 begin
   Result := False;
   if not ForceDirectories(TargetDir) then
@@ -321,6 +322,20 @@ begin
 
     if not FileCopy(SourceFile, AddBackslash(TargetDir) + AddonFileName(I), False) then
       Exit;
+  end;
+
+  { Файлы языков — все, сколько есть (новый язык = новый файл, список менять не нужно). }
+  if not ForceDirectories(AddBackslash(TargetDir) + 'lang') then
+    Exit;
+  if FindFirst(ExpandConstant('{app}\lang\*.json'), FindRec) then
+  try
+    repeat
+      if not FileCopy(ExpandConstant('{app}\lang\') + FindRec.Name,
+                      AddBackslash(TargetDir) + 'lang\' + FindRec.Name, False) then
+        Exit;
+    until not FindNext(FindRec);
+  finally
+    FindClose(FindRec);
   end;
 
   Result := True;

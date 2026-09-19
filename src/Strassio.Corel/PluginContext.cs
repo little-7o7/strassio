@@ -21,11 +21,12 @@ namespace Strassio.Corel
             Settings = Store.LoadSettings();
 
             string addonDir = Path.GetDirectoryName(typeof(PluginContext).Assembly.Location) ?? string.Empty;
-            Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language);
+            Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language, BuiltInLanguage, BuiltInLanguages);
 
             bool firstRun = !File.Exists(Store.StonesPath);
             Stones = Store.LoadStones(key => Localizer[key]);
-            if (firstRun)
+            bool repaired = DefaultStones.RepairUntranslatedNames(Stones, key => Localizer[key]);
+            if (firstRun || repaired)
             {
                 // Сразу кладём стартовую таблицу в файл — пользователь увидит, где она и как устроена.
                 TrySave(() => Store.SaveStones(Stones));
@@ -36,6 +37,9 @@ namespace Strassio.Corel
         public event EventHandler? SettingsChanged;
 
         public static PluginContext Instance => Lazy.Value;
+
+        /// <summary>Языки, встроенные в Strassio.Corel.dll (запас на случай, если папки lang рядом нет).</summary>
+        private static readonly string[] BuiltInLanguages = { "ru", "en" };
 
         public SettingsStore Store { get; }
 
@@ -58,6 +62,18 @@ namespace Strassio.Corel
 
         /// <summary>Сохранить без перерисовки докера — например, запомнить последний выбранный камень.</summary>
         public void SaveSettingsQuietly() => TrySave(() => Store.SaveSettings(Settings));
+
+        private static string? BuiltInLanguage(string code)
+        {
+            using Stream? stream = typeof(PluginContext).Assembly.GetManifestResourceStream("Strassio.lang." + code + ".json");
+            if (stream == null)
+            {
+                return null;
+            }
+
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+            return reader.ReadToEnd();
+        }
 
         private static void TrySave(Action save)
         {

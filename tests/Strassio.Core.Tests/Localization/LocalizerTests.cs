@@ -71,6 +71,33 @@ public class LocalizerTests : IDisposable
     }
 
     [Fact]
+    public void NoLanguageFolder_UsesBuiltInTexts()
+    {
+        // Установщик мог не положить папку lang — тексты всё равно должны быть (запас внутри DLL).
+        string missing = Path.Combine(dir, "no-such-folder");
+        string? BuiltIn(string code) => code switch
+        {
+            "en" => "{ \"_language\": \"English\", \"hello\": \"Hello\" }",
+            "ru" => "{ \"_language\": \"Русский\", \"hello\": \"Привет\" }",
+            _ => null,
+        };
+
+        var loc = new Localizer(missing, "ru", BuiltIn, new[] { "en", "ru" });
+
+        Assert.Equal("ru", loc.LanguageCode);
+        Assert.Equal("Привет", loc["hello"]);
+        Assert.Equal(new[] { "en", "ru" }, loc.AvailableLanguages.Select(l => l.Code).OrderBy(c => c));
+    }
+
+    [Fact]
+    public void FileInFolder_WinsOverBuiltIn()
+    {
+        var loc = new Localizer(dir, "ru", code => "{ \"hello\": \"встроенный\" }", new[] { "ru" });
+
+        Assert.Equal("Привет", loc["hello"]);
+    }
+
+    [Fact]
     public void RealLanguageFiles_HaveSameKeys_AndNoEmptyTexts()
     {
         string langDir = Path.Combine(RepoRoot(), "lang");

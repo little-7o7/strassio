@@ -39,6 +39,8 @@
     <Content Include="..\..\lang\*.json" Link="lang\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Те же файлы языков внутри DLL — запас, если папки lang рядом нет (см. PluginContext.BuiltInLanguage). -->
+    <EmbeddedResource Include="..\..\lang\*.json" LogicalName="Strassio.lang.%(Filename)%(Extension)" />
     <Content Include="CorelDrw.addon">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
