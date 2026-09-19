@@ -35,6 +35,10 @@
     <Content Include="UserUI.xslt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <!-- Файлы языков (CLAUDE.md, правило 5) лежат в корне репозитория, в аддоне — в папке lang рядом с DLL. -->
+    <Content Include="..\..\lang\*.json" Link="lang\%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="CorelDrw.addon">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>

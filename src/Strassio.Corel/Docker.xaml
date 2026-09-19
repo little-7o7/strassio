@@ -1,30 +1,74 @@
+<!--
+  Докер Strassio (docs/SPEC.md, раздел 2.2). Тексты — только из файлов языков: DataContext
+  корня — Localizer, привязка {Binding [ключ]} обновляется сама при смене языка.
+  Цвета — DynamicResource "Strassio.*" из темы CorelDRAW (Themes/ThemeManager.cs).
+-->
 <UserControl x:Class="Strassio.Corel.Docker"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d"
-             d:DesignHeight="400" d:DesignWidth="300">
-    <StackPanel Margin="10">
-        <TextBlock Text="Strassio" FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
-        <TextBlock TextWrapping="Wrap" Margin="0,0,0,10" Opacity="0.8"
-                   Text="Докер пока пустой (Этап 0-1). Кнопки ниже — технические проверки, не окончательный интерфейс."/>
-        <Button x:Name="CreateTestStoneButton" Padding="8,4" Click="CreateTestStone_Click"
-                Content="Создать тестовую стразу (ss6)"/>
-        <TextBlock TextWrapping="Wrap" Margin="0,10,0,4" Opacity="0.8"
-                   Text="Выделите нарисованную линию (перо/кривая Безье) и нажмите — обведёт её стразами ss6 методом L1 «по линии», одной группой отмены."/>
-        <Button x:Name="ScatterSelectedCurveButton" Padding="8,4" Click="ScatterSelectedCurve_Click"
-                Content="Обвести выделенную кривую (L1, тест)"/>
+             d:DesignHeight="520" d:DesignWidth="280"
+             MinWidth="220"
+             Background="{DynamicResource Strassio.Background}"
+             Foreground="{DynamicResource Strassio.Foreground}">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Styles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
 
-        <TextBlock TextWrapping="Wrap" Margin="0,10,0,4" Opacity="0.8"
-                   Text="Ниже — нужна ЗАМКНУТАЯ фигура (эллипс, прямоугольник, замкнутая кривая)."/>
-        <Button x:Name="RingSelectedShapeButton" Padding="8,4" Margin="0,0,0,4" Click="RingSelectedShape_Click"
-                Content="Кольца вокруг фигуры (L2/L3, тест)"/>
-        <Button x:Name="FillHoneycombButton" Padding="8,4" Margin="0,0,0,4" Click="FillHoneycombSelectedShape_Click"
-                Content="Залить сотами (F2, тест)"/>
-        <Button x:Name="ContourFillButton" Padding="8,4" Click="ContourFillSelectedShape_Click"
-                Content="Залить контурно (F3, тест)"/>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel x:Name="Root" Margin="10">
 
-        <TextBlock x:Name="StatusText" Margin="0,10,0,0" TextWrapping="Wrap"/>
-    </StackPanel>
+            <!-- Шапка -->
+            <DockPanel Margin="0,0,0,10">
+                <Button x:Name="SettingsButton" DockPanel.Dock="Right" Padding="6,3" Click="Settings_Click"
+                        ToolTip="{Binding [docker.settings.tooltip]}"
+                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE713;"/>
+                <TextBlock Text="{Binding [app.title]}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+            </DockPanel>
+
+            <!-- Камень: размер и цвет -->
+            <TextBlock Text="{Binding [docker.stone]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding [docker.size]}" Style="{StaticResource Strassio.Caption}"/>
+                <ComboBox x:Name="SizeCombo" Grid.Column="1" DisplayMemberPath="Text"
+                          ToolTip="{Binding [docker.size.tooltip]}" SelectionChanged="SizeCombo_SelectionChanged"/>
+            </Grid>
+            <DockPanel Margin="0,0,0,2">
+                <TextBlock Text="{Binding [docker.color]}" Style="{StaticResource Strassio.Caption}"/>
+                <TextBlock x:Name="ColorName" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            </DockPanel>
+            <ListBox x:Name="ColorList" Style="{StaticResource Strassio.Swatches}" Margin="0,0,0,10"
+                     ToolTip="{Binding [docker.color.tooltip]}" SelectionChanged="ColorList_SelectionChanged"/>
+
+            <!-- Метод -->
+            <TabControl x:Name="MethodTabs" SelectionChanged="MethodTabs_SelectionChanged">
+                <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
+                <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
+            </TabControl>
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding [docker.method]}" Style="{StaticResource Strassio.Caption}"/>
+                <ComboBox x:Name="MethodCombo" Grid.Column="1" DisplayMemberPath="Text" SelectionChanged="MethodCombo_SelectionChanged"/>
+            </Grid>
+            <TextBlock x:Name="MethodHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,12"/>
+
+            <!-- Низ -->
+            <Button x:Name="CreateButton" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
+                    Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>
+            <TextBlock x:Name="StatusText" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,0"/>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

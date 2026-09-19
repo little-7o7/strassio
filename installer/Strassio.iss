@@ -72,6 +72,7 @@ Source: "{#BuildDir}\Strassio.Core.dll";  DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\AppUI.xslt";         DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\UserUI.xslt";        DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\CorelDrw.addon";     DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\lang\*.json";        DestDir: "{app}\lang"; Flags: ignoreversion
 Source: "{#BuildDir}\Strassio.Corel.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "{#BuildDir}\Strassio.Core.pdb";  DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 

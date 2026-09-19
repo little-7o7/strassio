@@ -444,6 +444,16 @@ MSBuild-конфигураций (план ниже остаётся в силе
   только с подписью «Strassio», без картинки — добавим значок отдельным шагом после того, как
   заработает сама кнопка и докер.
 
+### Тема докера как у CorelDRAW (Этап 2)
+- Схему CorelDRAW читаем через `app.GetApplicationPreferenceValue("WindowScheme", "Colors")` — значение
+  оканчивается на `LightestGrey`, `MediumGrey`, `DarkGrey` или `Black`. Смену ловим событием
+  `app.OnApplicationEvent` с именем `OnColorSchemeChanged` (и `WorkspaceChanged`). Способ сверен
+  с официальным шаблоном докера bonus630 `DockerTemplateX7` (`StylesController.cs`), который делает
+  именно так; в X7 этой настройки нет — там берём тему Windows.
+- Палитры — `Strassio.Core.Settings.ThemePalette`, применение — `Strassio.Corel.Themes.ThemeManager`,
+  шаблоны элементов — `Strassio.Corel/Themes/Styles.xaml` (свои, стандартные Windows-шаблоны
+  не красятся в тёмный цвет).
+
 ### Что нужно от автора
 Собрать `Strassio.Corel` в Visual Studio (или `dotnet build`), скопировать содержимое
 `src/Strassio.Corel/bin/Debug/net48/` в `Addons\Strassio\` (32- или 64-битная папка CorelDRAW —

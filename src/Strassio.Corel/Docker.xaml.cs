@@ -1,174 +1,265 @@
+#nullable enable
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Corel.Interop.VGCore;
 using Strassio.Core.Geometry;
+using Strassio.Core.Localization;
 using Strassio.Core.Placement;
+using Strassio.Core.Settings;
+using Strassio.Core.Stones;
+using Strassio.Corel.Themes;
 using CorelApplication = Corel.Interop.VGCore.Application;
 using CoreCurve = Strassio.Core.Geometry.Curve;
+using OutlineStyle = Strassio.Core.Settings.OutlineStyle;
 
 namespace Strassio.Corel
 {
     /// <summary>
     /// Докер Strassio. CorelDRAW создаёт этот UserControl сам (см. AppUI.xslt, itemData type="wpfhost")
     /// и передаёт в конструктор свой объект Application — никакой COM-регистрации не нужно.
+    /// Сверху вниз (docs/SPEC.md, раздел 2.2): шапка, выбор камня, вкладки методов, «Создать».
     /// </summary>
     public partial class Docker : UserControl
     {
-        private readonly CorelApplication app;
+        /// <summary>Зазор между стразами (край в край), мм. Станет полем параметров метода на следующем шаге Этапа 2.</summary>
+        private const double GapMm = 0.2;
 
-        public Docker(object app)
+        /// <summary>Толщина «волосяной» обводки CorelDRAW (0,003 дюйма), мм.</summary>
+        private const double HairlineMm = 0.0762;
+
+        private readonly CorelApplication? app;
+        private readonly PluginContext context = PluginContext.Instance;
+        private readonly MethodOption[] methods;
+        private bool refreshing;
+
+        // Последнее сообщение внизу докера — ключ и значения, чтобы перевести его при смене языка.
+        private string statusKey = "status.ready";
+        private object[] statusArgs = Array.Empty<object>();
+
+        public Docker(object? app)
         {
+            methods = new[]
+            {
+                new MethodOption("method.l1", isFill: false, needsClosed: false,
+                    (contours, d) => LineScatterer.Scatter(
+                        OuterContour(contours),
+                        new LineScatterOptions { StoneDiameterMm = d, GapMm = GapMm, Mode = StepMode.FitEven })),
+                new MethodOption("method.l2", isFill: false, needsClosed: true, RingAroundLine),
+                new MethodOption("method.f1", isFill: true, needsClosed: true,
+                    (contours, d) => GridFiller.Fill(
+                        contours, new GridFillOptions { StoneDiameterMm = d, GapMm = GapMm, Pattern = GridPattern.Square })),
+                new MethodOption("method.f2", isFill: true, needsClosed: true,
+                    (contours, d) => GridFiller.Fill(
+                        contours, new GridFillOptions { StoneDiameterMm = d, GapMm = GapMm, Pattern = GridPattern.Honeycomb })),
+                new MethodOption("method.f3", isFill: true, needsClosed: true,
+                    (contours, d) => ContourFiller.Fill(contours, new ContourFillOptions { StoneDiameterMm = d, GapMm = GapMm })),
+            };
+
+            refreshing = true;
             InitializeComponent();
+            refreshing = false;
             this.app = app as CorelApplication;
+
+            DataContext = context.Localizer;
+            context.Localizer.PropertyChanged += Localizer_PropertyChanged;
+            context.SettingsChanged += Context_SettingsChanged;
+            Loaded += (s, e) => ThemeManager.Attach(this, this.app);
+            Unloaded += (s, e) => ThemeManager.Detach(this);
+
+            RebuildAll();
         }
 
-        // Нужен WPF-дизайнеру и на случай ошибки приведения app в конструкторе выше.
+        // Нужен WPF-дизайнеру.
         public Docker()
+            : this(null)
         {
-            InitializeComponent();
         }
 
-        private void CreateTestStone_Click(object sender, RoutedEventArgs e)
+        private Localizer Loc => context.Localizer;
+
+        private StoneSet? ActiveSet => context.Stones.Sets.FirstOrDefault();
+
+        private void Localizer_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RebuildAll();
+
+        private void Context_SettingsChanged(object? sender, EventArgs e)
         {
-            if (app == null)
-            {
-                StatusText.Text = "Нет связи с CorelDRAW (app == null).";
-                return;
-            }
+            RebuildAll();
+            ThemeManager.Refresh();
+        }
 
-            Document doc = app.ActiveDocument;
-            if (doc == null)
-            {
-                StatusText.Text = "Нет открытого документа. Создайте новый документ и попробуйте снова.";
-                return;
-            }
-
-            bool prevOptimization = app.Optimization;
-            bool prevEventsEnabled = app.EventsEnabled;
-            cdrUnit prevUnit = doc.Unit;
-
+        /// <summary>Пересобирает то, что докер строит сам (списки размеров и методов), сохраняя выбор.</summary>
+        private void RebuildAll()
+        {
+            refreshing = true;
             try
             {
-                app.Optimization = true;
-                app.EventsEnabled = false;
-                doc.Unit = cdrUnit.cdrMillimeter;
+                PluginSettings settings = context.Settings;
+                string sizeName = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? settings.DefaultSize;
+                string unit = Loc[settings.Units == LengthUnit.Inch ? "unit.in" : "unit.mm"];
 
-                doc.BeginCommandGroup("Strassio: тестовая страза ss6");
-                try
-                {
-                    Layer layer = doc.ActiveLayer;
-                    const double diameterMm = 2.4; // ss6, см. docs/SPEC.md, раздел 3.1
-                    double radius = diameterMm / 2.0;
+                List<SizeOption> sizes = (ActiveSet?.Sizes ?? new List<StoneSize>())
+                    .Select(size => new SizeOption(size, Loc.Format(
+                        "size.item",
+                        size.Name,
+                        LengthUnits.Format(size.DiameterMm, settings.Units, settings.Decimals, CultureInfo.CurrentCulture),
+                        unit)))
+                    .ToList();
+                SizeCombo.ItemsSource = sizes;
+                SizeCombo.SelectedItem = sizes.FirstOrDefault(o => o.Size.Name == sizeName) ?? sizes.FirstOrDefault();
 
-                    Shape stone = layer.CreateEllipse2(0, 0, radius, radius);
-                    stone.Name = "ss6 Тест";
-                    stone.Fill.UniformColor = app.CreateRGBColor(229, 57, 53); // #E53935, см. SPEC 3.2
-                    stone.Outline.SetNoOutline();
-                }
-                finally
+                foreach (MethodOption method in methods)
                 {
-                    doc.EndCommandGroup();
+                    method.Text = Loc[method.Key];
                 }
 
-                StatusText.Text = "Готово: страза ss6 создана в точке (0, 0) мм. Ctrl+Z — отменить.";
-            }
-            catch (Exception ex)
-            {
-                StatusText.Text = "Ошибка: " + ex.Message;
+                RebuildMethods();
             }
             finally
             {
-                doc.Unit = prevUnit;
-                app.EventsEnabled = prevEventsEnabled;
-                app.Optimization = prevOptimization;
-                app.Refresh();
+                refreshing = false;
+            }
+
+            RebuildColors();
+            StatusText.Text = Loc.Format(statusKey, statusArgs);
+        }
+
+        private void SetStatus(string key, params object[] args)
+        {
+            statusKey = key;
+            statusArgs = args;
+            StatusText.Text = Loc.Format(key, args);
+        }
+
+        private void RebuildMethods()
+        {
+            string? selectedKey = (MethodCombo.SelectedItem as MethodOption)?.Key;
+            bool fill = MethodTabs.SelectedItem == FillTab;
+            List<MethodOption> list = methods.Where(m => m.IsFill == fill).ToList();
+            MethodCombo.ItemsSource = null;
+            MethodCombo.ItemsSource = list;
+            MethodCombo.SelectedItem = list.FirstOrDefault(m => m.Key == selectedKey) ?? list.FirstOrDefault();
+            UpdateMethodHint();
+        }
+
+        private void RebuildColors()
+        {
+            string colorName = (ColorList.SelectedItem as ColorOption)?.Name ?? context.Settings.DefaultColor;
+            List<ColorOption> colors = ((SizeCombo.SelectedItem as SizeOption)?.Size.Colors ?? new List<StoneColor>())
+                .Select(c => new ColorOption(c))
+                .ToList();
+            ColorList.ItemsSource = colors;
+            ColorList.SelectedItem = colors.FirstOrDefault(c => c.Name == colorName) ?? colors.FirstOrDefault();
+            ColorName.Text = (ColorList.SelectedItem as ColorOption)?.Name ?? string.Empty;
+        }
+
+        private void UpdateMethodHint()
+        {
+            MethodHint.Text = MethodCombo.SelectedItem is MethodOption m ? Loc[m.Key + ".tooltip"] : string.Empty;
+        }
+
+        private void SizeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!refreshing)
+            {
+                RebuildColors();
             }
         }
 
-        /// <summary>Тестовая кнопка: L1 «по линии» на выделенной кривой (разомкнутой или замкнутой).</summary>
-        private void ScatterSelectedCurve_Click(object sender, RoutedEventArgs e) =>
-            CreateFromSelectedCurve(
-                "Strassio: L1 по выделенной кривой", "Strassio: L1 по линии",
-                contours => LineScatterer.Scatter(
-                    OuterContour(contours),
-                    new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven }),
-                requireClosed: false);
+        private void ColorList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            ColorName.Text = (ColorList.SelectedItem as ColorOption)?.Name ?? string.Empty;
+        }
 
-        /// <summary>Тестовая кнопка: L2 «вокруг линии» — 3 ряда (центр ss8 крупнее, края ss6) на замкнутой фигуре.</summary>
-        private void RingSelectedShape_Click(object sender, RoutedEventArgs e) =>
-            CreateFromSelectedCurve(
-                "Strassio: L2 по выделенной фигуре", "Strassio: L2 кольца",
-                contours =>
+        private void MethodTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Событие всплывает и от вложенных списков — реагируем только на смену самой вкладки.
+            if (ReferenceEquals(e.OriginalSource, MethodTabs) && !refreshing)
+            {
+                RebuildMethods();
+            }
+        }
+
+        private void MethodCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!refreshing)
+            {
+                UpdateMethodHint();
+            }
+        }
+
+        private void Settings_Click(object sender, RoutedEventArgs e)
+        {
+            new SettingsWindow(app).ShowDialog();
+        }
+
+        private void Create_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color))
+            {
+                SetStatus("status.noStone");
+                return;
+            }
+
+            if (!(MethodCombo.SelectedItem is MethodOption method))
+            {
+                return;
+            }
+
+            // Запоминаем последний выбранный камень — при следующем запуске он будет выбран сразу.
+            context.Settings.DefaultSize = size.Size.Name;
+            context.Settings.DefaultColor = color.Name;
+            context.SaveSettingsQuietly();
+
+            string caption = Loc.Format(method.IsFill ? "undo.fill" : "undo.line", size.Size.Name, color.Name);
+            CreateFromSelectedCurve(caption, size.Size, color.Color, method);
+        }
+
+        /// <summary>L2 «вокруг линии»: три ряда выбранного камня — по линии и по обе стороны, наложения убираются.</summary>
+        private static IReadOnlyList<PlacedStone> RingAroundLine(IReadOnlyList<CoreCurve> contours, double diameter)
+        {
+            double rowStep = diameter + GapMm;
+            RowSpec[] rows = new[] { -rowStep, 0, rowStep }
+                .Select(offset => new RowSpec
                 {
-                    var rows = new[]
-                    {
-                        new RowSpec
-                        {
-                            OffsetMm = -3.4,
-                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
-                        },
-                        new RowSpec
-                        {
-                            OffsetMm = 0,
-                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 3.2, GapMm = 0.2, Mode = StepMode.FitEven },
-                        },
-                        new RowSpec
-                        {
-                            OffsetMm = 3.4,
-                            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Mode = StepMode.FitEven },
-                        },
-                    };
-                    return IntersectionFixer.RemoveOverlaps(RingScatterer.Scatter(OuterContour(contours), rows));
-                },
-                requireClosed: true);
-
-        /// <summary>Тестовая кнопка: F2 «соты» на замкнутой фигуре. Отверстия (буква «О», кольцо) остаются пустыми.</summary>
-        private void FillHoneycombSelectedShape_Click(object sender, RoutedEventArgs e) =>
-            CreateFromSelectedCurve(
-                "Strassio: заливка сотами по выделенной фигуре", "Strassio: заливка (соты)",
-                contours => GridFiller.Fill(
-                    contours,
-                    new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb }),
-                requireClosed: true);
-
-        /// <summary>Тестовая кнопка: F3 «контурная» на замкнутой фигуре — ряды от края внутрь, вокруг отверстий тоже.</summary>
-        private void ContourFillSelectedShape_Click(object sender, RoutedEventArgs e) =>
-            CreateFromSelectedCurve(
-                "Strassio: контурная заливка по выделенной фигуре", "Strassio: заливка (контурная)",
-                contours => ContourFiller.Fill(
-                    contours, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 }),
-                requireClosed: true);
+                    OffsetMm = offset,
+                    ScatterOptions = new LineScatterOptions { StoneDiameterMm = diameter, GapMm = GapMm, Mode = StepMode.FitEven },
+                })
+                .ToArray();
+            return IntersectionFixer.Fix(
+                RingScatterer.Scatter(OuterContour(contours), rows),
+                new IntersectionFixOptions { Action = IntersectionAction.Remove }).Stones;
+        }
 
         /// <summary>
-        /// Общая часть всех тестовых кнопок Этапа 1: читает кривую выделенной фигуры (узлы и
-        /// контрольные точки Безье — один раз, дальше вся геометрия считается в Strassio.Core, см.
-        /// CLAUDE.md), прогоняет её через переданный метод расстановки и создаёт круги одной группой
-        /// отмены. Параметры — заглушка (ss6/ss8, подгонка); выбор размера/цвета/метода появится
-        /// в докере на Этапе 2.
+        /// Читает кривую выделенной фигуры (узлы и контрольные точки Безье — один раз, дальше вся
+        /// геометрия считается в Strassio.Core, см. CLAUDE.md), расставляет стразы выбранным методом
+        /// и создаёт круги одной группой отмены.
         /// </summary>
-        private void CreateFromSelectedCurve(
-            string commandGroupName, string resultGroupCaption,
-            Func<IReadOnlyList<CoreCurve>, IReadOnlyList<PlacedStone>> scatter, bool requireClosed)
+        private void CreateFromSelectedCurve(string caption, StoneSize size, StoneColor color, MethodOption method)
         {
             if (app == null)
             {
-                StatusText.Text = "Нет связи с CorelDRAW (app == null).";
+                SetStatus("status.noApp");
                 return;
             }
 
             Document doc = app.ActiveDocument;
             if (doc == null)
             {
-                StatusText.Text = "Нет открытого документа.";
+                SetStatus("status.noDocument");
                 return;
             }
 
             Shape selected = doc.ActiveShape;
             if (selected == null)
             {
-                StatusText.Text = "Сначала выделите фигуру.";
+                SetStatus("status.noSelection");
                 return;
             }
 
@@ -182,35 +273,38 @@ namespace Strassio.Corel
                 app.EventsEnabled = false;
                 doc.Unit = cdrUnit.cdrMillimeter;
 
-                global::Corel.Interop.VGCore.Curve corelCurve = GetCurveOf(selected);
+                global::Corel.Interop.VGCore.Curve? corelCurve = GetCurveOf(selected);
                 if (corelCurve == null || corelCurve.SubPaths.Count == 0)
                 {
-                    StatusText.Text = $"Не удалось прочитать форму объекта ({selected.Type}). " +
-                        "Попробуйте «Упорядочить → Преобразовать в кривые» (Ctrl+Q) и повторите.";
+                    SetStatus("status.cannotReadShape", selected.Type);
                     return;
                 }
 
                 List<CoreCurve> contours = ReadAllSubPaths(corelCurve);
                 if (contours.Count == 0)
                 {
-                    StatusText.Text = "У выделенной фигуры нет пригодных контуров.";
+                    SetStatus("status.noContours");
                     return;
                 }
 
-                if (requireClosed && !OuterContour(contours).IsClosed)
+                if (method.NeedsClosed && !OuterContour(contours).IsClosed)
                 {
-                    StatusText.Text = "Этому методу нужна замкнутая фигура (эллипс, прямоугольник, замкнутая кривая).";
+                    SetStatus("status.needClosed");
                     return;
                 }
 
-                IReadOnlyList<PlacedStone> stones = scatter(contours);
+                IReadOnlyList<PlacedStone> stones = method.Scatter(contours, size.DiameterMm);
                 if (stones.Count == 0)
                 {
-                    StatusText.Text = "Не расставлено ни одной стразы — фигура слишком маленькая?";
+                    SetStatus("status.noStones");
                     return;
                 }
 
-                doc.BeginCommandGroup(commandGroupName);
+                color.TryGetRgb(out byte red, out byte green, out byte blue);
+                PluginSettings settings = context.Settings;
+                string stoneName = size.Name + " " + color.Name;
+
+                doc.BeginCommandGroup(caption);
                 try
                 {
                     Layer layer = doc.ActiveLayer;
@@ -221,26 +315,36 @@ namespace Strassio.Corel
                         PlacedStone stone = stones[i];
                         double radius = stone.DiameterMm / 2.0;
                         Shape circle = layer.CreateEllipse2(stone.Center.X, stone.Center.Y, radius, radius);
-                        circle.Fill.UniformColor = app.CreateRGBColor(229, 57, 53); // #E53935, см. SPEC 3.2
-                        circle.Outline.SetNoOutline();
-                        circle.Name = "ss6 Красный";
+                        circle.Name = stoneName;
                         created[i] = circle;
                     }
 
+                    // Заливка и обводка — одним вызовом на всю пачку, а не для каждого круга (меньше COM-вызовов).
                     ShapeRange range = doc.CreateShapeRangeFromArray(ref created);
+                    range.ApplyUniformFill(app.CreateRGBColor(red, green, blue));
+                    if (settings.Outline == OutlineStyle.None)
+                    {
+                        range.SetOutlineProperties(Width: 0);
+                    }
+                    else
+                    {
+                        double width = settings.Outline == OutlineStyle.Hairline ? HairlineMm : settings.OutlineWidthMm;
+                        range.SetOutlineProperties(Width: width, Color: app.CreateRGBColor(0, 0, 0));
+                    }
+
                     Shape group = range.Group();
-                    group.Name = resultGroupCaption;
+                    group.Name = caption;
                 }
                 finally
                 {
                     doc.EndCommandGroup();
                 }
 
-                StatusText.Text = $"Готово: {stones.Count} страз. Ctrl+Z — отменить.";
+                SetStatus("status.done", stones.Count);
             }
             catch (Exception ex)
             {
-                StatusText.Text = "Ошибка: " + ex.Message;
+                SetStatus("status.error", ex.Message);
             }
             finally
             {
@@ -260,7 +364,7 @@ namespace Strassio.Corel
         /// уже в виде кривой, причём сам документ при этом не меняется (в отличие от ConvertToCurves,
         /// который молча переделал бы фигуру пользователя).
         /// </summary>
-        private static global::Corel.Interop.VGCore.Curve GetCurveOf(Shape shape)
+        private static global::Corel.Interop.VGCore.Curve? GetCurveOf(Shape shape)
         {
             if (shape.Type == cdrShapeType.cdrCurveShape)
             {
@@ -300,7 +404,7 @@ namespace Strassio.Corel
 
             for (int i = 1; i <= subPaths.Count; i++)
             {
-                CoreCurve contour = TryReadSubPath(subPaths[i]);
+                CoreCurve? contour = TryReadSubPath(subPaths[i]);
                 if (contour != null)
                 {
                     contours.Add(contour);
@@ -311,7 +415,7 @@ namespace Strassio.Corel
         }
 
         /// <summary>Подпуть без сегментов (мусорная точка) кривой не является — такой просто пропускаем.</summary>
-        private static CoreCurve TryReadSubPath(SubPath subPath)
+        private static CoreCurve? TryReadSubPath(SubPath subPath)
         {
             try
             {

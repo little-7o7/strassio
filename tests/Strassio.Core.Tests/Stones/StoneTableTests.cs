@@ -81,4 +81,22 @@ public class StoneTableTests
             }
         }
     }
+
+    [Theory]
+    [InlineData("#E53935", 229, 57, 53)]
+    [InlineData("43a047", 67, 160, 71)]
+    public void TryGetRgb_ParsesHex(string rgb, int r, int g, int b)
+    {
+        Assert.True(new StoneColor { Rgb = rgb }.TryGetRgb(out byte red, out byte green, out byte blue));
+        Assert.Equal((r, g, b), (red, green, blue));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("#E539")]
+    [InlineData("#GGGGGG")]
+    public void TryGetRgb_RejectsBroken(string rgb)
+    {
+        Assert.False(new StoneColor { Rgb = rgb }.TryGetRgb(out _, out _, out _));
+    }
 }
