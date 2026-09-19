@@ -14,7 +14,7 @@ namespace Strassio.Core.Placement
     /// Порядок приоритета по умолчанию (раздел 6.3): угловые/акцентные → более крупные → раньше
     /// в списке (обычно — раньше добавленный ряд, например центральный).
     /// </summary>
-    public static class IntersectionFixer
+    public static partial class IntersectionFixer
     {
         /// <summary>
         /// Возвращает стразы без пересечений — лишние (ниже приоритетом) убраны. Порядок сохраняется.
@@ -38,7 +38,7 @@ namespace Strassio.Core.Placement
             return result;
         }
 
-        /// <summary>Как RemoveOverlaps, но возвращает булев массив (true — эту стразу нужно убрать) — для режима «только показать» (раздел 6.4).</summary>
+        /// <summary>Как RemoveOverlaps, но возвращает булев массив (true — эту стразу нужно убрать). Действия целиком — в <see cref="Fix"/> (раздел 6.4).</summary>
         public static bool[] FindIndicesToRemove(
             IReadOnlyList<PlacedStone> stones, double minGapMm = 0.1, double toleranceMm = 0.01)
         {
@@ -79,12 +79,7 @@ namespace Strassio.Core.Placement
                 list.Add(i);
             }
 
-            // Приоритет: угловые впереди, затем крупнее, затем — раньше в списке (индекс).
-            int[] order = Enumerable.Range(0, n)
-                .OrderByDescending(i => stones[i].IsCorner)
-                .ThenByDescending(i => stones[i].DiameterMm)
-                .ThenBy(i => i)
-                .ToArray();
+            int[] order = PriorityOrder(stones);
 
             var priorityRank = new int[n];
             for (int rank = 0; rank < order.Length; rank++)
@@ -131,6 +126,16 @@ namespace Strassio.Core.Placement
             RemoveLonelySurvivors(stones, removed);
 
             return removed;
+        }
+
+        /// <summary>Приоритет (раздел 6.3): угловые впереди, затем крупнее, затем — раньше в списке (индекс).</summary>
+        private static int[] PriorityOrder(IReadOnlyList<PlacedStone> stones)
+        {
+            return Enumerable.Range(0, stones.Count)
+                .OrderByDescending(i => stones[i].IsCorner)
+                .ThenByDescending(i => stones[i].DiameterMm)
+                .ThenBy(i => i)
+                .ToArray();
         }
 
         /// <summary>

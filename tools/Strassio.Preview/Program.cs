@@ -222,8 +222,32 @@ static void RenderRingScenario(string scenario)
     string svgFixed = SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, fixedStones);
     File.WriteAllText(outPathFixed, svgFixed);
 
-    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}).");
+    // Действие «Сдвинуть» (раздел 6.4 ТЗ): мешающая страза сначала пробует отодвинуться вдоль ряда.
+    IntersectionFixResult shiftResult = IntersectionFixer.Fix(stones, new IntersectionFixOptions { Action = IntersectionAction.Shift });
+    string outPathShift = Path.Combine(outDir, scenario + "-shift.svg");
+    File.WriteAllText(outPathShift, SvgWriter.Render(flat.Points.Select(p => p.Position).ToList(), flat.IsClosed, shiftResult.Stones));
+
+    static int CountOverlaps(IReadOnlyList<PlacedStone> list)
+    {
+        int count = 0;
+        for (int i = 0; i < list.Count; i++)
+        {
+            for (int j = i + 1; j < list.Count; j++)
+            {
+                if (Point2D.Distance(list[i].Center, list[j].Center) < list[i].DiameterMm / 2 + list[j].DiameterMm / 2 + 0.09)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}, наложений {CountOverlaps(fixedStones)}).");
+    Console.WriteLine($"Со сдвигом: осталось {shiftResult.Stones.Count}, сдвинуто {shiftResult.ShiftedIndices.Count}, убрано {shiftResult.RemovedIndices.Count}, наложений {CountOverlaps(shiftResult.Stones)}; конфликтов до исправления {shiftResult.ConflictIndices.Count}.");
     Console.WriteLine($"SVG сохранён: {outPathFixed}");
+    Console.WriteLine($"SVG сохранён: {outPathShift}");
     Console.WriteLine($"SVG сохранён: {outPath}");
 }
 
