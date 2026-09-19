@@ -29,7 +29,20 @@ namespace Strassio.Core.Placement
 
                 default:
                     bool[] removed = FindIndicesToRemove(stones, options.MinGapMm, options.ToleranceMm);
-                    return BuildResult(stones, stones, removed, new bool[stones.Count], conflicts);
+                    if (!options.CloseGaps)
+                    {
+                        return BuildResult(stones, stones, removed, new bool[stones.Count], conflicts);
+                    }
+
+                    var positions = new Point2D[stones.Count];
+                    for (int i = 0; i < stones.Count; i++)
+                    {
+                        positions[i] = stones[i].Center;
+                    }
+
+                    var moved = new bool[stones.Count];
+                    CloseGaps(stones, positions, removed, moved, options);
+                    return BuildResult(stones, WithPositions(stones, positions), removed, moved, conflicts);
             }
         }
 
@@ -126,13 +139,12 @@ namespace Strassio.Core.Placement
 
             RemoveLonelySurvivors(stones, removed);
 
-            var result = new PlacedStone[n];
-            for (int i = 0; i < n; i++)
+            if (options.CloseGaps)
             {
-                result[i] = new PlacedStone(positions[i], stones[i].DiameterMm, stones[i].IsCorner, stones[i].RowId);
+                CloseGaps(stones, positions, removed, shifted, options);
             }
 
-            return BuildResult(stones, result, removed, shifted, conflicts);
+            return BuildResult(stones, WithPositions(stones, positions), removed, shifted, conflicts);
         }
 
         /// <summary>
@@ -203,54 +215,93 @@ namespace Strassio.Core.Placement
             return null;
         }
 
-        /// <summary>
-        /// Соседи каждой стразы в её ряду (RowId ≥ 0) по порядку списка, −1 — соседа нет. Ряд
-        /// считается замкнутым, если его последняя страза стоит рядом с первой (не дальше
-        /// полутора самых длинных шагов этого ряда) — как у контура фигуры.
-        /// </summary>
+        /// <summary>Соседи каждой стразы в её ряду (RowId ≥ 0) по порядку списка, −1 — соседа нет.</summary>
         private static (int[] Prev, int[] Next) RowNeighbours(IReadOnlyList<PlacedStone> stones)
         {
             int n = stones.Count;
             var prev = new int[n];
             var next = new int[n];
-            var rows = new Dictionary<int, List<int>>();
             for (int i = 0; i < n; i++)
             {
                 prev[i] = -1;
                 next[i] = -1;
+            }
+
+            foreach (StoneRow row in SplitIntoRows(stones))
+            {
+                List<int> m = row.Members;
+                for (int k = 1; k < m.Count; k++)
+                {
+                    prev[m[k]] = m[k - 1];
+                    next[m[k - 1]] = m[k];
+                }
+
+                if (row.IsClosed)
+                {
+                    prev[m[0]] = m[m.Count - 1];
+                    next[m[m.Count - 1]] = m[0];
+                }
+            }
+
+            return (prev, next);
+        }
+
+        /// <summary>Ряд: номера его страз по порядку списка (= по ходу кривой) и замкнут ли он.</summary>
+        private sealed class StoneRow
+        {
+            public StoneRow(List<int> members, bool isClosed)
+            {
+                Members = members;
+                IsClosed = isClosed;
+            }
+
+            public List<int> Members { get; }
+
+            public bool IsClosed { get; }
+        }
+
+        /// <summary>
+        /// Делит стразы на ряды (RowId ≥ 0; стразы плоской сетки пропускаются). Ряд считается
+        /// замкнутым, если его последняя страза стоит рядом с первой (не дальше полутора самых
+        /// длинных шагов этого ряда) — как у контура фигуры.
+        /// </summary>
+        private static List<StoneRow> SplitIntoRows(IReadOnlyList<PlacedStone> stones)
+        {
+            var byId = new Dictionary<int, List<int>>();
+            var order = new List<int>();
+            for (int i = 0; i < stones.Count; i++)
+            {
                 if (stones[i].RowId < 0)
                 {
                     continue;
                 }
 
-                if (!rows.TryGetValue(stones[i].RowId, out List<int>? row))
+                if (!byId.TryGetValue(stones[i].RowId, out List<int>? members))
                 {
-                    row = new List<int>();
-                    rows[stones[i].RowId] = row;
+                    members = new List<int>();
+                    byId[stones[i].RowId] = members;
+                    order.Add(stones[i].RowId);
                 }
 
-                row.Add(i);
+                members.Add(i);
             }
 
-            foreach (List<int> row in rows.Values)
+            var rows = new List<StoneRow>(order.Count);
+            foreach (int id in order)
             {
+                List<int> m = byId[id];
                 double longestStep = 0;
-                for (int k = 1; k < row.Count; k++)
+                for (int k = 1; k < m.Count; k++)
                 {
-                    prev[row[k]] = row[k - 1];
-                    next[row[k - 1]] = row[k];
-                    longestStep = Math.Max(longestStep, Point2D.Distance(stones[row[k]].Center, stones[row[k - 1]].Center));
+                    longestStep = Math.Max(longestStep, Point2D.Distance(stones[m[k]].Center, stones[m[k - 1]].Center));
                 }
 
-                if (row.Count >= 3 &&
-                    Point2D.Distance(stones[row[row.Count - 1]].Center, stones[row[0]].Center) <= longestStep * 1.5)
-                {
-                    prev[row[0]] = row[row.Count - 1];
-                    next[row[row.Count - 1]] = row[0];
-                }
+                bool closed = m.Count >= 3 &&
+                    Point2D.Distance(stones[m[m.Count - 1]].Center, stones[m[0]].Center) <= longestStep * 1.5;
+                rows.Add(new StoneRow(m, closed));
             }
 
-            return (prev, next);
+            return rows;
         }
 
         /// <summary>Все стразы, которые накладываются хоть на одну другую (по исходным местам).</summary>
@@ -311,6 +362,17 @@ namespace Strassio.Core.Placement
             }
 
             return result.ToArray();
+        }
+
+        private static PlacedStone[] WithPositions(IReadOnlyList<PlacedStone> stones, Point2D[] positions)
+        {
+            var result = new PlacedStone[stones.Count];
+            for (int i = 0; i < stones.Count; i++)
+            {
+                result[i] = new PlacedStone(positions[i], stones[i].DiameterMm, stones[i].IsCorner, stones[i].RowId);
+            }
+
+            return result;
         }
 
         private static IntersectionFixResult BuildResult(

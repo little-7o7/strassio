@@ -209,7 +209,9 @@ static void RenderRingScenario(string scenario)
     };
 
     IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, rows);
-    List<PlacedStone> fixedStones = IntersectionFixer.RemoveOverlaps(stones);
+    // «Удалить» (раздел 6.4 ТЗ): лишние убираются, соседи по ряду раздвигаются, чтобы не было дырок.
+    IntersectionFixResult removeResult = IntersectionFixer.Fix(stones, new IntersectionFixOptions { Action = IntersectionAction.Remove });
+    IReadOnlyList<PlacedStone> fixedStones = removeResult.Stones;
 
     FlattenedCurve flat = CurveFlattener.Flatten(curve);
     string outDir = Path.Combine(FindRepoRoot(), "out", "preview");
@@ -244,7 +246,7 @@ static void RenderRingScenario(string scenario)
         return count;
     }
 
-    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}, наложений {CountOverlaps(fixedStones)}).");
+    Console.WriteLine($"Сценарий '{scenario}': {stones.Count} страз в {rows.Length} рядах, после исправления пересечений — {fixedStones.Count} (убрано {stones.Count - fixedStones.Count}, раздвинуто соседей {removeResult.ShiftedIndices.Count}, наложений {CountOverlaps(fixedStones)}).");
     Console.WriteLine($"Со сдвигом: осталось {shiftResult.Stones.Count}, сдвинуто {shiftResult.ShiftedIndices.Count}, убрано {shiftResult.RemovedIndices.Count}, наложений {CountOverlaps(shiftResult.Stones)}; конфликтов до исправления {shiftResult.ConflictIndices.Count}.");
     Console.WriteLine($"SVG сохранён: {outPathFixed}");
     Console.WriteLine($"SVG сохранён: {outPathShift}");

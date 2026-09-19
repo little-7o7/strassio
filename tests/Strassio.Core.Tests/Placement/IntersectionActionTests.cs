@@ -137,7 +137,7 @@ public class IntersectionActionTests
             stones.Add(new PlacedStone(new Point2D(rnd.NextDouble() * 40, rnd.NextDouble() * 40), 2.4, i % 17 == 0, rowId: i % 5));
         }
 
-        var viaFix = IntersectionFixer.Fix(stones, new IntersectionFixOptions { Action = IntersectionAction.Remove });
+        var viaFix = IntersectionFixer.Fix(stones, new IntersectionFixOptions { Action = IntersectionAction.Remove, CloseGaps = false });
         var viaOld = IntersectionFixer.RemoveOverlaps(stones);
 
         Assert.Equal(viaOld, viaFix.Stones);
