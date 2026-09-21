@@ -59,6 +59,7 @@ namespace Strassio.Corel
             Loaded += (s, e) => ThemeManager.Attach(this, this.app);
             Unloaded += (s, e) => ThemeManager.Detach(this);
 
+            ApplyLayout();
             RebuildAll();
             SelectLastMethod();
         }
@@ -77,6 +78,7 @@ namespace Strassio.Corel
 
         private void Context_SettingsChanged(object? sender, EventArgs e)
         {
+            ApplyLayout();
             RebuildAll();
             ThemeManager.Refresh();
         }

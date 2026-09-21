@@ -64,6 +64,8 @@ namespace Strassio.Corel
             Choose(ThemeCombo, s.Theme,
                 (ThemeMode.Auto, "settings.theme.auto"), (ThemeMode.Light, "settings.theme.light"), (ThemeMode.Dark, "settings.theme.dark"));
             Choose(UnitsCombo, s.Units, (LengthUnit.Millimeter, "unit.mm.long"), (LengthUnit.Inch, "unit.in.long"));
+            Choose(LayoutCombo, s.Layout,
+                (DockerLayout.Vertical, "settings.layout.vertical"), (DockerLayout.Horizontal, "settings.layout.horizontal"));
             Choose(OutlineCombo, s.Outline,
                 (OutlineStyle.None, "settings.outline.none"), (OutlineStyle.Hairline, "settings.outline.hairline"),
                 (OutlineStyle.Width, "settings.outline.width"));
@@ -119,6 +121,7 @@ namespace Strassio.Corel
             s.Language = (LanguageCombo.SelectedItem as LanguageInfo)?.Code ?? s.Language;
             s.Theme = Chosen(ThemeCombo, s.Theme);
             s.Units = units;
+            s.Layout = Chosen(LayoutCombo, s.Layout);
             s.Decimals = DecimalsCombo.SelectedItem is int d ? d : s.Decimals;
             s.Outline = outline;
             s.OutlineWidthMm = outlineWidthMm;

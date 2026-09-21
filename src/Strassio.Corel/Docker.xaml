@@ -21,8 +21,13 @@
         </ResourceDictionary>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel x:Name="Root" Margin="10">
+    <!--
+      Три блока — камень, метод с параметрами, кнопки с предпросмотром. Вертикальная раскладка ставит
+      их друг под другом, горизонтальная — рядом (Docker.Layout.cs, настройка «Раскладка»).
+    -->
+    <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid x:Name="LayoutGrid" Margin="10">
+          <StackPanel x:Name="StoneSection">
 
             <!-- Шапка -->
             <DockPanel Margin="0,0,0,10">
@@ -53,7 +58,9 @@
             </DockPanel>
             <ListBox x:Name="ColorList" Style="{StaticResource Strassio.Swatches}" Margin="0,0,0,10"
                      ToolTip="{Binding [docker.color.tooltip]}" SelectionChanged="ColorList_SelectionChanged"/>
+          </StackPanel>
 
+          <StackPanel x:Name="MethodSection">
             <!-- Метод -->
             <TabControl x:Name="MethodTabs" SelectionChanged="MethodTabs_SelectionChanged">
                 <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
@@ -86,15 +93,17 @@
                     <ColumnDefinition Width="*" MinWidth="70"/>
                 </Grid.ColumnDefinitions>
             </Grid>
+          </StackPanel>
 
+          <StackPanel x:Name="ActionSection">
             <!-- Низ: «Предпросмотр» (картинка в докере, документ не меняется) и «Создать» -->
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="6"/>
-                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="*"/>
                 </Grid.ColumnDefinitions>
-                <Button x:Name="PreviewButton" Click="Preview_Click" Padding="6,6"
+                <Button x:Name="PreviewButton" Click="Preview_Click" Padding="10,6"
                         Content="{Binding [docker.preview]}" ToolTip="{Binding [docker.preview.tooltip]}"/>
                 <Button x:Name="CreateButton" Grid.Column="2" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
                         Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>
@@ -104,6 +113,7 @@
                 <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
             </Border>
             <TextBlock x:Name="StatusText" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,0"/>
-        </StackPanel>
+          </StackPanel>
+        </Grid>
     </ScrollViewer>
 </UserControl>

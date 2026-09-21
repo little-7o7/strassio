@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Снимки окон аддона без CorelDRAW (докер, таблица камней, настройки) → out/ui/*.png.
+    Claude не может запустить CorelDRAW; этот инструмент хотя бы показывает, что окна открываются
+    и выглядят как задумано — в обеих раскладках и темах. Как в CorelDRAW, собирается под net48.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Strassio.Corel\Strassio.Corel.csproj" />
+    <ProjectReference Include="..\..\src\Strassio.Core\Strassio.Core.csproj" />
+  </ItemGroup>
+
+</Project>

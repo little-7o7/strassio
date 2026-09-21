@@ -19,9 +19,23 @@ namespace Strassio.Core.Settings
             Directory = directory;
         }
 
-        /// <summary>%APPDATA%\Strassio — обычное место файлов плагина.</summary>
-        public static string DefaultDirectory =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Strassio");
+        /// <summary>
+        /// Переменная окружения с другой папкой для файлов плагина. Нужна инструментам разработки
+        /// (tools/Strassio.UiShots), чтобы не трогать настоящие настройки; в CorelDRAW не задаётся.
+        /// </summary>
+        public const string DirectoryVariable = "STRASSIO_SETTINGS_DIR";
+
+        /// <summary>%APPDATA%\Strassio — обычное место файлов плагина (или папка из <see cref="DirectoryVariable"/>).</summary>
+        public static string DefaultDirectory
+        {
+            get
+            {
+                string? overridden = Environment.GetEnvironmentVariable(DirectoryVariable);
+                return !string.IsNullOrWhiteSpace(overridden)
+                    ? overridden!
+                    : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Strassio");
+            }
+        }
 
         public string Directory { get; }
 
