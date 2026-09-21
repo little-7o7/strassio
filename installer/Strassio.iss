@@ -11,7 +11,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.1.4"
+#define AppVersion "0.1.5"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"

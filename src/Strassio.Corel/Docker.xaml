@@ -65,6 +65,15 @@
             </Grid>
             <TextBlock x:Name="MethodHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,12"/>
 
+            <!-- Параметры выбранного метода: поля строятся из Strassio.Core.Methods.MethodCatalog (Docker.Params.cs) -->
+            <TextBlock x:Name="ParamsHeader" Text="{Binding [docker.params]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid x:Name="ParamsGrid" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" MaxWidth="140"/>
+                    <ColumnDefinition Width="*" MinWidth="70"/>
+                </Grid.ColumnDefinitions>
+            </Grid>
+
             <!-- Низ -->
             <Button x:Name="CreateButton" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
                     Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>

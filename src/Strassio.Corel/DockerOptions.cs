@@ -1,36 +1,38 @@
 #nullable enable
-using System;
-using System.Collections.Generic;
 using System.Windows.Media;
-using Strassio.Core.Placement;
+using Strassio.Core.Methods;
 using Strassio.Core.Stones;
-using CoreCurve = Strassio.Core.Geometry.Curve;
 
 namespace Strassio.Corel
 {
-    /// <summary>Метод расстановки в списке «Метод»: ключ текста, вкладка и сама функция из Strassio.Core.</summary>
+    /// <summary>Метод в списке «Метод»: описание из Strassio.Core (вкладка, поля) и переведённое название.</summary>
     public sealed class MethodOption
     {
-        internal MethodOption(
-            string key, bool isFill, bool needsClosed, Func<IReadOnlyList<CoreCurve>, double, IReadOnlyList<PlacedStone>> scatter)
+        internal MethodOption(MethodInfo info)
         {
-            Key = key;
-            IsFill = isFill;
-            NeedsClosed = needsClosed;
-            Scatter = scatter;
-            Text = key;
+            Info = info;
+            Text = info.Key;
         }
 
-        public string Key { get; }
+        internal MethodInfo Info { get; }
+
+        public string Key => Info.Key;
 
         public string Text { get; set; }
+    }
 
-        internal bool IsFill { get; }
+    /// <summary>Вариант в выпадающем списке поля параметров: слово для settings.json и переведённый текст.</summary>
+    public sealed class ChoiceOption
+    {
+        internal ChoiceOption(string value, string text)
+        {
+            Value = value;
+            Text = text;
+        }
 
-        internal bool NeedsClosed { get; }
+        public string Value { get; }
 
-        /// <summary>Контуры фигуры и диаметр камня, мм → стразы.</summary>
-        internal Func<IReadOnlyList<CoreCurve>, double, IReadOnlyList<PlacedStone>> Scatter { get; }
+        public string Text { get; }
     }
 
     /// <summary>Строка списка размеров: «ss6 — 2,4 мм».</summary>

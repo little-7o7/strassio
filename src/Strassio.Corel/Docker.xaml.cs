@@ -10,6 +10,7 @@ using System.Windows.Media;
 using Corel.Interop.VGCore;
 using Strassio.Core.Geometry;
 using Strassio.Core.Localization;
+using Strassio.Core.Methods;
 using Strassio.Core.Placement;
 using Strassio.Core.Settings;
 using Strassio.Core.Stones;
@@ -23,15 +24,16 @@ namespace Strassio.Corel
     /// <summary>
     /// Докер Strassio. CorelDRAW создаёт этот UserControl сам (см. AppUI.xslt, itemData type="wpfhost")
     /// и передаёт в конструктор свой объект Application — никакой COM-регистрации не нужно.
-    /// Сверху вниз (docs/SPEC.md, раздел 2.2): шапка, выбор камня, вкладки методов, «Создать».
+    /// Сверху вниз (docs/SPEC.md, раздел 2.2): шапка, выбор камня, вкладки методов, параметры
+    /// метода (Docker.Params.cs), «Создать».
     /// </summary>
     public partial class Docker : UserControl
     {
-        /// <summary>Зазор между стразами (край в край), мм. Станет полем параметров метода на следующем шаге Этапа 2.</summary>
-        private const double GapMm = 0.2;
-
         /// <summary>Толщина «волосяной» обводки CorelDRAW (0,003 дюйма), мм.</summary>
         private const double HairlineMm = 0.0762;
+
+        /// <summary>Толщина красной обводки у налезающих страз при «только показать», мм.</summary>
+        private const double ConflictOutlineMm = 0.3;
 
         private readonly CorelApplication? app;
         private readonly PluginContext context = PluginContext.Instance;
@@ -44,22 +46,7 @@ namespace Strassio.Corel
 
         public Docker(object? app)
         {
-            methods = new[]
-            {
-                new MethodOption("method.l1", isFill: false, needsClosed: false,
-                    (contours, d) => LineScatterer.Scatter(
-                        OuterContour(contours),
-                        new LineScatterOptions { StoneDiameterMm = d, GapMm = GapMm, Mode = StepMode.FitEven })),
-                new MethodOption("method.l2", isFill: false, needsClosed: true, RingAroundLine),
-                new MethodOption("method.f1", isFill: true, needsClosed: true,
-                    (contours, d) => GridFiller.Fill(
-                        contours, new GridFillOptions { StoneDiameterMm = d, GapMm = GapMm, Pattern = GridPattern.Square })),
-                new MethodOption("method.f2", isFill: true, needsClosed: true,
-                    (contours, d) => GridFiller.Fill(
-                        contours, new GridFillOptions { StoneDiameterMm = d, GapMm = GapMm, Pattern = GridPattern.Honeycomb })),
-                new MethodOption("method.f3", isFill: true, needsClosed: true,
-                    (contours, d) => ContourFiller.Fill(contours, new ContourFillOptions { StoneDiameterMm = d, GapMm = GapMm })),
-            };
+            methods = MethodCatalog.All.Select(info => new MethodOption(info)).ToArray();
 
             refreshing = true;
             InitializeComponent();
@@ -73,6 +60,7 @@ namespace Strassio.Corel
             Unloaded += (s, e) => ThemeManager.Detach(this);
 
             RebuildAll();
+            SelectLastMethod();
         }
 
         // Нужен WPF-дизайнеру.
@@ -140,11 +128,36 @@ namespace Strassio.Corel
         {
             string? selectedKey = (MethodCombo.SelectedItem as MethodOption)?.Key;
             bool fill = MethodTabs.SelectedItem == FillTab;
-            List<MethodOption> list = methods.Where(m => m.IsFill == fill).ToList();
+            List<MethodOption> list = methods.Where(m => m.Info.IsFill == fill).ToList();
             MethodCombo.ItemsSource = null;
             MethodCombo.ItemsSource = list;
             MethodCombo.SelectedItem = list.FirstOrDefault(m => m.Key == selectedKey) ?? list.FirstOrDefault();
             UpdateMethodHint();
+            RebuildParams();
+        }
+
+        /// <summary>При первом открытии докера — вкладка и метод, которыми пользовались в прошлый раз.</summary>
+        private void SelectLastMethod()
+        {
+            MethodOption? last = methods.FirstOrDefault(m => m.Key == "method." + context.Settings.LastMethod);
+            if (last == null)
+            {
+                return;
+            }
+
+            refreshing = true;
+            try
+            {
+                MethodTabs.SelectedItem = last.Info.IsFill ? FillTab : LineTab;
+                RebuildMethods();
+                MethodCombo.SelectedItem = last;
+                UpdateMethodHint();
+                RebuildParams();
+            }
+            finally
+            {
+                refreshing = false;
+            }
         }
 
         private void RebuildColors()
@@ -190,6 +203,12 @@ namespace Strassio.Corel
             if (!refreshing)
             {
                 UpdateMethodHint();
+                RebuildParams();
+                if (MethodCombo.SelectedItem is MethodOption m)
+                {
+                    context.Settings.LastMethod = m.Info.Kind.ToString().ToLowerInvariant();
+                    context.SaveSettingsQuietly();
+                }
             }
         }
 
@@ -211,29 +230,18 @@ namespace Strassio.Corel
                 return;
             }
 
+            if (!CommitAllParams())
+            {
+                return;
+            }
+
             // Запоминаем последний выбранный камень — при следующем запуске он будет выбран сразу.
             context.Settings.DefaultSize = size.Size.Name;
             context.Settings.DefaultColor = color.Name;
             context.SaveSettingsQuietly();
 
-            string caption = Loc.Format(method.IsFill ? "undo.fill" : "undo.line", size.Size.Name, color.Name);
+            string caption = Loc.Format(method.Info.IsFill ? "undo.fill" : "undo.line", size.Size.Name, color.Name);
             CreateFromSelectedCurve(caption, size.Size, color.Color, method);
-        }
-
-        /// <summary>L2 «вокруг линии»: три ряда выбранного камня — по линии и по обе стороны, наложения убираются.</summary>
-        private static IReadOnlyList<PlacedStone> RingAroundLine(IReadOnlyList<CoreCurve> contours, double diameter)
-        {
-            double rowStep = diameter + GapMm;
-            RowSpec[] rows = new[] { -rowStep, 0, rowStep }
-                .Select(offset => new RowSpec
-                {
-                    OffsetMm = offset,
-                    ScatterOptions = new LineScatterOptions { StoneDiameterMm = diameter, GapMm = GapMm, Mode = StepMode.FitEven },
-                })
-                .ToArray();
-            return IntersectionFixer.Fix(
-                RingScatterer.Scatter(OuterContour(contours), rows),
-                new IntersectionFixOptions { Action = IntersectionAction.Remove }).Stones;
         }
 
         /// <summary>
@@ -287,13 +295,14 @@ namespace Strassio.Corel
                     return;
                 }
 
-                if (method.NeedsClosed && !OuterContour(contours).IsClosed)
+                if (method.Info.NeedsClosed && !MethodRunner.OuterContour(contours).IsClosed)
                 {
                     SetStatus("status.needClosed");
                     return;
                 }
 
-                IReadOnlyList<PlacedStone> stones = method.Scatter(contours, size.DiameterMm);
+                MethodResult result = MethodRunner.Run(method.Info.Kind, contours, size.DiameterMm, Params);
+                IReadOnlyList<PlacedStone> stones = result.Stones;
                 if (stones.Count == 0)
                 {
                     SetStatus("status.noStones");
@@ -332,6 +341,14 @@ namespace Strassio.Corel
                         range.SetOutlineProperties(Width: width, Color: app.CreateRGBColor(0, 0, 0));
                     }
 
+                    // «Только показать» (раздел 6.4): налезающие стразы остаются, но получают красную обводку.
+                    if (result.ConflictIndices.Count > 0)
+                    {
+                        object[] conflicts = result.ConflictIndices.Select(i => created[i]).ToArray();
+                        doc.CreateShapeRangeFromArray(ref conflicts)
+                            .SetOutlineProperties(Width: ConflictOutlineMm, Color: app.CreateRGBColor(229, 57, 53));
+                    }
+
                     Shape group = range.Group();
                     group.Name = caption;
                 }
@@ -340,7 +357,14 @@ namespace Strassio.Corel
                     doc.EndCommandGroup();
                 }
 
-                SetStatus("status.done", stones.Count);
+                if (result.ConflictIndices.Count > 0)
+                {
+                    SetStatus("status.doneConflicts", stones.Count, result.ConflictIndices.Count);
+                }
+                else
+                {
+                    SetStatus("status.done", stones.Count);
+                }
             }
             catch (Exception ex)
             {
@@ -425,29 +449,6 @@ namespace Strassio.Corel
             {
                 return null;
             }
-        }
-
-        /// <summary>
-        /// Внешний контур фигуры — самый большой по габаритам. Методы по линии (L1-L3) и контурная
-        /// заливка работают именно по нему, дырки им пока не нужны.
-        /// </summary>
-        private static CoreCurve OuterContour(IReadOnlyList<CoreCurve> contours)
-        {
-            CoreCurve best = contours[0];
-            double bestSize = -1;
-
-            foreach (CoreCurve contour in contours)
-            {
-                (double width, double height) = CurveMetrics.BoundingSize(CurveFlattener.Flatten(contour));
-                double size = width * height;
-                if (size > bestSize)
-                {
-                    bestSize = size;
-                    best = contour;
-                }
-            }
-
-            return best;
         }
 
         /// <summary>
