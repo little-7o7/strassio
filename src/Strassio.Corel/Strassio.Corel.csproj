@@ -30,6 +30,12 @@
   </Target>
 
   <ItemGroup>
+    <!-- Стандартное окно выбора цвета Windows (редактор таблицы камней) — часть .NET Framework, не сторонняя библиотека. -->
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Strassio.Core\Strassio.Core.csproj" />
   </ItemGroup>
 

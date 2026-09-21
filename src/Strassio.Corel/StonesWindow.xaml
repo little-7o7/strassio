@@ -1,0 +1,171 @@
+<!--
+  Редактор таблицы камней (docs/SPEC.md, раздел 3.1): размеры слева, цвета выбранного размера справа.
+  Работает с копией таблицы — сохраняется только по «ОК», если в таблице нет ошибок.
+  Тексты — из файлов языков, цвета — тема CorelDRAW.
+-->
+<Window x:Class="Strassio.Corel.StonesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{Binding [stones.title]}"
+        Width="600" Height="480" MinWidth="520" MinHeight="400"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource Strassio.Background}"
+        Foreground="{DynamicResource Strassio.Foreground}">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Styles.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Маленькая кнопка-значок (добавить, удалить, выше, ниже…) -->
+            <Style x:Key="Strassio.IconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="FontFamily" Value="Segoe MDL2 Assets, Segoe UI Symbol"/>
+                <Setter Property="Padding" Value="7,4"/>
+                <Setter Property="Margin" Value="0,0,4,0"/>
+            </Style>
+
+            <Style x:Key="Strassio.List" TargetType="ListBox">
+                <Setter Property="Background" Value="{DynamicResource Strassio.InputBackground}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Strassio.Foreground}"/>
+                <Setter Property="BorderBrush" Value="{DynamicResource Strassio.ControlBorder}"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="ItemContainerStyle">
+                    <Setter.Value>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="Bd" Padding="6,3" Background="Transparent">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Strassio.HoverBackground}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Strassio.SelectedBackground}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <DockPanel Margin="14">
+        <!-- Низ: ошибки и кнопки -->
+        <StackPanel DockPanel.Dock="Bottom">
+            <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Strassio.Error}" TextWrapping="Wrap"
+                       Margin="0,8,0,0" Visibility="Collapsed"/>
+            <DockPanel Margin="0,10,0,0" LastChildFill="False">
+                <Button DockPanel.Dock="Right" Content="{Binding [settings.cancel]}" IsCancel="True" Margin="6,0,0,0" MinWidth="80"/>
+                <Button DockPanel.Dock="Right" Content="{Binding [settings.ok]}" IsDefault="True" Click="Ok_Click" MinWidth="80"
+                        Style="{StaticResource Strassio.PrimaryButton}"/>
+            </DockPanel>
+        </StackPanel>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="14"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Размеры -->
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Text="{Binding [stones.sizes]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE710;" Click="AddSize_Click"
+                            ToolTip="{Binding [stones.addSize]}"/>
+                    <Button x:Name="RemoveSizeButton" Style="{StaticResource Strassio.IconButton}" Content="&#xE738;" Click="RemoveSize_Click"
+                            ToolTip="{Binding [stones.removeSize]}"/>
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE74A;" Click="SizeUp_Click"
+                            ToolTip="{Binding [stones.up]}"/>
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE74B;" Click="SizeDown_Click"
+                            ToolTip="{Binding [stones.down]}"/>
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE8CB;" Click="Sort_Click"
+                            ToolTip="{Binding [stones.sort]}"/>
+                </StackPanel>
+                <ListBox x:Name="SizeList" Style="{StaticResource Strassio.List}" SelectionChanged="SizeList_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Text}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+
+            <!-- Выбранный размер и его цвета -->
+            <DockPanel Grid.Column="2" x:Name="SizePanel">
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{Binding [stones.sizeName]}" Style="{StaticResource Strassio.Caption}"/>
+                    <TextBox Grid.Column="1" x:Name="SizeNameBox" Margin="0,0,0,6" TextChanged="SizeNameBox_TextChanged"
+                             ToolTip="{Binding [stones.sizeName.tooltip]}"/>
+                    <TextBlock Grid.Row="1" x:Name="DiameterCaption" Style="{StaticResource Strassio.Caption}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="DiameterBox" TextChanged="DiameterBox_TextChanged"
+                             ToolTip="{Binding [stones.diameter.tooltip]}"/>
+                </Grid>
+
+                <TextBlock DockPanel.Dock="Top" Text="{Binding [stones.colors]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0" x:Name="ColorPanel">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{Binding [stones.colorName]}" Style="{StaticResource Strassio.Caption}"/>
+                    <TextBox Grid.Column="1" Grid.ColumnSpan="2" x:Name="ColorNameBox" Margin="0,0,0,6"
+                             TextChanged="ColorNameBox_TextChanged"/>
+                    <TextBlock Grid.Row="1" Text="{Binding [stones.rgb]}" Style="{StaticResource Strassio.Caption}"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="RgbBox" TextChanged="RgbBox_TextChanged"
+                             ToolTip="{Binding [stones.rgb.tooltip]}"/>
+                    <Button Grid.Row="1" Grid.Column="2" Style="{StaticResource Strassio.IconButton}" Margin="6,0,0,0"
+                            Content="&#xE790;" Click="PickColor_Click" ToolTip="{Binding [stones.pick]}"/>
+                </Grid>
+
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE710;" Click="AddColor_Click"
+                            ToolTip="{Binding [stones.addColor]}"/>
+                    <Button x:Name="RemoveColorButton" Style="{StaticResource Strassio.IconButton}" Content="&#xE738;" Click="RemoveColor_Click"
+                            ToolTip="{Binding [stones.removeColor]}"/>
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE74A;" Click="ColorUp_Click"
+                            ToolTip="{Binding [stones.up]}"/>
+                    <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE74B;" Click="ColorDown_Click"
+                            ToolTip="{Binding [stones.down]}"/>
+                    <Button Content="{Binding [stones.copyColors]}" Click="CopyColors_Click" Margin="4,0,0,0"
+                            ToolTip="{Binding [stones.copyColors.tooltip]}"/>
+                </StackPanel>
+
+                <ListBox x:Name="ColorList" Style="{StaticResource Strassio.List}" SelectionChanged="ColorList_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <Border Width="14" Height="14" CornerRadius="7" Background="{Binding Brush}"
+                                        BorderBrush="{DynamicResource Strassio.ControlBorder}" BorderThickness="1"
+                                        VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Grid>
+    </DockPanel>
+</Window>

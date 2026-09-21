@@ -217,6 +217,12 @@ namespace Strassio.Corel
             new SettingsWindow(app).ShowDialog();
         }
 
+        /// <summary>Редактор таблицы камней; по «ОК» списки размеров и цветов в докере обновятся сами.</summary>
+        private void EditStones_Click(object sender, RoutedEventArgs e)
+        {
+            new StonesWindow(app, (SizeCombo.SelectedItem as SizeOption)?.Size.Name).ShowDialog();
+        }
+
         private void Create_Click(object sender, RoutedEventArgs e)
         {
             if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color))

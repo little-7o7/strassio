@@ -38,10 +38,14 @@
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding [docker.size]}" Style="{StaticResource Strassio.Caption}"/>
                 <ComboBox x:Name="SizeCombo" Grid.Column="1" DisplayMemberPath="Text"
                           ToolTip="{Binding [docker.size.tooltip]}" SelectionChanged="SizeCombo_SelectionChanged"/>
+                <Button Grid.Column="2" Margin="4,0,0,0" Padding="6,3" Click="EditStones_Click"
+                        ToolTip="{Binding [docker.stones.tooltip]}"
+                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE70F;"/>
             </Grid>
             <DockPanel Margin="0,0,0,2">
                 <TextBlock Text="{Binding [docker.color]}" Style="{StaticResource Strassio.Caption}"/>

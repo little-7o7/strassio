@@ -47,7 +47,7 @@ namespace Strassio.Corel
 
         public Localizer Localizer { get; }
 
-        public StoneTable Stones { get; }
+        public StoneTable Stones { get; private set; }
 
         public void SaveSettings()
         {
@@ -57,6 +57,14 @@ namespace Strassio.Corel
                 Localizer.SetLanguage(Settings.Language);
             }
 
+            SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>Новая таблица камней из редактора: сохранить в stones.json и перерисовать докер.</summary>
+        public void ReplaceStones(StoneTable table)
+        {
+            Stones = table;
+            TrySave(() => Store.SaveStones(Stones));
             SettingsChanged?.Invoke(this, EventArgs.Empty);
         }
 
