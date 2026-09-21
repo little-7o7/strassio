@@ -8,6 +8,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
+using Microsoft.Win32;
 using Strassio.Core.Localization;
 using Strassio.Core.Settings;
 using Strassio.Corel.Themes;
@@ -111,8 +112,7 @@ namespace Strassio.Corel
             if (outline == OutlineStyle.Width &&
                 (!LengthUnits.TryParse(OutlineWidthBox.Text, units, out outlineWidthMm) || outlineWidthMm <= 0 || outlineWidthMm > 10))
             {
-                ErrorText.Text = Loc["settings.outlineWidth.invalid"];
-                ErrorText.Visibility = Visibility.Visible;
+                ShowError(Loc["settings.outlineWidth.invalid"]);
                 return;
             }
 
@@ -127,6 +127,70 @@ namespace Strassio.Corel
             DialogResult = true;
         }
 
+        /// <summary>Сохраняет в файл уже сохранённые настройки и таблицу камней (не то, что сейчас не нажато «ОК»).</summary>
+        private void Export_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new SaveFileDialog
+            {
+                FileName = Loc["transfer.fileName"] + SettingsTransfer.Extension,
+                DefaultExt = SettingsTransfer.Extension,
+                Filter = Loc.Format("transfer.filter", SettingsTransfer.Extension),
+                AddExtension = true,
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            try
+            {
+                SettingsTransfer.Export(dialog.FileName, context.Settings, context.Stones);
+                ShowInfo(Loc.Format("transfer.exported", Path.GetFileName(dialog.FileName)));
+            }
+            catch (Exception ex)
+            {
+                ShowError(Loc.Format("status.error", ex.Message));
+            }
+        }
+
+        /// <summary>Загружает файл переноса и сразу применяет его; поля окна показывают новые значения.</summary>
+        private void Import_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new OpenFileDialog
+            {
+                DefaultExt = SettingsTransfer.Extension,
+                Filter = Loc.Format("transfer.filter", SettingsTransfer.Extension),
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            if (!SettingsTransfer.TryImport(dialog.FileName, out SettingsBundle? bundle, out string errorKey))
+            {
+                ShowError(Loc[errorKey]);
+                return;
+            }
+
+            context.ApplyImport(bundle!);
+            Fill();
+            ShowInfo(Loc.Format("transfer.imported", Path.GetFileName(dialog.FileName)));
+        }
+
+        private void ShowInfo(string text)
+        {
+            ErrorText.Text = text;
+            ErrorText.SetResourceReference(TextBlock.ForegroundProperty, "Strassio.MutedForeground");
+            ErrorText.Visibility = Visibility.Visible;
+        }
+
+        private void ShowError(string text)
+        {
+            ErrorText.Text = text;
+            ErrorText.SetResourceReference(TextBlock.ForegroundProperty, "Strassio.Error");
+            ErrorText.Visibility = Visibility.Visible;
+        }
+
         private void OpenFolder_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -136,8 +200,7 @@ namespace Strassio.Corel
             }
             catch (Exception ex)
             {
-                ErrorText.Text = Loc.Format("status.error", ex.Message);
-                ErrorText.Visibility = Visibility.Visible;
+                ShowError(Loc.Format("status.error", ex.Message));
             }
         }
 

@@ -54,9 +54,17 @@
 
         <TextBlock x:Name="ErrorText" Foreground="#E53935" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
 
-        <DockPanel Margin="0,6,0,0" LastChildFill="False">
-            <Button DockPanel.Dock="Left" Content="{Binding [settings.openFolder]}" Click="OpenFolder_Click"
+        <!-- Перенос на другой компьютер (раздел 12 ТЗ) и папка с файлами -->
+        <WrapPanel Margin="0,6,0,0">
+            <Button Content="{Binding [transfer.export]}" Click="Export_Click" Margin="0,0,6,6"
+                    ToolTip="{Binding [transfer.export.tooltip]}"/>
+            <Button Content="{Binding [transfer.import]}" Click="Import_Click" Margin="0,0,6,6"
+                    ToolTip="{Binding [transfer.import.tooltip]}"/>
+            <Button Content="{Binding [settings.openFolder]}" Click="OpenFolder_Click" Margin="0,0,6,6"
                     ToolTip="{Binding [settings.openFolder.tooltip]}"/>
+        </WrapPanel>
+
+        <DockPanel Margin="0,6,0,0" LastChildFill="False">
             <Button DockPanel.Dock="Right" Content="{Binding [settings.cancel]}" IsCancel="True" Margin="6,0,0,0" MinWidth="80"/>
             <Button DockPanel.Dock="Right" Content="{Binding [settings.ok]}" IsDefault="True" Click="Ok_Click" MinWidth="80"
                     Style="{StaticResource Strassio.PrimaryButton}"/>

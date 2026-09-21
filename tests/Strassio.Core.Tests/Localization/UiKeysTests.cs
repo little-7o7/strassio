@@ -14,7 +14,7 @@ public class UiKeysTests
     private static readonly Regex XamlKey = new(@"\{Binding \[([A-Za-z0-9_.]+)\]\}");
 
     private static readonly Regex CodeKey = new(
-        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo)\\.[A-Za-z0-9_.]+)\"");
+        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo|transfer)\\.[A-Za-z0-9_.]+)\"");
 
     [Fact]
     public void EveryKeyUsedInAddon_ExistsInBothLanguages()

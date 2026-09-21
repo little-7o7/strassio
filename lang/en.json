@@ -162,6 +162,18 @@
   "settings.outlineWidth.invalid": "Outline width must be a number greater than zero.",
   "settings.openFolder": "Settings folder",
   "settings.openFolder.tooltip": "Open the folder with settings.json and the stone table stones.json.",
+  "transfer.export": "Export…",
+  "transfer.export.tooltip": "Save settings and the stone table to one file — to move them to another computer or give them to a colleague.",
+  "transfer.import": "Import…",
+  "transfer.import.tooltip": "Load settings and the stone table from a file. Your current ones will be replaced.",
+  "transfer.fileName": "Strassio-settings",
+  "transfer.filter": "Strassio settings (*{0})|*{0}|All files (*.*)|*.*",
+  "transfer.exported": "Saved to {0}.",
+  "transfer.imported": "Loaded from {0}: settings and stone table are applied.",
+  "transfer.error.unreadable": "The file could not be read.",
+  "transfer.error.notStrassio": "This is not a Strassio settings file.",
+  "transfer.error.newerVersion": "The file was made by a newer Strassio — please update the add-on.",
+  "transfer.error.badStones": "The stone table in the file has errors — the file was not loaded.",
   "settings.ok": "OK",
   "settings.cancel": "Cancel"
 }

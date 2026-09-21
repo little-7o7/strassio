@@ -162,6 +162,18 @@
   "settings.outlineWidth.invalid": "Толщина обводки должна быть числом больше нуля.",
   "settings.openFolder": "Папка настроек",
   "settings.openFolder.tooltip": "Открыть папку, где лежат settings.json и таблица камней stones.json.",
+  "transfer.export": "Экспорт…",
+  "transfer.export.tooltip": "Сохранить настройки и таблицу камней в один файл — чтобы перенести на другой компьютер или отдать сотруднику.",
+  "transfer.import": "Импорт…",
+  "transfer.import.tooltip": "Загрузить настройки и таблицу камней из файла. Ваши текущие будут заменены.",
+  "transfer.fileName": "Strassio-настройки",
+  "transfer.filter": "Настройки Strassio (*{0})|*{0}|Все файлы (*.*)|*.*",
+  "transfer.exported": "Сохранено в файл {0}.",
+  "transfer.imported": "Загружено из файла {0}: настройки и таблица камней уже применены.",
+  "transfer.error.unreadable": "Файл не удалось прочитать.",
+  "transfer.error.notStrassio": "Это не файл настроек Strassio.",
+  "transfer.error.newerVersion": "Файл сделан более новой версией Strassio — обновите плагин.",
+  "transfer.error.badStones": "В таблице камней из файла есть ошибки — файл не загружен.",
   "settings.ok": "ОК",
   "settings.cancel": "Отмена"
 }

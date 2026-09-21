@@ -43,7 +43,7 @@ namespace Strassio.Corel
 
         public SettingsStore Store { get; }
 
-        public PluginSettings Settings { get; }
+        public PluginSettings Settings { get; private set; }
 
         public Localizer Localizer { get; }
 
@@ -58,6 +58,18 @@ namespace Strassio.Corel
             }
 
             SettingsChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>
+        /// Настройки и таблица камней из файла переноса (раздел 12 ТЗ): заменить свои, сохранить оба
+        /// файла, сменить язык и перерисовать докер — как будто пользователь всё выставил руками.
+        /// </summary>
+        public void ApplyImport(SettingsBundle bundle)
+        {
+            Settings = bundle.Settings!;
+            Stones = bundle.Stones!;
+            TrySave(() => Store.SaveStones(Stones));
+            SaveSettings();
         }
 
         /// <summary>Новая таблица камней из редактора: сохранить в stones.json и перерисовать докер.</summary>
