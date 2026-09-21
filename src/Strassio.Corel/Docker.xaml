@@ -78,9 +78,22 @@
                 </Grid.ColumnDefinitions>
             </Grid>
 
-            <!-- Низ -->
-            <Button x:Name="CreateButton" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
-                    Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>
+            <!-- Низ: «Предпросмотр» (картинка в докере, документ не меняется) и «Создать» -->
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="PreviewButton" Click="Preview_Click" Padding="6,6"
+                        Content="{Binding [docker.preview]}" ToolTip="{Binding [docker.preview.tooltip]}"/>
+                <Button x:Name="CreateButton" Grid.Column="2" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
+                        Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>
+            </Grid>
+            <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,8,0,0" Padding="6" CornerRadius="3"
+                    Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.ControlBorder}" BorderThickness="1">
+                <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
+            </Border>
             <TextBlock x:Name="StatusText" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,0"/>
         </StackPanel>
     </ScrollViewer>

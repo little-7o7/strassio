@@ -202,6 +202,7 @@ namespace Strassio.Corel
         {
             if (!refreshing)
             {
+                HidePreview();
                 UpdateMethodHint();
                 RebuildParams();
                 if (MethodCombo.SelectedItem is MethodOption m)
@@ -241,6 +242,8 @@ namespace Strassio.Corel
                 return;
             }
 
+            HidePreview();
+
             // Запоминаем последний выбранный камень — при следующем запуске он будет выбран сразу.
             context.Settings.DefaultSize = size.Size.Name;
             context.Settings.DefaultColor = color.Name;
@@ -257,26 +260,12 @@ namespace Strassio.Corel
         /// </summary>
         private void CreateFromSelectedCurve(string caption, StoneSize size, StoneColor color, MethodOption method)
         {
-            if (app == null)
+            if (!TryGetSelection(out CorelApplication corel, out Document doc, out Shape selected))
             {
-                SetStatus("status.noApp");
                 return;
             }
 
-            Document doc = app.ActiveDocument;
-            if (doc == null)
-            {
-                SetStatus("status.noDocument");
-                return;
-            }
-
-            Shape selected = doc.ActiveShape;
-            if (selected == null)
-            {
-                SetStatus("status.noSelection");
-                return;
-            }
-
+            CorelApplication app = corel;
             bool prevOptimization = app.Optimization;
             bool prevEventsEnabled = app.EventsEnabled;
             cdrUnit prevUnit = doc.Unit;
@@ -287,23 +276,9 @@ namespace Strassio.Corel
                 app.EventsEnabled = false;
                 doc.Unit = cdrUnit.cdrMillimeter;
 
-                global::Corel.Interop.VGCore.Curve? corelCurve = GetCurveOf(selected);
-                if (corelCurve == null || corelCurve.SubPaths.Count == 0)
+                List<CoreCurve>? contours = ReadContours(selected, method);
+                if (contours == null)
                 {
-                    SetStatus("status.cannotReadShape", selected.Type);
-                    return;
-                }
-
-                List<CoreCurve> contours = ReadAllSubPaths(corelCurve);
-                if (contours.Count == 0)
-                {
-                    SetStatus("status.noContours");
-                    return;
-                }
-
-                if (method.Info.NeedsClosed && !MethodRunner.OuterContour(contours).IsClosed)
-                {
-                    SetStatus("status.needClosed");
                     return;
                 }
 
@@ -383,6 +358,67 @@ namespace Strassio.Corel
                 app.Optimization = prevOptimization;
                 app.Refresh();
             }
+        }
+
+        /// <summary>Есть CorelDRAW, открытый документ и выделенная фигура; иначе — сообщение внизу докера.</summary>
+        private bool TryGetSelection(out CorelApplication corel, out Document doc, out Shape selected)
+        {
+            corel = null!;
+            doc = null!;
+            selected = null!;
+
+            if (app == null)
+            {
+                SetStatus("status.noApp");
+                return false;
+            }
+
+            corel = app;
+            doc = app.ActiveDocument;
+            if (doc == null)
+            {
+                SetStatus("status.noDocument");
+                return false;
+            }
+
+            selected = doc.ActiveShape;
+            if (selected == null)
+            {
+                SetStatus("status.noSelection");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Все контуры выделенной фигуры в мм (единицы документа — уже миллиметры, это делает
+        /// вызывающий). null — прочитать не удалось или методу нужна замкнутая фигура; сообщение
+        /// уже показано внизу докера.
+        /// </summary>
+        private List<CoreCurve>? ReadContours(Shape selected, MethodOption method)
+        {
+            global::Corel.Interop.VGCore.Curve? corelCurve = GetCurveOf(selected);
+            if (corelCurve == null || corelCurve.SubPaths.Count == 0)
+            {
+                SetStatus("status.cannotReadShape", selected.Type);
+                return null;
+            }
+
+            List<CoreCurve> contours = ReadAllSubPaths(corelCurve);
+            if (contours.Count == 0)
+            {
+                SetStatus("status.noContours");
+                return null;
+            }
+
+            if (method.Info.NeedsClosed && !MethodRunner.OuterContour(contours).IsClosed)
+            {
+                SetStatus("status.needClosed");
+                return null;
+            }
+
+            return contours;
         }
 
         /// <summary>
