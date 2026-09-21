@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using Strassio.Core.Methods;
 
 namespace Strassio.Core.Settings
 {
@@ -70,6 +71,14 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "checkUpdates")]
         public bool CheckUpdates { get; set; }
 
+        /// <summary>Последний выбранный метод ("l1", "f3"…) — выбирается сам при следующем запуске.</summary>
+        [DataMember(Name = "lastMethod")]
+        public string LastMethod { get; set; } = string.Empty;
+
+        /// <summary>Параметры методов из докера (зазор, ряды…).</summary>
+        [DataMember(Name = "method")]
+        public MethodParameters Method { get; set; } = new MethodParameters();
+
         [DataMember(Name = "units")]
         private string UnitsText
         {
@@ -113,6 +122,8 @@ namespace Strassio.Core.Settings
             Outline = OutlineStyle.None;
             OutlineWidthMm = 0.1;
             CheckUpdates = true;
+            LastMethod = string.Empty;
+            Method = new MethodParameters();
         }
     }
 }

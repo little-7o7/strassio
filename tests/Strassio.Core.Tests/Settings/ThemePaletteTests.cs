@@ -1,4 +1,4 @@
-﻿using Strassio.Core.Settings;
+using Strassio.Core.Settings;
 
 namespace Strassio.Core.Tests.Settings;
 

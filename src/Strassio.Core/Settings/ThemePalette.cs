@@ -1,4 +1,4 @@
-﻿namespace Strassio.Core.Settings
+namespace Strassio.Core.Settings
 {
     /// <summary>
     /// Цвета интерфейса докера ("#RRGGBB"). Четыре палитры повторяют четыре цветовые схемы
