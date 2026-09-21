@@ -416,6 +416,9 @@ MSBuild-конфигураций (план ниже остаётся в силе
 - Сейчас `Strassio.Corel` собирается против интеропа CorelDRAW 2018 (v20) с `EmbedInteropTypes=true`
   (см. `src/Strassio.Corel/interop/Corel.Interop.VGCore.dll` и комментарий в `.csproj`). Локально
   собирается без ошибок одним `dotnet build` на .NET SDK 9 (net48 + WPF, `PlatformTarget=AnyCPU`).
+- Сам файл interop — собственность Corel, поэтому **в публичном репозитории его нет** (`.gitignore`).
+  Копия хранится в закрытом репозитории автора `little-7o7/strassio-interop`. Без файла сборка
+  `Strassio.Corel` останавливается с понятной ошибкой; ядро, тесты и Preview собираются и так.
 - Найден реальный прецедент: открытый исходный код рабочего коммерческого аддона
   `bonus630/QrCodeDocker` (репозиторий на GitHub, поддерживает X7…2024+) **не использует одну общую
   сборку** — у него 19 конфигураций MSBuild (X7 Debug/Release, 2017…2024 Debug/Release), в каждой

@@ -23,6 +23,12 @@
     </Reference>
   </ItemGroup>
 
+  <!-- Interop — файл Corel, его нет в репозитории (см. README, «Для разработчиков»). -->
+  <Target Name="StrassioCheckInterop" BeforeTargets="ResolveAssemblyReferences"
+          Condition="!Exists('$(MSBuildThisFileDirectory)interop\Corel.Interop.VGCore.dll')">
+    <Error Text="Нет файла src\Strassio.Corel\interop\Corel.Interop.VGCore.dll (interop CorelDRAW). Его нет в репозитории — это файл Corel. Положите его туда вручную, см. README, раздел «Для разработчиков»." />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\Strassio.Core\Strassio.Core.csproj" />
   </ItemGroup>
