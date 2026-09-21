@@ -15,6 +15,12 @@ if (scenario == "methods")
     return;
 }
 
+if (scenario == "icons")
+{
+    RenderIconsScenario();
+    return;
+}
+
 if (scenario.StartsWith("offset-", StringComparison.Ordinal))
 {
     RenderOffsetScenario(scenario);
@@ -218,6 +224,26 @@ static void RenderMethodsScenario()
             int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01).Count(x => x);
             Console.WriteLine($"{name,-18} {shapeName,-8} {result.Stones.Count,5} страз, наложений: {overlaps}");
         }
+    }
+
+    Console.WriteLine($"SVG сохранены: {outDir}");
+}
+
+// Картинки-схемы методов из списка докера (MethodSamples) — out/preview/icons/.
+static void RenderIconsScenario()
+{
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview", "icons");
+    Directory.CreateDirectory(outDir);
+
+    foreach (MethodInfo info in MethodCatalog.All)
+    {
+        MethodResult result = MethodSamples.Run(info.Kind, out MethodSample sample);
+        FlattenedCurve flat = CurveFlattener.Flatten(sample.Shape);
+        string name = info.Key.Substring("method.".Length);
+        File.WriteAllText(
+            Path.Combine(outDir, name + ".svg"),
+            SvgWriter.Render(flat.Points.Select(pt => pt.Position).ToList(), flat.IsClosed, result.Stones, marginMm: 1));
+        Console.WriteLine($"{name}: {result.Stones.Count} страз");
     }
 
     Console.WriteLine($"SVG сохранены: {outDir}");

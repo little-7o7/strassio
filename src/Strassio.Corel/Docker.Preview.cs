@@ -142,6 +142,37 @@ namespace Strassio.Corel
             return image;
         }
 
+        /// <summary>
+        /// Картинка-схема метода для списка «Метод»: тот же метод на маленькой фигуре
+        /// (Strassio.Core.Methods.MethodSamples). Цвета одинаково читаются в светлой и тёмной теме.
+        /// Если что-то пошло не так — метод просто остаётся без картинки.
+        /// </summary>
+        private static ImageSource? BuildMethodIcon(MethodKind kind)
+        {
+            try
+            {
+                MethodResult result = MethodSamples.Run(kind, out MethodSample sample);
+                var group = new DrawingGroup();
+
+                var outlinePen = new Pen(new SolidColorBrush(Color.FromArgb(0xB0, 0x9E, 0x9E, 0x9E)), 0.6);
+                outlinePen.Freeze();
+                group.Children.Add(new GeometryDrawing(null, outlinePen, Polyline(sample.Shape)));
+
+                var fill = new SolidColorBrush(Color.FromRgb(0x3D, 0x8E, 0xE0));
+                fill.Freeze();
+                group.Children.Add(new GeometryDrawing(fill, null, Circles(result.Stones, i => true)));
+
+                group.Freeze();
+                var image = new DrawingImage(group);
+                image.Freeze();
+                return image;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         private static StreamGeometry Polyline(CoreCurve curve)
         {
             FlattenedCurve flat = CurveFlattener.Flatten(curve);

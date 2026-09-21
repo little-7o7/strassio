@@ -46,7 +46,7 @@ namespace Strassio.Corel
 
         public Docker(object? app)
         {
-            methods = MethodCatalog.All.Select(info => new MethodOption(info)).ToArray();
+            methods = MethodCatalog.All.Select(info => new MethodOption(info, BuildMethodIcon(info.Kind))).ToArray();
 
             refreshing = true;
             InitializeComponent();

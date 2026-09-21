@@ -8,13 +8,17 @@ namespace Strassio.Corel
     /// <summary>Метод в списке «Метод»: описание из Strassio.Core (вкладка, поля) и переведённое название.</summary>
     public sealed class MethodOption
     {
-        internal MethodOption(MethodInfo info)
+        internal MethodOption(MethodInfo info, ImageSource? icon)
         {
             Info = info;
             Text = info.Key;
+            Icon = icon;
         }
 
         internal MethodInfo Info { get; }
+
+        /// <summary>Картинка-схема метода (docs/SPEC.md, раздел 2.2, пункт 4), см. Docker.BuildMethodIcon.</summary>
+        public ImageSource? Icon { get; }
 
         public string Key => Info.Key;
 
