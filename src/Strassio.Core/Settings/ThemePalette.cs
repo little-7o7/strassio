@@ -1,9 +1,10 @@
-namespace Strassio.Core.Settings
+﻿namespace Strassio.Core.Settings
 {
     /// <summary>
     /// Цвета интерфейса докера ("#RRGGBB"). Четыре палитры повторяют четыре цветовые схемы
     /// CorelDRAW («Параметры → Внешний вид»): самая светлая, средне-светлая, тёмная, чёрная — чтобы
-    /// докер Strassio выглядел как родные докеры CorelDRAW.
+    /// докер Strassio выглядел как родные докеры CorelDRAW. Пятая — новый светлый интерфейс
+    /// CorelDRAW 2026 (схема "Scheme_11_ModernUI"), цвета сняты со скриншота автора.
     /// </summary>
     public sealed class ThemePalette
     {
@@ -18,6 +19,12 @@ namespace Strassio.Core.Settings
             background: "#ECECEC", foreground: "#000000", mutedForeground: "#505050",
             controlBackground: "#E2E2E2", controlBorder: "#B2B2B2", inputBackground: "#FFFFFF",
             hoverBackground: "#E0F0FF", selectedBackground: "#C2D6F0", accent: "#0078D7", accentForeground: "#FFFFFF");
+
+        public static readonly ThemePalette ModernUI = new ThemePalette(
+            "ModernUI", isDark: false,
+            background: "#F3F4F6", foreground: "#1F2328", mutedForeground: "#6E7886",
+            controlBackground: "#E5E7EB", controlBorder: "#D1D5DB", inputBackground: "#FFFFFF",
+            hoverBackground: "#DCE8F5", selectedBackground: "#ACC8E5", accent: "#0078D7", accentForeground: "#FFFFFF");
 
         public static readonly ThemePalette DarkGrey = new ThemePalette(
             "DarkGrey", isDark: true,
@@ -100,7 +107,11 @@ namespace Strassio.Core.Settings
             return windowsIsDark ? DarkGrey : LightestGrey;
         }
 
-        /// <summary>Имя схемы CorelDRAW → палитра; null — схема неизвестна.</summary>
+        /// <summary>
+        /// Имя схемы CorelDRAW → палитра; null — схема неизвестна. Старые версии пишут
+        /// "…_LightestGrey", "…_DarkGrey" и т.п.; CorelDRAW 2026 — "Scheme_11_ModernUI". Если
+        /// CorelDRAW добавит новую схему, а в её имени есть "Dark" или "Black", — это точно тёмная.
+        /// </summary>
         public static ThemePalette? FromCorelScheme(string? corelScheme)
         {
             if (string.IsNullOrWhiteSpace(corelScheme))
@@ -115,12 +126,23 @@ namespace Strassio.Core.Settings
                 name = name.Substring(underscore + 1);
             }
 
-            foreach (ThemePalette palette in new[] { LightestGrey, MediumGrey, DarkGrey, Black })
+            foreach (ThemePalette palette in new[] { LightestGrey, MediumGrey, DarkGrey, Black, ModernUI })
             {
                 if (string.Equals(palette.Name, name, System.StringComparison.OrdinalIgnoreCase))
                 {
                     return palette;
                 }
+            }
+
+            string whole = corelScheme.ToUpperInvariant();
+            if (whole.Contains("BLACK"))
+            {
+                return Black;
+            }
+
+            if (whole.Contains("DARK"))
+            {
+                return DarkGrey;
             }
 
             return null;

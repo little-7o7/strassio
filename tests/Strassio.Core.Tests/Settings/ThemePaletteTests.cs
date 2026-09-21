@@ -1,4 +1,4 @@
-using Strassio.Core.Settings;
+﻿using Strassio.Core.Settings;
 
 namespace Strassio.Core.Tests.Settings;
 
@@ -12,6 +12,8 @@ public class ThemePaletteTests
     [InlineData("Black", "Black")]
     [InlineData("ColorScheme_DarkGrey", "DarkGrey")]
     [InlineData("  scheme_black ", "Black")]
+    [InlineData("Scheme_11_ModernUI", "ModernUI")]
+    [InlineData("Scheme_12_ModernUIDark", "DarkGrey")]
     public void Auto_FollowsCorelScheme(string corelScheme, string expected)
     {
         Assert.Equal(expected, ThemePalette.Resolve(ThemeMode.Auto, corelScheme, windowsIsDark: false).Name);

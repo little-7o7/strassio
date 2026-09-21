@@ -450,6 +450,10 @@ MSBuild-конфигураций (план ниже остаётся в силе
   `app.OnApplicationEvent` с именем `OnColorSchemeChanged` (и `WorkspaceChanged`). Способ сверен
   с официальным шаблоном докера bonus630 `DockerTemplateX7` (`StylesController.cs`), который делает
   именно так; в X7 этой настройки нет — там берём тему Windows.
+- CorelDRAW 2026 (v27) пишет новое значение `Scheme_11_ModernUI` (реестр:
+  `HKCU\Software\Corel\CorelDRAW\27.0\Draw\Application Preferences\WindowScheme`, `Colors`) —
+  для него своя светлая палитра `ModernUI`. Незнакомое имя со словом Dark/Black → тёмная палитра,
+  иначе — тема Windows.
 - Палитры — `Strassio.Core.Settings.ThemePalette`, применение — `Strassio.Corel.Themes.ThemeManager`,
   шаблоны элементов — `Strassio.Corel/Themes/Styles.xaml` (свои, стандартные Windows-шаблоны
   не красятся в тёмный цвет).
