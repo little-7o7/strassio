@@ -19,3 +19,6 @@ strassio-stone-256.png
 
 # Скриншоты Windows (Win+Shift+S → вставка в папку) — имя вида {GUID}.png
 {*}.png
+
+# Личные настройки Claude Code на этом компьютере
+.claude/settings.local.json
