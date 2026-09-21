@@ -3,10 +3,17 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Strassio.Core.Geometry;
+using Strassio.Core.Methods;
 using Strassio.Core.Placement;
 using Strassio.Preview;
 
 string scenario = args.Length > 0 ? args[0] : "line";
+
+if (scenario == "methods")
+{
+    RenderMethodsScenario();
+    return;
+}
 
 if (scenario.StartsWith("offset-", StringComparison.Ordinal))
 {
@@ -163,6 +170,57 @@ static void RenderOffsetScenario(string scenario)
 
     Console.WriteLine($"Сценарий '{scenario}': исходная кривая (серая), смещение +{distance} мм (синее), смещение -{distance} мм (красное).");
     Console.WriteLine($"SVG сохранён: {outPath}");
+}
+
+// Все методы докера с параметрами (MethodRunner) на обязательных фигурах — out/preview/methods/.
+// Незамкнутые фигуры (S-кривая, зигзаг) — только для методов по линии.
+static void RenderMethodsScenario()
+{
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview", "methods");
+    Directory.CreateDirectory(outDir);
+
+    var shapes = new (string Name, Curve Curve)[]
+    {
+        ("star", BuildStarCurve()),
+        ("heart", BuildHeart().Item1),
+        ("square", Curve.FromPolyline(
+            new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) }, isClosed: true)),
+        ("s-curve", BuildSCurve().Item1),
+        ("zigzag", BuildZigzag().Item1),
+    };
+
+    var variants = new List<(string Name, MethodKind Kind, MethodParameters Params)>();
+    foreach (MethodInfo info in MethodCatalog.All)
+    {
+        variants.Add((info.Key.Substring("method.".Length), info.Kind, new MethodParameters()));
+    }
+
+    variants.Add(("l2-outside", MethodKind.L2, new MethodParameters { RowSide = MethodChoices.SideOutside }));
+    variants.Add(("l2-inside", MethodKind.L2, new MethodParameters { RowSide = MethodChoices.SideInside }));
+    variants.Add(("l2-5rows-stagger", MethodKind.L2, new MethodParameters { RowCount = 5, Stagger = true }));
+    variants.Add(("l3-inside", MethodKind.L3, new MethodParameters { OffsetSide = MethodChoices.SideInside }));
+    variants.Add(("f1-angle30", MethodKind.F1, new MethodParameters { AngleDeg = 30 }));
+
+    foreach ((string shapeName, Curve curve) in shapes)
+    {
+        FlattenedCurve flat = CurveFlattener.Flatten(curve);
+        foreach ((string name, MethodKind kind, MethodParameters p) in variants)
+        {
+            if (MethodCatalog.Get(kind).NeedsClosed && !flat.IsClosed)
+            {
+                continue;
+            }
+
+            MethodResult result = MethodRunner.Run(kind, new[] { curve }, 2.4, p);
+            string file = Path.Combine(outDir, name + "-" + shapeName + ".svg");
+            File.WriteAllText(file, SvgWriter.Render(flat.Points.Select(pt => pt.Position).ToList(), flat.IsClosed, result.Stones));
+
+            int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01).Count(x => x);
+            Console.WriteLine($"{name,-18} {shapeName,-8} {result.Stones.Count,5} страз, наложений: {overlaps}");
+        }
+    }
+
+    Console.WriteLine($"SVG сохранены: {outDir}");
 }
 
 static void RenderRingScenario(string scenario)

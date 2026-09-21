@@ -240,7 +240,7 @@ namespace Strassio.Core.Methods
                 action == IntersectionAction.ShowOnly ? fixedResult.ConflictIndices : Array.Empty<int>());
         }
 
-        /// <summary>L3 «по смещённой линии»: один ряд на заданном расстоянии наружу или внутрь.</summary>
+        /// <summary>L3 «по смещённой линии»: один ряд на заданном расстоянии наружу или внутрь, без наложений.</summary>
         private static MethodResult OffsetLine(Curve curve, double d, MethodParameters p)
         {
             double sign = OutwardSign(curve) * (p.OffsetSide == MethodChoices.SideInside ? -1 : 1);
@@ -250,7 +250,11 @@ namespace Strassio.Core.Methods
                 CornerStyle = Corners(p),
                 ScatterOptions = RowOptions(d, p, 0),
             };
-            return Plain(RingScatterer.Scatter(curve, new[] { row }));
+            IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, new[] { row });
+
+            // У острых углов смещённая линия круто изгибается, и соседние стразы ряда могут налезть
+            // друг на друга (звезда, сердце — см. Preview "methods"). Лишние убираем, соседей раздвигаем.
+            return Plain(IntersectionFixer.Fix(stones, new IntersectionFixOptions { MinGapMm = p.GapMm / 2 }).Stones);
         }
     }
 }
