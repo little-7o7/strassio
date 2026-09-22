@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Strassio.Core.Geometry;
 
 namespace Strassio.Core.Methods
@@ -17,6 +18,11 @@ namespace Strassio.Core.Methods
 
         /// <summary>Вторая линия образца (F7, F8).</summary>
         public Curve? Guide { get; }
+
+        /// <summary>Все фигуры образца (обводка дизайна берёт несколько).</summary>
+        public IReadOnlyList<Curve> Contours => Extra == null ? new[] { Shape } : new[] { Shape }.Concat(Extra).ToList();
+
+        internal IReadOnlyList<Curve>? Extra { get; set; }
 
         /// <summary>Маленькая таблица размеров образца — для методов с несколькими размерами.</summary>
         public IReadOnlyDictionary<string, double> Sizes { get; } = new Dictionary<string, double>
@@ -64,6 +70,11 @@ namespace Strassio.Core.Methods
                     return new MethodSample(
                         Zigzag(), 1.8,
                         new MethodParameters { GapMm = 0.4, AccentSize = "l", AccentWhere = MethodChoices.AccentBoth, CornerAngleDeg = 30 });
+                case MethodKind.Outline:
+                    return new MethodSample(CircleAt(8, 12, 5), 2.0, new MethodParameters { GapMm = 0.5, EdgeMarginMm = 0.5 })
+                    {
+                        Extra = new[] { CircleAt(16, 12, 5) },
+                    };
                 case MethodKind.F1:
                     return new MethodSample(Circle(11), 3.0, new MethodParameters { GapMm = 0.5 });
                 case MethodKind.F2:
@@ -102,7 +113,7 @@ namespace Strassio.Core.Methods
         {
             sample = For(kind);
             return MethodRunner.Run(
-                kind, new[] { sample.Shape }, sample.StoneDiameterMm, sample.Parameters, sample.Sizes,
+                kind, sample.Contours, sample.StoneDiameterMm, sample.Parameters, sample.Sizes,
                 sample.Guide == null ? null : new[] { sample.Guide });
         }
 
@@ -138,6 +149,19 @@ namespace Strassio.Core.Methods
         /// <summary>Зигзаг с острыми углами — для «акцентов» в углах.</summary>
         private static Curve Zigzag() => Curve.FromPolyline(
             new List<Point2D> { new Point2D(1, 6), new Point2D(8, 18), new Point2D(16, 6), new Point2D(23, 18) }, isClosed: false);
+
+        private static Curve CircleAt(double cx, double cy, double radius)
+        {
+            var points = new List<Point2D>();
+            const int n = 48;
+            for (int i = 0; i < n; i++)
+            {
+                double a = 2 * Math.PI * i / n;
+                points.Add(new Point2D(cx + radius * Math.Cos(a), cy + radius * Math.Sin(a)));
+            }
+
+            return Curve.FromPolyline(points, isClosed: true);
+        }
 
         /// <summary>Круг с центром (12, 12) — для заливок и L3.</summary>
         private static Curve Circle(double radius)

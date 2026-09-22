@@ -76,6 +76,9 @@ namespace Strassio.Core.Methods
                 case MethodKind.L8:
                     return Accents(OuterContour(contours), d, p, sizes);
 
+                case MethodKind.Outline:
+                    return Plain(DesignOutline(contours, d, p));
+
                 case MethodKind.F1:
                 case MethodKind.F2:
                     var grid = new GridFillOptions
@@ -438,6 +441,55 @@ namespace Strassio.Core.Methods
             }
 
             return Plain(FixSingleRow(stones, p));
+        }
+
+        /// <summary>
+        /// Обводка всего дизайна (раздел 8, [NEW]): ряд страз снаружи вокруг ВСЕХ выделенных фигур сразу,
+        /// на отступе «край дизайна — край камня». Фигуры объединяются: там, где они касаются или
+        /// перекрываются, обводка идёт вокруг общего силуэта; отверстия внутри дизайна не обводятся.
+        /// </summary>
+        private static List<PlacedStone> DesignOutline(IReadOnlyList<Curve> contours, double d, MethodParameters p)
+        {
+            List<FlattenedCurve> flats = contours.Select(c => CurveFlattener.Flatten(c)).Where(f => f.IsClosed).ToList();
+            var stones = new List<PlacedStone>();
+            if (flats.Count == 0)
+            {
+                return stones;
+            }
+
+            double distance = p.EdgeMarginMm + d / 2;
+            SignedDistanceField field = SignedDistanceField.Build(
+                flats, Math.Max(0.05, d / 8), paddingMm: distance + 2 * d, union: true);
+
+            // Петли вокруг пустот между фигурами лежат внутри внешней петли — их не обводим.
+            List<List<Point2D>> loops = IsoContour.Trace(field, -distance).Where(l => l.Count >= 3).ToList();
+            List<FlattenedCurve> loopFlats = loops
+                .Select(l => new FlattenedCurve(l.Select(pt => new FlattenedPoint(pt, true)).ToList(), isClosed: true))
+                .ToList();
+
+            int row = 0;
+            for (int i = 0; i < loops.Count; i++)
+            {
+                bool inner = false;
+                for (int j = 0; j < loops.Count && !inner; j++)
+                {
+                    inner = j != i && PointInPolygon.IsInside(loopFlats[j], loops[i][0]);
+                }
+
+                if (inner)
+                {
+                    continue;
+                }
+
+                foreach (PlacedStone s in LineScatterer.Scatter(Curve.FromPolyline(loops[i], isClosed: true), RowOptions(d, p, 0)))
+                {
+                    stones.Add(new PlacedStone(s.Center, s.DiameterMm, s.IsCorner, row));
+                }
+
+                row++;
+            }
+
+            return FixSingleRow(stones, p);
         }
 
         /// <summary>Убирает наложения в одном ряду (у острых углов, у акцентов); соседи раздвигаются.</summary>

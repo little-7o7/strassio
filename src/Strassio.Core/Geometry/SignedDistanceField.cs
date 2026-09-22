@@ -80,8 +80,14 @@ namespace Strassio.Core.Geometry
         /// но дольше счёт. Число узлов ограничено сверху (maxNodesPerSide), иначе на большом
         /// дизайне сетка выросла бы до сотен миллионов узлов.
         /// </summary>
+        /// <param name="paddingMm">Насколько расширить карту за габариты формы (обводка снаружи дизайна).</param>
+        /// <param name="union">
+        /// false — чётно-нечётное правило (отверстия букв — снаружи); true — «внутри хотя бы одного
+        /// контура»: объединение нескольких фигур, как у обводки всего дизайна.
+        /// </param>
         public static SignedDistanceField Build(
-            IReadOnlyList<FlattenedCurve> contours, double cellSizeMm, int maxNodesPerSide = 1400)
+            IReadOnlyList<FlattenedCurve> contours, double cellSizeMm, int maxNodesPerSide = 1400,
+            double paddingMm = 0, bool union = false)
         {
             if (contours == null || contours.Count == 0)
             {
@@ -101,6 +107,11 @@ namespace Strassio.Core.Geometry
 
             GetBounds(segments, out double minX, out double minY, out double maxX, out double maxY);
 
+            minX -= paddingMm;
+            minY -= paddingMm;
+            maxX += paddingMm;
+            maxY += paddingMm;
+
             // Поля по краям: чтобы вся граница формы попала внутрь сетки вместе с соседними узлами.
             const int marginCells = 2;
             double width = maxX - minX;
@@ -118,7 +129,35 @@ namespace Strassio.Core.Geometry
             int ny = (int)Math.Ceiling(height / cell) + 2 * marginCells + 1;
 
             double[] distances = ComputeUnsignedDistances(segments, origin, nx, ny, cell);
-            ApplySign(segments, distances, origin, nx, ny, cell);
+            if (union)
+            {
+                // Знак по каждому контуру отдельно: внутри, если внутри хотя бы одного.
+                var inside = new bool[distances.Length];
+                foreach (FlattenedCurve contour in contours)
+                {
+                    List<(Point2D A, Point2D B)> own = CollectSegments(new[] { contour });
+                    var probe = new double[distances.Length];
+                    for (int i = 0; i < probe.Length; i++)
+                    {
+                        probe[i] = 1;
+                    }
+
+                    ApplySign(own, probe, origin, nx, ny, cell);
+                    for (int i = 0; i < probe.Length; i++)
+                    {
+                        inside[i] |= probe[i] > 0;
+                    }
+                }
+
+                for (int i = 0; i < distances.Length; i++)
+                {
+                    distances[i] = inside[i] ? distances[i] : -distances[i];
+                }
+            }
+            else
+            {
+                ApplySign(segments, distances, origin, nx, ny, cell);
+            }
 
             return new SignedDistanceField(distances, nx, ny, cell, origin);
         }

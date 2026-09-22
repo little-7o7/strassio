@@ -191,6 +191,11 @@ namespace Strassio.Corel
                 contours = read[0];
             }
 
+            if (info.UsesWholeSelection)
+            {
+                contours = read.SelectMany(c => c).Where(c => c.IsClosed).ToList();
+            }
+
             List<CoreCurve>? guides = info.NeedsGuide && read.Count > 1 ? new List<CoreCurve> { MethodRunner.OuterContour(read[1]) } : null;
 
             // Камень: из таблицы по имени; нет в таблице — размер как у старых камней группы.

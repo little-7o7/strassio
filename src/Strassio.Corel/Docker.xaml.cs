@@ -150,6 +150,7 @@ namespace Strassio.Corel
 
             RebuildColors();
             RebuildEditTexts();
+            RefreshBridgeBox();
             ShowTabPanels();
             LivePreviewBox.IsChecked = context.Settings.LivePreview;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
@@ -489,6 +490,11 @@ namespace Strassio.Corel
                 return ReadTwoShapes(doc, method, out guides);
             }
 
+            if (method.Info.UsesWholeSelection)
+            {
+                return ReadWholeSelection(doc);
+            }
+
             global::Corel.Interop.VGCore.Curve? corelCurve = GetCurveOf(selected);
             if (corelCurve == null || corelCurve.SubPaths.Count == 0)
             {
@@ -505,6 +511,56 @@ namespace Strassio.Corel
 
             lastSourceIds.Add(selected.StaticID);
             if (method.Info.NeedsClosed && !MethodRunner.OuterContour(contours).IsClosed)
+            {
+                SetStatus("status.needClosed");
+                return null;
+            }
+
+            return contours;
+        }
+
+        /// <summary>
+        /// Все выделенные фигуры (обводка дизайна): контуры каждой, группы — насквозь. Сами стразы
+        /// пропускаются — обводится рисунок, а не камни на нём.
+        /// </summary>
+        private List<CoreCurve>? ReadWholeSelection(Document doc)
+        {
+            var contours = new List<CoreCurve>();
+            List<string> known = StoneNames.SizesOf(context.Stones).ToList();
+
+            void Collect(Shape shape)
+            {
+                if (shape.Type == cdrShapeType.cdrGroupShape)
+                {
+                    Shapes children = shape.Shapes;
+                    for (int i = 1; i <= children.Count; i++)
+                    {
+                        Collect(children[i]);
+                    }
+
+                    return;
+                }
+
+                if (StoneShapes.IsStone(shape, known))
+                {
+                    return;
+                }
+
+                global::Corel.Interop.VGCore.Curve? curve = GetCurveOf(shape);
+                if (curve != null && curve.SubPaths.Count > 0)
+                {
+                    contours.AddRange(ReadAllSubPaths(curve).Where(c => c.IsClosed));
+                    lastSourceIds.Add(shape.StaticID);
+                }
+            }
+
+            ShapeRange selection = doc.SelectionRange;
+            for (int i = 1; i <= selection.Count; i++)
+            {
+                Collect(selection[i]);
+            }
+
+            if (contours.Count == 0)
             {
                 SetStatus("status.needClosed");
                 return null;

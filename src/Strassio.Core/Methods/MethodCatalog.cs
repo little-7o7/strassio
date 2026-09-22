@@ -29,6 +29,9 @@ namespace Strassio.Core.Methods
         /// <summary>Акценты — крупный камень на концах и/или в углах.</summary>
         L8,
 
+        /// <summary>Обводка всего дизайна рядом страз на отступе (раздел 8).</summary>
+        Outline,
+
         /// <summary>Сетка.</summary>
         F1,
 
@@ -79,6 +82,15 @@ namespace Strassio.Core.Methods
 
         /// <summary>Нужна вторая линия: F7 — вторая кривая перехода, F8 — направляющая (выделить обе фигуры).</summary>
         public bool NeedsGuide { get; private set; }
+
+        /// <summary>Берёт все выделенные фигуры сразу (обводка всего дизайна), а не одну.</summary>
+        public bool UsesWholeSelection { get; private set; }
+
+        internal MethodInfo WithWholeSelection()
+        {
+            UsesWholeSelection = true;
+            return this;
+        }
 
         internal MethodInfo WithGuide()
         {
@@ -235,6 +247,7 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.L6, isFill: false, needsClosed: false, Gap, SizePattern),
             new MethodInfo(MethodKind.L7, isFill: false, needsClosed: false, Gap, DashCount, SkipCount, CornerAngle),
             new MethodInfo(MethodKind.L8, isFill: false, needsClosed: false, Gap, AccentSize, AccentWhere, CornerAngle),
+            new MethodInfo(MethodKind.Outline, isFill: false, needsClosed: true, Gap, EdgeMargin, CornerAngle).WithWholeSelection(),
             new MethodInfo(MethodKind.F1, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
             new MethodInfo(MethodKind.F2, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
             new MethodInfo(MethodKind.F3, isFill: true, needsClosed: true, Gap, EdgeMargin, CenterPattern),

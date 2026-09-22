@@ -111,6 +111,21 @@ namespace Strassio.Corel
             return result;
         }
 
+        /// <summary>Страза ли это: круг с меткой Strassio или с именем «размер цвет» известного размера.</summary>
+        public static bool IsStone(Shape shape, IEnumerable<string> knownSizes)
+        {
+            var probe = new List<StoneShape>();
+            int order = 0;
+            if (!TryAddStone(shape, knownSizes, probe, ref order))
+            {
+                return false;
+            }
+
+            StoneShape stone = probe[0];
+            var known = new HashSet<string>(knownSizes, StringComparer.OrdinalIgnoreCase);
+            return shape.Properties.Exists(Tag, SizeId) || known.Contains(stone.Size);
+        }
+
         /// <summary>Все стразы на странице (на всех слоях, внутри групп тоже).</summary>
         public static List<StoneShape> FromPage(Page page, IEnumerable<string> knownSizes)
         {

@@ -98,7 +98,23 @@
                         ToolTip="{Binding [edit.fillHoles.tooltip]}"/>
                 <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [edit.updateLive.tooltip]}"/>
-                <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+
+                <!-- Производство (раздел 11) -->
+                <TextBlock Text="{Binding [prod.title]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [prod.bridges]}" Click="CheckBridges_Click" ToolTip="{Binding [prod.bridges.tooltip]}"/>
+                    <TextBox x:Name="BridgeBox" Grid.Column="2" TextChanged="BridgeBox_TextChanged" ToolTip="{Binding [prod.bridgeMin.tooltip]}"/>
+                </Grid>
+                <Button Content="{Binding [prod.layers]}" Click="LayersBySize_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [prod.layers.tooltip]}"/>
+                <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [prod.clean.tooltip]}"/>
             </StackPanel>
 
             <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска и выделение по размеру/цвету — Docker.Edit.cs -->
