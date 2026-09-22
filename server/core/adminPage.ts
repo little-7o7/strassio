@@ -165,7 +165,7 @@ async function search() {
           (a.status === "active" ? "" : "(отозвана) ") + '<span class="muted">' + date(a.lastCheckAt) + " · " + esc(a.pluginVersion) + " · Corel " + esc(a.corelVersion) + "</span> " +
           (a.status === "active" ? button("отозвать", JSON.stringify(["revoke", a.id])) : "") + "</div>").join("") || '<span class="muted">нет</span>';
         const s = l.serial;
-        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + "</span></td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
+        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + '</span></td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
           "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.maxPcs + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
           button("продлить", JSON.stringify(["extend", s])) +

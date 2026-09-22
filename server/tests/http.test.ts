@@ -109,3 +109,17 @@ test("админка: пароль с русскими буквами и зна�
   assert.equal((await app.handle(req("POST", "/api/admin/login", {}, encodeURIComponent("Стразы2026")))).status, 401);
   assert.equal((await app.handle(req("POST", "/api/admin/login", {}, "%E0%A4%A"))).status, 401, "битая кодировка — просто неверный пароль");
 });
+
+test("админка: скрипт страницы без синтаксических ошибок (иначе кнопка «Войти» не работает)", async () => {
+  const page = (await makeApp().handle(req("GET", "/adminpanel"))).html ?? "";
+  const script = page.substring(page.indexOf("<script>") + 8, page.lastIndexOf("</script>"));
+  assert.ok(script.includes("function login"));
+  assert.doesNotThrow(() => new Function(script));
+});
+
+test("сайт «Моя лицензия»: скрипт без синтаксических ошибок", async () => {
+  const { readFileSync } = await import("node:fs");
+  const page = readFileSync(new URL("../../public/license.html", import.meta.url), "utf8");
+  const script = page.substring(page.indexOf("<script>") + 8, page.lastIndexOf("</script>"));
+  assert.doesNotThrow(() => new Function(script));
+});
