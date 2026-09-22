@@ -1,0 +1,5 @@
+.env*
+# Справка для ИИ-помощников, которую ставит vercel integration add neon — не часть сервера
+.agents/
+.claude/
+skills-lock.json
