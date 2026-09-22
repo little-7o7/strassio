@@ -9,6 +9,8 @@ export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
 /** Переносов сколько угодно, но не чаще раза в 7 дней (решение автора, 22.09.2026). Раньше — через админа. */
 export const TRANSFER_COOLDOWN_DAYS = 7;
+/** Один ключ — один компьютер (решение автора, 22.09.2026). Колонка max_pcs в базе больше не читается. */
+export const PCS_PER_KEY = 1;
 const DAY = 24 * 60 * 60 * 1000;
 
 export type ErrorCode =
@@ -38,7 +40,7 @@ export interface RecoveryView {
   plan: string;
   status: string;
   expiresAt: string | null;
-  maxPcs: number;
+  maxPcs: number; // всегда PCS_PER_KEY
   /** 1 — перенос можно сделать сейчас, 0 — только после nextTransferAt (или через админа). */
   transfersLeft: number;
   nextTransferAt: string | null;
@@ -50,7 +52,6 @@ export type RecoveryResult<T> = { ok: true } & T | { ok: false; error: ErrorCode
 export interface KeyOptions {
   count?: number;
   days?: number | null;
-  maxPcs?: number;
   note?: string;
 }
 
@@ -78,7 +79,7 @@ export class LicenseService {
       return this.refresh(license!, mine, input, "reactivate");
     }
 
-    if (active.length >= license!.maxPcs) {
+    if (active.length >= PCS_PER_KEY) {
       return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     }
 
@@ -100,7 +101,7 @@ export class LicenseService {
       return this.activate(req); // уже здесь — переносить нечего
     }
 
-    if (active.length >= license!.maxPcs) {
+    if (active.length >= PCS_PER_KEY) {
       if (!this.canTransfer(license!)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
 
       const oldest = active.slice().sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
@@ -178,7 +179,6 @@ export class LicenseService {
 
   async createKeys(options: KeyOptions): Promise<Array<{ serial: string; recoveryCode: string }>> {
     const count = clamp(Math.floor(options.count ?? 1), 1, 500);
-    const maxPcs = clamp(Math.floor(options.maxPcs ?? 1), 1, 100);
     const now = this.clock();
     const expiresAt = options.days && options.days > 0 ? new Date(now.getTime() + options.days * DAY) : null;
     const keys: Array<{ serial: string; recoveryCode: string }> = [];
@@ -191,7 +191,7 @@ export class LicenseService {
         plan: "full",
         status: "active",
         expiresAt,
-        maxPcs,
+        maxPcs: PCS_PER_KEY,
         transfersCount: 0,
         transfersSince: now,
         note: (options.note ?? "").slice(0, 500),
@@ -201,7 +201,7 @@ export class LicenseService {
       keys.push({ serial, recoveryCode });
     }
 
-    await this.log("admin", "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., ПК: ${maxPcs}, срок: ${options.days || "бессрочно"}`);
+    await this.log("admin", "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., срок: ${options.days || "бессрочно"}`);
     return keys;
   }
 
@@ -211,7 +211,7 @@ export class LicenseService {
     return Promise.all(rows.map(async (l) => ({ ...l, activations: await this.store.activations(l.id) })));
   }
 
-  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, max_pcs, note, new_recovery. */
+  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, note, new_recovery. */
   async adminLicense(serialText: unknown, action: string, value: unknown): Promise<LicenseRow | null> {
     const serial = normalizeSerial(serialText);
     const license = serial ? await this.store.findLicense(serial) : null;
@@ -233,9 +233,6 @@ export class LicenseService {
       case "reset_transfers":
         license.transfersCount = 0;
         license.transfersSince = this.clock();
-        break;
-      case "max_pcs":
-        license.maxPcs = clamp(Math.floor(Number(value) || 1), 1, 100);
         break;
       case "note":
         license.note = String(value ?? "").slice(0, 500);
@@ -331,7 +328,7 @@ export class LicenseService {
     const hwid = parts.join(".");
     const active = (await this.store.activations(license.id)).filter((a) => a.status === "active");
     if (!active.some((a) => hwidMatches(parseHwid(a.hwid)!, parts))) {
-      if (active.length >= license.maxPcs) return { ok: false, error: "occupied" };
+      if (active.length >= PCS_PER_KEY) return { ok: false, error: "occupied" };
       await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }));
     }
 
@@ -357,7 +354,7 @@ export class LicenseService {
       plan: license.plan,
       status: license.status,
       expiresAt: license.expiresAt ? iso(license.expiresAt) : null,
-      maxPcs: license.maxPcs,
+      maxPcs: PCS_PER_KEY,
       ...this.transferInfo(license),
       computers: activations.map((a) => ({
         id: a.id,

@@ -107,12 +107,13 @@ test("переносов сколько угодно, но не чаще раз�
   payload(await service.transfer({ serial, hwid: PC3 }));
 });
 
-test("ключ на 2 компьютера: второй активируется без переноса", async () => {
-  const { service } = setup();
-  const [{ serial }] = await service.createKeys({ maxPcs: 2 });
+test("один ключ — один компьютер: даже старый ключ с max_pcs = 2 в базе второй компьютер не пускает", async () => {
+  const { service, store } = setup();
+  const [{ serial }] = await service.createKeys({});
+  store.licenses[0].maxPcs = 2;
   payload(await service.activate({ serial, hwid: PC1 }));
-  payload(await service.activate({ serial, hwid: PC2 }));
-  assert.equal((await service.activate({ serial, hwid: PC3 })).ok, false);
+  assert.equal((await service.activate({ serial, hwid: PC2 })).ok, false);
+  assert.equal((await service.adminLicense(serial, "max_pcs", 5)), null, "в админке больше нельзя поменять число компьютеров");
 });
 
 test("освободить компьютер — место свободно, не считается переносом", async () => {

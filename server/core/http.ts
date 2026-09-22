@@ -166,7 +166,6 @@ export class App {
         const keys = await s.createKeys({
           count: Number(body.count) || 1,
           days: Number(body.days) || null,
-          maxPcs: Number(body.maxPcs) || 1,
           note: typeof body.note === "string" ? body.note : "",
         });
         return ok({ keys, serials: keys.map((k) => k.serial) });

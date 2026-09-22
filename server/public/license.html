@@ -109,8 +109,7 @@ function show(l) {
     "<div><b>Ключ</b><span class=mono>" + esc(l.serial) + "</span></div>" +
     "<div><b>Статус</b>" + status + "</div>" +
     "<div><b>Действует до</b>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</div>" +
-    "<div><b>Компьютеров</b>" + l.computers.filter((c) => c.active).length + " из " + l.maxPcs + "</div>" +
-    "<div><b>Следующий перенос</b>" + (l.nextTransferAt ? "с " + date(l.nextTransferAt) : "можно сейчас") + "</div>";
+        "<div><b>Следующий перенос</b>" + (l.nextTransferAt ? "с " + date(l.nextTransferAt) : "можно сейчас") + "</div>";
   const rows = l.computers.map((c) =>
     "<tr><td class=mono>" + esc(c.code) + "</td><td>" + date(c.firstAt) + "</td><td>" + date(c.lastCheckAt) + "</td><td>" +
     (c.active ? '<span class="ok">работает</span>' : '<span class="muted">освобождён</span>') + "</td><td>" +
