@@ -321,13 +321,13 @@ namespace Strassio.Corel
                 app.EventsEnabled = false;
                 doc.Unit = cdrUnit.cdrMillimeter;
 
-                List<CoreCurve>? contours = ReadContours(selected, method);
+                List<CoreCurve>? contours = ReadContours(doc, selected, method, out List<CoreCurve>? guides);
                 if (contours == null)
                 {
                     return;
                 }
 
-                MethodResult result = MethodRunner.Run(method.Info.Kind, contours, size.DiameterMm, Params, SizeTable);
+                MethodResult result = MethodRunner.Run(method.Info.Kind, contours, size.DiameterMm, Params, SizeTable, guides);
                 IReadOnlyList<PlacedStone> stones = result.Stones;
                 if (stones.Count == 0)
                 {
@@ -445,8 +445,14 @@ namespace Strassio.Corel
         /// вызывающий). null — прочитать не удалось или методу нужна замкнутая фигура; сообщение
         /// уже показано внизу докера.
         /// </summary>
-        private List<CoreCurve>? ReadContours(Shape selected, MethodOption method)
+        private List<CoreCurve>? ReadContours(Document doc, Shape selected, MethodOption method, out List<CoreCurve>? guides)
         {
+            guides = null;
+            if (method.Info.NeedsGuide)
+            {
+                return ReadTwoShapes(doc, method, out guides);
+            }
+
             global::Corel.Interop.VGCore.Curve? corelCurve = GetCurveOf(selected);
             if (corelCurve == null || corelCurve.SubPaths.Count == 0)
             {
@@ -468,6 +474,65 @@ namespace Strassio.Corel
             }
 
             return contours;
+        }
+
+        /// <summary>
+        /// Две выделенные фигуры для F7 «переход между кривыми» (обе — линии перехода) и F8 «по
+        /// направляющей» (замкнутая форма и линия-направляющая: форма — замкнутая и побольше).
+        /// </summary>
+        private List<CoreCurve>? ReadTwoShapes(Document doc, MethodOption method, out List<CoreCurve>? guides)
+        {
+            guides = null;
+            string errorKey = method.Info.Kind == MethodKind.F7 ? "status.needTwoCurves" : "status.needShapeAndGuide";
+            ShapeRange selection = doc.SelectionRange;
+            if (selection.Count != 2)
+            {
+                SetStatus(errorKey);
+                return null;
+            }
+
+            var read = new List<List<CoreCurve>>();
+            for (int i = 1; i <= 2; i++)
+            {
+                global::Corel.Interop.VGCore.Curve? curve = GetCurveOf(selection[i]);
+                List<CoreCurve> contours = curve == null || curve.SubPaths.Count == 0 ? new List<CoreCurve>() : ReadAllSubPaths(curve);
+                if (contours.Count == 0)
+                {
+                    SetStatus(errorKey);
+                    return null;
+                }
+
+                read.Add(contours);
+            }
+
+            if (method.Info.Kind == MethodKind.F7)
+            {
+                guides = new List<CoreCurve> { MethodRunner.OuterContour(read[1]) };
+                return new List<CoreCurve> { MethodRunner.OuterContour(read[0]) };
+            }
+
+            // F8: форма — та, что замкнута (если замкнуты обе — та, что больше), направляющая — другая.
+            double Area(List<CoreCurve> c)
+            {
+                CoreCurve outer = MethodRunner.OuterContour(c);
+                if (!outer.IsClosed)
+                {
+                    return -1;
+                }
+
+                (double w, double h) = CurveMetrics.BoundingSize(CurveFlattener.Flatten(outer));
+                return w * h;
+            }
+
+            int shapeIndex = Area(read[0]) >= Area(read[1]) ? 0 : 1;
+            if (Area(read[shapeIndex]) < 0)
+            {
+                SetStatus(errorKey);
+                return null;
+            }
+
+            guides = new List<CoreCurve> { MethodRunner.OuterContour(read[1 - shapeIndex]) };
+            return read[shapeIndex];
         }
 
         /// <summary>

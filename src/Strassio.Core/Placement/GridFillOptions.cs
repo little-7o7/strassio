@@ -26,6 +26,12 @@ namespace Strassio.Core.Placement
         /// <summary>Дополнительный отступ от края формы (сверх собственного радиуса стразы), мм.</summary>
         public double MarginFromEdgeMm { get; set; }
 
+        /// <summary>Сдвиг сетки вдоль её строк (в повёрнутых координатах сетки), мм. Нужен автоподбору.</summary>
+        public double OffsetXMm { get; set; }
+
+        /// <summary>Сдвиг сетки поперёк строк, мм.</summary>
+        public double OffsetYMm { get; set; }
+
         /// <summary>Точность разбивки кривых Безье в полилинию, мм.</summary>
         public double FlattenToleranceMm { get; set; } = 0.02;
     }

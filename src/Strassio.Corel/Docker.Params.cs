@@ -126,9 +126,12 @@ namespace Strassio.Corel
             ChoiceOption? chosen = options.FirstOrDefault(o => string.Equals(o.Value, current, System.StringComparison.OrdinalIgnoreCase));
             if (chosen == null && !field.AllowsSameSize && ActiveSet != null && ActiveSet.Sizes.Count > 0)
             {
-                string largest = ActiveSet.Sizes.OrderByDescending(s => s.DiameterMm).First().Name;
-                chosen = options.FirstOrDefault(o => o.Value == largest);
-                field.TrySetChoice(Params, largest);
+                // Пусто: для акцента — самый крупный размер, для щелей (F12) — самый мелкий.
+                string pick = (field.DefaultsToSmallest
+                    ? ActiveSet.Sizes.OrderBy(s => s.DiameterMm)
+                    : ActiveSet.Sizes.OrderByDescending(s => s.DiameterMm)).First().Name;
+                chosen = options.FirstOrDefault(o => o.Value == pick);
+                field.TrySetChoice(Params, pick);
             }
 
             combo.SelectedItem = chosen ?? options.FirstOrDefault();
@@ -161,7 +164,8 @@ namespace Strassio.Corel
         {
             string text = box.Text.Trim();
             IReadOnlyList<string> unknown = SizePatterns.Unknown(text, KnownSizes);
-            string? error = SizePatterns.Split(text).Length == 0 ? "param.pattern.empty" : unknown.Count > 0 ? "param.pattern.invalid" : null;
+            bool empty = SizePatterns.Split(text).Length == 0;
+            string? error = empty && !field.AllowsEmptyText ? "param.pattern.empty" : unknown.Count > 0 ? "param.pattern.invalid" : null;
             if (error == null && field.TrySetChoice(Params, text))
             {
                 box.ClearValue(BorderBrushProperty);

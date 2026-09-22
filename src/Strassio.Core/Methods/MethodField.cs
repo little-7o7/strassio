@@ -126,6 +126,12 @@ namespace Strassio.Core.Methods
         /// <summary>Для <see cref="FieldKind.Size"/>: есть ли вариант «как основной камень» (пустое значение).</summary>
         public bool AllowsSameSize { get; private set; }
 
+        /// <summary>Для <see cref="FieldKind.Size"/> без «как основной»: если пусто, взять самый мелкий размер (иначе — самый крупный).</summary>
+        public bool DefaultsToSmallest { get; private set; }
+
+        /// <summary>Для <see cref="FieldKind.Text"/>: можно ли оставить поле пустым.</summary>
+        public bool AllowsEmptyText { get; private set; }
+
         /// <summary>Записывает вариант; незнакомое слово не записывается. Для размеров — любое название из таблицы.</summary>
         public bool TrySetChoice(MethodParameters p, string choice)
         {
@@ -166,14 +172,19 @@ namespace Strassio.Core.Methods
             new MethodField(id, FieldKind.Choice, 0, 0, choices, null, null, get, set, null, null, null);
 
         internal static MethodField SizeChoice(
-            string id, bool allowSame, Func<MethodParameters, string> get, Action<MethodParameters, string> set) =>
+            string id, bool allowSame, Func<MethodParameters, string> get, Action<MethodParameters, string> set, bool smallest = false) =>
             new MethodField(id, FieldKind.Size, 0, 0, Array.Empty<string>(), null, null, get, set, null, null, null)
             {
                 AllowsSameSize = allowSame,
+                DefaultsToSmallest = smallest,
             };
 
-        internal static MethodField TextField(string id, Func<MethodParameters, string> get, Action<MethodParameters, string> set) =>
-            new MethodField(id, FieldKind.Text, 0, 0, Array.Empty<string>(), null, null, get, set, null, null, null);
+        internal static MethodField TextField(
+            string id, Func<MethodParameters, string> get, Action<MethodParameters, string> set, bool allowEmpty = false) =>
+            new MethodField(id, FieldKind.Text, 0, 0, Array.Empty<string>(), null, null, get, set, null, null, null)
+            {
+                AllowsEmptyText = allowEmpty,
+            };
 
         internal static MethodField Toggle(
             string id, Func<MethodParameters, bool> get, Action<MethodParameters, bool> set) =>

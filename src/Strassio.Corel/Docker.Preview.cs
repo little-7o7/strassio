@@ -45,10 +45,11 @@ namespace Strassio.Corel
 
             cdrUnit prevUnit = doc.Unit;
             List<CoreCurve>? contours;
+            List<CoreCurve>? guides = null;
             try
             {
                 doc.Unit = cdrUnit.cdrMillimeter;
-                contours = ReadContours(selected, method);
+                contours = ReadContours(doc, selected, method, out guides);
             }
             catch (Exception ex)
             {
@@ -69,7 +70,7 @@ namespace Strassio.Corel
             MethodResult result;
             try
             {
-                result = MethodRunner.Run(method.Info.Kind, contours, size.Size.DiameterMm, Params, SizeTable);
+                result = MethodRunner.Run(method.Info.Kind, contours, size.Size.DiameterMm, Params, SizeTable, guides);
             }
             catch (Exception ex)
             {
@@ -84,7 +85,7 @@ namespace Strassio.Corel
                 return;
             }
 
-            PreviewImage.Source = BuildPreview(contours, result, color.Color);
+            PreviewImage.Source = BuildPreview(guides == null ? contours : contours.Concat(guides).ToList(), result, color.Color);
             PreviewPanel.Visibility = Visibility.Visible;
             if (result.ConflictIndices.Count > 0)
             {

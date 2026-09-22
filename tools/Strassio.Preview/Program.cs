@@ -219,13 +219,17 @@ static void RenderMethodsScenario()
     variants.Add(("l6-pattern", MethodKind.L6, new MethodParameters { SizePattern = "ss6, ss6, ss16" }));
     variants.Add(("l8-accents", MethodKind.L8, new MethodParameters { AccentSize = "ss16" }));
     variants.Add(("l4-grow", MethodKind.L4, new MethodParameters { RowCount = 5, WidthProfile = MethodChoices.ProfileGrow }));
+    variants.Add(("f9-spiral", MethodKind.F9, new MethodParameters { CenterMode = MethodChoices.CenterSpiral }));
+    variants.Add(("f10-mix", MethodKind.F10, new MethodParameters { MixSizes = "ss5, ss10, ss16" }));
+    variants.Add(("f11-ss16-ss5", MethodKind.F11, new MethodParameters { FromSize = "ss16", ToSize = "ss5" }));
+    variants.Add(("f2-auto", MethodKind.F2, new MethodParameters { AutoGrid = MethodChoices.AutoShiftAngle }));
 
     foreach ((string shapeName, Curve curve) in shapes)
     {
         FlattenedCurve flat = CurveFlattener.Flatten(curve);
         foreach ((string name, MethodKind kind, MethodParameters p) in variants)
         {
-            if (MethodCatalog.Get(kind).NeedsClosed && !flat.IsClosed)
+            if ((MethodCatalog.Get(kind).NeedsClosed && !flat.IsClosed) || MethodCatalog.Get(kind).NeedsGuide)
             {
                 continue;
             }
@@ -239,7 +243,42 @@ static void RenderMethodsScenario()
         }
     }
 
+    // F7 и F8 — с двумя линиями.
+    Curve waveA = WaveLine(0, 0, 60, 4);
+    Curve waveB = WaveLine(0, 22, 60, -3);
+    MethodResult blend = MethodRunner.Run(MethodKind.F7, new[] { waveA }, 2.4, new MethodParameters(), previewSizes, new[] { waveB });
+    SaveTwo("f7-blend", waveA, waveB, blend);
+
+    Curve heart = BuildHeart().Item1;
+    Curve guide = Curve.FromPolyline(new[] { new Point2D(-30, -20), new Point2D(0, 5), new Point2D(30, 0) }, isClosed: false);
+    MethodResult guided = MethodRunner.Run(MethodKind.F8, new[] { heart }, 2.4, new MethodParameters(), previewSizes, new[] { guide });
+    SaveTwo("f8-guide-heart", heart, guide, guided);
+
+    void SaveTwo(string name, Curve a, Curve b, MethodResult result)
+    {
+        var lines = new List<(IReadOnlyList<Point2D> Points, string Color)>
+        {
+            (CurveFlattener.Flatten(a).Points.Select(pt => pt.Position).ToList(), "#cccccc"),
+            (CurveFlattener.Flatten(b).Points.Select(pt => pt.Position).ToList(), "#1E88E5"),
+        };
+        File.WriteAllText(Path.Combine(outDir, name + ".svg"), SvgWriter.RenderMulti(lines, result.Stones));
+        int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01).Count(x => x);
+        Console.WriteLine($"{name,-18} {result.Stones.Count,5} страз, наложений: {overlaps}");
+    }
+
     Console.WriteLine($"SVG сохранены: {outDir}");
+}
+
+static Curve WaveLine(double x0, double y0, double length, double amplitude)
+{
+    var pts = new List<Point2D>();
+    for (int i = 0; i <= 60; i++)
+    {
+        double x = x0 + length * i / 60;
+        pts.Add(new Point2D(x, y0 + amplitude * Math.Sin(x / length * 2 * Math.PI)));
+    }
+
+    return Curve.FromPolyline(pts, isClosed: false);
 }
 
 // Картинки-схемы методов из списка докера (MethodSamples) — out/preview/icons/.

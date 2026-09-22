@@ -34,9 +34,10 @@ namespace Strassio.Core.Methods
         /// Таблица размеров «название → диаметр, мм» — для методов с несколькими размерами (L2 с другими
         /// крайними рядами, L5, L6, L8). Нет таблицы или размера в ней — берётся основной камень.
         /// </param>
+        /// <param name="guides">Вторая линия для F7 (вторая кривая перехода) и F8 (направляющая).</param>
         public static MethodResult Run(
             MethodKind kind, IReadOnlyList<Curve> contours, double stoneDiameterMm, MethodParameters p,
-            IReadOnlyDictionary<string, double>? sizes = null)
+            IReadOnlyDictionary<string, double>? sizes = null, IReadOnlyList<Curve>? guides = null)
         {
             if (contours == null || contours.Count == 0)
             {
@@ -77,14 +78,57 @@ namespace Strassio.Core.Methods
 
                 case MethodKind.F1:
                 case MethodKind.F2:
-                    return Plain(GridFiller.Fill(contours, new GridFillOptions
+                    var grid = new GridFillOptions
                     {
                         StoneDiameterMm = d,
                         GapMm = p.GapMm,
                         Pattern = kind == MethodKind.F1 ? GridPattern.Square : GridPattern.Honeycomb,
                         AngleDeg = p.AngleDeg,
                         MarginFromEdgeMm = p.EdgeMarginMm,
-                    }));
+                    };
+                    return Plain(p.AutoGrid == MethodChoices.AutoOff
+                        ? GridFiller.Fill(contours, grid)
+                        : AdvancedFillers.AutoGrid(contours, grid, tryAngles: p.AutoGrid == MethodChoices.AutoShiftAngle));
+
+                case MethodKind.F6:
+                    return Plain(AdvancedFillers.Centerline(contours, d, p.GapMm, p.EdgeMarginMm));
+
+                case MethodKind.F7:
+                    if (guides == null || guides.Count == 0)
+                    {
+                        throw new ArgumentException("Для перехода нужны две кривые.", nameof(guides));
+                    }
+
+                    return Plain(AdvancedFillers.Blend(OuterContour(contours), guides[0], d, p.GapMm, p.RowGapMm));
+
+                case MethodKind.F8:
+                    if (guides == null || guides.Count == 0)
+                    {
+                        throw new ArgumentException("Нужна направляющая линия.", nameof(guides));
+                    }
+
+                    return Plain(AdvancedFillers.AlongGuide(contours, guides[0], d, p.GapMm, p.RowGapMm, p.EdgeMarginMm));
+
+                case MethodKind.F9:
+                    return Plain(AdvancedFillers.FromCenter(contours, d, p.GapMm, p.EdgeMarginMm, spiral: p.CenterMode == MethodChoices.CenterSpiral));
+
+                case MethodKind.F10:
+                    List<double> mix = SizePatterns.Parse(p.MixSizes, sizes);
+                    if (mix.Count == 0)
+                    {
+                        mix.Add(d);
+                    }
+
+                    return Plain(AdvancedFillers.Random(contours, mix, p.GapMm, p.EdgeMarginMm, p.Variant));
+
+                case MethodKind.F11:
+                    return Plain(AdvancedFillers.Gradient(
+                        contours, SizeRange(Diameter(p.FromSize, d, sizes), Diameter(p.ToSize, d, sizes), sizes),
+                        p.GapMm, p.EdgeMarginMm, horizontal: p.GradientDirection == MethodChoices.GradientHorizontal));
+
+                case MethodKind.F12:
+                    double small = Diameter(p.FillSize, d * 0.6, sizes);
+                    return Plain(AdvancedFillers.FillGaps(contours, d, Math.Min(small, d), p.GapMm, p.EdgeMarginMm));
 
                 case MethodKind.F3:
                 case MethodKind.F4:

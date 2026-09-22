@@ -7,12 +7,16 @@ namespace Strassio.Core.Methods
     /// <summary>Маленький образец для картинки-схемы метода: фигура, камень и параметры.</summary>
     public sealed class MethodSample
     {
-        internal MethodSample(Curve shape, double stoneDiameterMm, MethodParameters parameters)
+        internal MethodSample(Curve shape, double stoneDiameterMm, MethodParameters parameters, Curve? guide = null)
         {
             Shape = shape;
             StoneDiameterMm = stoneDiameterMm;
             Parameters = parameters;
+            Guide = guide;
         }
+
+        /// <summary>Вторая линия образца (F7, F8).</summary>
+        public Curve? Guide { get; }
 
         /// <summary>Маленькая таблица размеров образца — для методов с несколькими размерами.</summary>
         public IReadOnlyDictionary<string, double> Sizes { get; } = new Dictionary<string, double>
@@ -71,6 +75,23 @@ namespace Strassio.Core.Methods
                         Circle(11), 2.6, new MethodParameters { GapMm = 0.5, Rings = 1, CenterPattern = MethodChoices.PatternSquare });
                 case MethodKind.F5:
                     return new MethodSample(Circle(11), 2.6, new MethodParameters { GapMm = 0.5, Rings = 2 });
+                case MethodKind.F6:
+                    return new MethodSample(Leaf(), 2.4, new MethodParameters { GapMm = 0.5 });
+                case MethodKind.F7:
+                    return new MethodSample(
+                        Line(new Point2D(2, 4), new Point2D(22, 8)), 2.2, new MethodParameters { GapMm = 0.8, RowGapMm = 1.2 },
+                        Line(new Point2D(2, 20), new Point2D(22, 14)));
+                case MethodKind.F8:
+                    return new MethodSample(
+                        Circle(11), 2.6, new MethodParameters { GapMm = 0.6, RowGapMm = 0.6 }, Wave());
+                case MethodKind.F9:
+                    return new MethodSample(Circle(11), 2.8, new MethodParameters { GapMm = 0.6 });
+                case MethodKind.F10:
+                    return new MethodSample(Circle(11), 2.6, new MethodParameters { GapMm = 0.6, MixSizes = "s, l", Variant = 3 });
+                case MethodKind.F11:
+                    return new MethodSample(Circle(11), 2.4, new MethodParameters { GapMm = 0.5, FromSize = "l", ToSize = "m" });
+                case MethodKind.F12:
+                    return new MethodSample(Circle(11), 3.4, new MethodParameters { GapMm = 0.4, FillSize = "s" });
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
@@ -80,7 +101,9 @@ namespace Strassio.Core.Methods
         public static MethodResult Run(MethodKind kind, out MethodSample sample)
         {
             sample = For(kind);
-            return MethodRunner.Run(kind, new[] { sample.Shape }, sample.StoneDiameterMm, sample.Parameters, sample.Sizes);
+            return MethodRunner.Run(
+                kind, new[] { sample.Shape }, sample.StoneDiameterMm, sample.Parameters, sample.Sizes,
+                sample.Guide == null ? null : new[] { sample.Guide });
         }
 
         /// <summary>Пологая волна слева направо — для методов по линии.</summary>
@@ -94,6 +117,22 @@ namespace Strassio.Core.Methods
             }
 
             return Curve.FromPolyline(points, isClosed: false);
+        }
+
+        private static Curve Line(Point2D a, Point2D b) => Curve.FromPolyline(new List<Point2D> { a, b }, isClosed: false);
+
+        /// <summary>Вытянутый лист — для заливки «по центральной линии».</summary>
+        private static Curve Leaf()
+        {
+            var points = new List<Point2D>();
+            const int n = 64;
+            for (int i = 0; i < n; i++)
+            {
+                double a = 2 * Math.PI * i / n;
+                points.Add(new Point2D(12 + 11.5 * Math.Cos(a), 12 + 5.5 * Math.Sin(a) * (1 - 0.3 * Math.Cos(a))));
+            }
+
+            return Curve.FromPolyline(points, isClosed: true);
         }
 
         /// <summary>Зигзаг с острыми углами — для «акцентов» в углах.</summary>

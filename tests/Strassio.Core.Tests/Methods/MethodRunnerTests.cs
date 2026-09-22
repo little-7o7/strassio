@@ -59,7 +59,8 @@ public class MethodRunnerTests : IDisposable
     {
         foreach (MethodInfo info in MethodCatalog.All)
         {
-            MethodResult result = Run(info.Kind, Square(40), new MethodParameters());
+            Curve[]? guide = info.NeedsGuide ? new[] { Line(40) } : null;
+            MethodResult result = MethodRunner.Run(info.Kind, new[] { Square(40) }, D, new MethodParameters(), null, guide);
             Assert.True(result.Stones.Count > 0, info.Key);
             Assert.True(MinPairGap(result.Stones) > -0.05, info.Key + ": стразы накладываются");
         }

@@ -135,6 +135,30 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "widthProfile")]
         public string WidthProfile { get; set; } = MethodChoices.ProfileMiddle;
 
+        /// <summary>F1 и F2: автоподбор сетки — выкл, сдвиг, сдвиг и поворот.</summary>
+        [DataMember(Name = "autoGrid")]
+        public string AutoGrid { get; set; } = MethodChoices.AutoOff;
+
+        /// <summary>F9: кольца или спираль.</summary>
+        [DataMember(Name = "centerMode")]
+        public string CenterMode { get; set; } = MethodChoices.CenterRings;
+
+        /// <summary>F10: номер варианта случайной раскладки (тот же номер — та же раскладка).</summary>
+        [DataMember(Name = "variant")]
+        public int Variant { get; set; }
+
+        /// <summary>F10: смешать размеры, например «ss6, ss10»; пусто — только основной камень.</summary>
+        [DataMember(Name = "mixSizes")]
+        public string MixSizes { get; set; } = string.Empty;
+
+        /// <summary>F11: откуда крупные камни — из центра или слева.</summary>
+        [DataMember(Name = "gradientDirection")]
+        public string GradientDirection { get; set; } = MethodChoices.GradientCenter;
+
+        /// <summary>F12: размер мелких камней для щелей.</summary>
+        [DataMember(Name = "fillSize")]
+        public string FillSize { get; set; } = string.Empty;
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -171,6 +195,12 @@ namespace Strassio.Core.Methods
             AccentSize = string.Empty;
             AccentWhere = MethodChoices.AccentBoth;
             WidthProfile = MethodChoices.ProfileMiddle;
+            AutoGrid = MethodChoices.AutoOff;
+            CenterMode = MethodChoices.CenterRings;
+            Variant = 1;
+            MixSizes = string.Empty;
+            GradientDirection = MethodChoices.GradientCenter;
+            FillSize = string.Empty;
         }
     }
 
@@ -202,6 +232,16 @@ namespace Strassio.Core.Methods
         public const string ProfileMiddle = "middle";
         public const string ProfileGrow = "grow";
         public const string ProfileShrink = "shrink";
+
+        public const string AutoOff = "off";
+        public const string AutoShift = "shift";
+        public const string AutoShiftAngle = "shiftAngle";
+
+        public const string CenterRings = "rings";
+        public const string CenterSpiral = "spiral";
+
+        public const string GradientCenter = "center";
+        public const string GradientHorizontal = "horizontal";
 
         /// <summary>Для поля «размер»: как у основного камня.</summary>
         public const string SameSize = "";

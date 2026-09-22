@@ -43,6 +43,27 @@ namespace Strassio.Core.Methods
 
         /// <summary>Кант: только ряды по краю.</summary>
         F5,
+
+        /// <summary>По центральной линии.</summary>
+        F6,
+
+        /// <summary>Переход между двумя кривыми.</summary>
+        F7,
+
+        /// <summary>По направляющей линии.</summary>
+        F8,
+
+        /// <summary>От центра — кольца или спираль.</summary>
+        F9,
+
+        /// <summary>Случайная плотная.</summary>
+        F10,
+
+        /// <summary>Градиент размера.</summary>
+        F11,
+
+        /// <summary>Добивка щелей мелкими камнями.</summary>
+        F12,
     }
 
     /// <summary>Метод в списке докера: ключ текста, вкладка, нужна ли замкнутая фигура и какие поля показывать.</summary>
@@ -54,6 +75,15 @@ namespace Strassio.Core.Methods
             IsFill = isFill;
             NeedsClosed = needsClosed;
             Fields = fields;
+        }
+
+        /// <summary>Нужна вторая линия: F7 — вторая кривая перехода, F8 — направляющая (выделить обе фигуры).</summary>
+        public bool NeedsGuide { get; private set; }
+
+        internal MethodInfo WithGuide()
+        {
+            NeedsGuide = true;
+            return this;
         }
 
         public MethodKind Kind { get; }
@@ -170,6 +200,27 @@ namespace Strassio.Core.Methods
             "accentWhere", new[] { MethodChoices.AccentBoth, MethodChoices.AccentEnds, MethodChoices.AccentCorners },
             p => p.AccentWhere, (p, v) => p.AccentWhere = v);
 
+        public static readonly MethodField AutoGrid = MethodField.Choice(
+            "autoGrid", new[] { MethodChoices.AutoOff, MethodChoices.AutoShift, MethodChoices.AutoShiftAngle },
+            p => p.AutoGrid, (p, v) => p.AutoGrid = v);
+
+        public static readonly MethodField CenterMode = MethodField.Choice(
+            "centerMode", new[] { MethodChoices.CenterRings, MethodChoices.CenterSpiral },
+            p => p.CenterMode, (p, v) => p.CenterMode = v);
+
+        public static readonly MethodField Variant = MethodField.Number(
+            "variant", FieldKind.Integer, 1, 9999, p => p.Variant, (p, v) => p.Variant = (int)v);
+
+        public static readonly MethodField MixSizes = MethodField.TextField(
+            "mixSizes", p => p.MixSizes, (p, v) => p.MixSizes = v, allowEmpty: true);
+
+        public static readonly MethodField GradientDirection = MethodField.Choice(
+            "gradientDirection", new[] { MethodChoices.GradientCenter, MethodChoices.GradientHorizontal },
+            p => p.GradientDirection, (p, v) => p.GradientDirection = v);
+
+        public static readonly MethodField FillSize = MethodField.SizeChoice(
+            "fillSize", allowSame: false, p => p.FillSize, (p, v) => p.FillSize = v, smallest: true);
+
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
@@ -184,11 +235,18 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.L6, isFill: false, needsClosed: false, Gap, SizePattern),
             new MethodInfo(MethodKind.L7, isFill: false, needsClosed: false, Gap, DashCount, SkipCount, CornerAngle),
             new MethodInfo(MethodKind.L8, isFill: false, needsClosed: false, Gap, AccentSize, AccentWhere, CornerAngle),
-            new MethodInfo(MethodKind.F1, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin),
-            new MethodInfo(MethodKind.F2, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin),
+            new MethodInfo(MethodKind.F1, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
+            new MethodInfo(MethodKind.F2, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
             new MethodInfo(MethodKind.F3, isFill: true, needsClosed: true, Gap, EdgeMargin, CenterPattern),
             new MethodInfo(MethodKind.F4, isFill: true, needsClosed: true, Gap, Rings, EdgeMargin, CenterPattern),
             new MethodInfo(MethodKind.F5, isFill: true, needsClosed: true, Gap, Rings, EdgeMargin),
+            new MethodInfo(MethodKind.F6, isFill: true, needsClosed: true, Gap, EdgeMargin),
+            new MethodInfo(MethodKind.F7, isFill: true, needsClosed: false, Gap, RowGap).WithGuide(),
+            new MethodInfo(MethodKind.F8, isFill: true, needsClosed: true, Gap, RowGap, EdgeMargin).WithGuide(),
+            new MethodInfo(MethodKind.F9, isFill: true, needsClosed: true, Gap, CenterMode, EdgeMargin),
+            new MethodInfo(MethodKind.F10, isFill: true, needsClosed: true, Gap, MixSizes, Variant, EdgeMargin),
+            new MethodInfo(MethodKind.F11, isFill: true, needsClosed: true, Gap, FromSize, ToSize, GradientDirection, EdgeMargin),
+            new MethodInfo(MethodKind.F12, isFill: true, needsClosed: true, Gap, FillSize, EdgeMargin),
         };
 
         public static MethodInfo Get(MethodKind kind)

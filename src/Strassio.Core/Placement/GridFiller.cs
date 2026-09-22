@@ -87,13 +87,13 @@ namespace Strassio.Core.Placement
             minLY -= rowSpacing;
             maxLY += rowSpacing;
 
-            int rowStart = (int)Math.Floor(minLY / rowSpacing);
-            int rowEnd = (int)Math.Ceiling(maxLY / rowSpacing);
+            int rowStart = (int)Math.Floor((minLY - options.OffsetYMm) / rowSpacing);
+            int rowEnd = (int)Math.Ceiling((maxLY - options.OffsetYMm) / rowSpacing);
 
             for (int row = rowStart; row <= rowEnd; row++)
             {
-                double ly = row * rowSpacing;
-                double xOffset = options.Pattern == GridPattern.Honeycomb && (row & 1) != 0 ? step / 2 : 0;
+                double ly = row * rowSpacing + options.OffsetYMm;
+                double xOffset = (options.Pattern == GridPattern.Honeycomb && (row & 1) != 0 ? step / 2 : 0) + options.OffsetXMm;
 
                 int colStart = (int)Math.Floor((minLX - xOffset) / step);
                 int colEnd = (int)Math.Ceiling((maxLX - xOffset) / step);
