@@ -16,8 +16,6 @@ export interface LicenseRow {
   transfersSince: Date;
   note: string;
   createdAt: Date;
-  /** Ключ восстановления RCV-… для сайта (освободить компьютер, файл лицензии); "" — ещё не выдан. */
-  recoveryCode: string;
   /** Клиент (заполняет автор в админке; пустые строки — не указано). */
   client: ClientInfo;
 }
@@ -111,6 +109,10 @@ export interface Store {
   /** Пробные периоды, у которых совпадает хотя бы один признак компьютера (дальше сравнивает логика). */
   trialsSharingPart(parts: string[]): Promise<TrialRow[]>;
   insertTrial(hwid: string, startedAt: Date): Promise<TrialRow>;
+  /** Пробные периоды для админки, новые сверху. */
+  listTrials(limit: number): Promise<TrialRow[]>;
+  /** Удалить пробный период — компьютер сможет взять его заново. */
+  deleteTrial(id: number): Promise<void>;
 
   audit(entry: Omit<AuditRow, "id">): Promise<void>;
   auditLog(limit: number): Promise<AuditRow[]>;

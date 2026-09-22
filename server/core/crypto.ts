@@ -70,27 +70,6 @@ export function normalizeSerial(text: unknown): string | null {
   return "STRS-" + s.substring(0, 4) + "-" + s.substring(4, 8) + "-" + s.substring(8, 12);
 }
 
-/**
- * Ключ восстановления RCV-XXXX-XXXX-XXXX-XXXX (≈79 бит): второй секрет к ключу. Ключ STRS можно
- * увидеть у человека через плечо, а освободить его компьютеры на сайте можно только с этим кодом.
- */
-export function newRecoveryCode(): string {
-  const groups: string[] = [];
-  for (let g = 0; g < 4; g++) {
-    let s = "";
-    for (let i = 0; i < 4; i++) s += ALPHABET[randomInt(ALPHABET.length)];
-    groups.push(s);
-  }
-  return "RCV-" + groups.join("-");
-}
-
-export function normalizeRecoveryCode(text: unknown): string | null {
-  if (typeof text !== "string") return null;
-  let s = text.toUpperCase().replace(/[^A-Z0-9]/g, "");
-  if (s.length === 19 && s.startsWith("RCV")) s = s.substring(3);
-  if (s.length !== 16) return null;
-  return "RCV-" + [0, 4, 8, 12].map((i) => s.substring(i, i + 4)).join("-");
-}
 
 /**
  * Код активации для сайта: подписанная лицензия одной строкой «SA1.<payload>.<подпись>» (base64url).

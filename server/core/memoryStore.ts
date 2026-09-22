@@ -91,6 +91,14 @@ export class MemoryStore implements Store {
     return { ...row };
   }
 
+  async listTrials(limit: number) {
+    return this.trials.slice().reverse().slice(0, limit).map((t) => ({ ...t }));
+  }
+
+  async deleteTrial(id: number) {
+    this.trials = this.trials.filter((t) => t.id !== id);
+  }
+
   async audit(entry: Omit<AuditRow, "id">) {
     this.log.push({ ...entry, id: this.nextId++ });
   }

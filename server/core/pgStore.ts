@@ -97,10 +97,10 @@ export class PgStore implements Store {
 
   async insertLicense(r: NewLicense) {
     const rows = await this.q(
-      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at, recovery_code,
+      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at,
          client_first, client_last, client_phone, client_email, client_birthday, client_telegram)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
-      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt, r.recoveryCode,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt,
         r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram],
     );
     return license(rows[0]);
@@ -108,9 +108,9 @@ export class PgStore implements Store {
 
   async updateLicense(r: LicenseRow) {
     await this.q(
-      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8, recovery_code=$9,
-         client_first=$10, client_last=$11, client_phone=$12, client_email=$13, client_birthday=$14, client_telegram=$15 WHERE id=$1`,
-      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.recoveryCode,
+      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8,
+         client_first=$9, client_last=$10, client_phone=$11, client_email=$12, client_birthday=$13, client_telegram=$14 WHERE id=$1`,
+      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note,
         r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram],
     );
   }
@@ -199,6 +199,14 @@ export class PgStore implements Store {
     return trial(rows[0]);
   }
 
+  async listTrials(limit: number) {
+    return (await this.q("SELECT * FROM trials ORDER BY id DESC LIMIT $1", [limit])).map(trial);
+  }
+
+  async deleteTrial(id: number) {
+    await this.q("DELETE FROM trials WHERE id = $1", [id]);
+  }
+
   async audit(e: Omit<AuditRow, "id">) {
     await this.q("INSERT INTO audit_log (at, actor, action, serial, details) VALUES ($1,$2,$3,$4,$5)", [e.at, e.actor, e.action, e.serial, e.details]);
   }
@@ -244,7 +252,6 @@ function license(r: Record<string, any>): LicenseRow {
     transfersSince: new Date(r.transfers_since),
     note: r.note,
     createdAt: new Date(r.created_at),
-    recoveryCode: r.recovery_code ?? "",
     client: {
       firstName: r.client_first ?? "",
       lastName: r.client_last ?? "",

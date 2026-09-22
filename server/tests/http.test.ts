@@ -81,19 +81,33 @@ test("админка: пробелы и перенос строки по кра�
   assert.equal((await app.handle(req("POST", "/api/admin/login", {}, "wrong-password"))).status, 401);
 });
 
-test("сайт: восстановление — маршруты работают, после 10 неверных ключей восстановления адрес ждёт", async () => {
+test("сайт: «Моя лицензия» по одному ключу; после 10 несуществующих ключей адрес ждёт", async () => {
   const app = makeApp();
   const created = await app.handle(req("POST", "/api/admin/keys", { count: 1 }, PASSWORD));
-  const key = (created.json as { keys: Array<{ serial: string; recoveryCode: string }> }).keys[0];
-  const good = await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: key.recoveryCode }, undefined, "7.7.7.7"));
+  const key = (created.json as { keys: Array<{ serial: string }> }).keys[0];
+  const good = await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial }, undefined, "7.7.7.7"));
   assert.equal(good.status, 200);
+  assert.equal(JSON.stringify(created.json).includes("RCV"), false, "ключа восстановления больше нет");
 
   for (let i = 0; i < 10; i++) {
-    assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: "RCV-AAAA-BBBB-CCCC-DDDD" }, undefined, "8.8.8.8"))).status, 403);
+    assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: "STRS-AAAA-BBBB-CCCC" }, undefined, "8.8.8.8"))).status, 403);
   }
-  // Даже с верным кодом — подождать (перебор бессмысленен).
-  assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: key.recoveryCode }, undefined, "8.8.8.8"))).status, 429);
-  assert.equal((await app.handle(req("GET", "/api/recovery/lookup"))).status, 405);
+  // Перебор ключей бессмыслен: даже с верным ключом — подождать.
+  assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial }, undefined, "8.8.8.8"))).status, 429);
+  assert.equal((await app.handle(req("GET", "/api/mylicense/lookup"))).status, 405);
+  assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial }))).status, 404, "старого адреса нет");
+});
+
+test("админка: пробные периоды — список и удаление только с паролем", async () => {
+  const app = makeApp();
+  const hwid = "a100000000000000.b100000000000000.c100000000000000.d100000000000000";
+  assert.equal((await app.handle(req("POST", "/api/trial", { hwid }))).status, 200);
+  assert.equal((await app.handle(req("GET", "/api/admin/trials"))).status, 401);
+  const list = (await app.handle(req("GET", "/api/admin/trials", undefined, PASSWORD))).json as any;
+  assert.equal(list.trials.length, 1);
+  assert.equal(list.trials[0].code, "7289-FDB0-F904-5FFC");
+  assert.equal((await app.handle(req("POST", "/api/admin/trial_delete", { id: list.trials[0].id }, PASSWORD))).status, 200);
+  assert.equal(((await app.handle(req("GET", "/api/admin/trials", undefined, PASSWORD))).json as any).trials.length, 0);
 });
 
 test("админка открывается по /adminpanel", async () => {

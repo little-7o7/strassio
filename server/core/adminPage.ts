@@ -12,7 +12,9 @@ export const ADMIN_PAGE = `<!doctype html>
   @media (prefers-color-scheme: dark) { :root { --bg:#15181e; --card:#1e232b; --text:#e6e9ef; --muted:#9aa3b2; --line:#2e3440; --accent:#6ea0ff; --bad:#ef6c6c; --ok:#6fcf73; } }
   * { box-sizing: border-box; }
   body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
-  main { max-width:1100px; margin:0 auto; padding:16px; }
+  main { max-width:1800px; margin:0 auto; padding:16px 24px; }
+  a { color:var(--accent); }
+  a:visited { color:var(--accent); }
   h1 { font-size:20px; margin:8px 0 16px; }
   h2 { font-size:15px; margin:0 0 10px; }
   section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
@@ -30,6 +32,22 @@ export const ADMIN_PAGE = `<!doctype html>
   code, .mono { font-family:Consolas, monospace; }
   .tabs button { margin-right:4px; } .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .scroll { overflow-x:auto; }
+  .key { white-space:nowrap; font-family:Consolas, monospace; font-size:14px; font-weight:600; }
+  .acts { display:flex; flex-wrap:wrap; gap:4px; min-width:260px; }
+  .acts button { margin:0; }
+  td.client { min-width:200px; line-height:1.6; }
+  td.client a { word-break:break-all; }
+  @media (max-width: 800px) {
+    main { padding:10px; }
+    label { display:flex; width:100%; margin-right:0; }
+    label input, label select { width:100%; }
+    .tabs button { margin-bottom:4px; }
+    table, thead, tbody, tr, th, td { display:block; width:100%; }
+    tr:first-child { display:none; }
+    tr { border-top:2px solid var(--line); padding:6px 0; }
+    td { border:0; padding:3px 0; }
+    .acts { min-width:0; }
+  }
   #msg { min-height:20px; margin-bottom:8px; }
   dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; }
   dialog::backdrop { background:rgba(0,0,0,.4); }
@@ -54,6 +72,7 @@ export const ADMIN_PAGE = `<!doctype html>
     <div class="tabs" style="margin-bottom:12px">
       <button data-tab="keys" class="on">Ключи</button>
       <button data-tab="requests">Заявки <b id="reqCount"></b></button>
+      <button data-tab="trials">Пробные</button>
       <button data-tab="offline">Офлайн-активация</button>
       <button data-tab="updates">Обновления</button>
       <button data-tab="audit">Журнал</button>
@@ -106,6 +125,13 @@ export const ADMIN_PAGE = `<!doctype html>
         <button class="primary" onclick="saveClient()">Сохранить</button>
       </div>
     </dialog>
+
+    <section data-page="trials" hidden>
+      <h2>Пробные периоды (14 дней)</h2>
+      <p class="muted">Каждый компьютер, где нажали «Пробный период». Код компьютера — как в окне «Лицензия» у клиента.
+        «удалить» — компьютер сможет взять пробный период заново.</p>
+      <div id="trials" class="scroll"></div>
+    </section>
 
     <section data-page="requests" hidden>
       <h2>Заявки на покупку</h2>
@@ -192,6 +218,7 @@ document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
   document.querySelectorAll("[data-page]").forEach((p) => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "audit") loadAudit();
   if (b.dataset.tab === "requests") loadRequests();
+  if (b.dataset.tab === "trials") loadTrials();
 });
 
 async function createKeys() {
@@ -200,8 +227,9 @@ async function createKeys() {
     const data = await api("POST", "keys", { count: +$("kCount").value, days: +$("kDays").value || null, note: $("kNote").value, client });
     ["kFirst", "kLast", "kPhone", "kEmail", "kBirthday", "kTelegram", "kNote"].forEach((id) => $(id).value = "");
     // Клиенту отдаются оба: ключ (вводит в плагине) и ключ восстановления (для сайта /license).
-    $("kOut").hidden = false; $("kOut").value = data.keys.map((k) => k.serial + "   " + k.recoveryCode).join("\\n");
-    say("Создано ключей: " + data.keys.length + ". Рядом с каждым — ключ восстановления, отдайте клиенту оба."); search();
+    $("kOut").hidden = false; $("kOut").value = data.keys.map((k) => k.serial).join("\\n");
+    if (data.keys.length === 1) copyText(data.keys[0].serial);
+    say("Создано ключей: " + data.keys.length + (data.keys.length === 1 ? ". Ключ скопирован в буфер обмена." : ".")); search();
   });
 }
 
@@ -220,16 +248,15 @@ async function search() {
           (a.status === "active" ? button("отозвать", JSON.stringify(["revoke", a.id])) : "") + "</div>").join("") || '<span class="muted">нет</span>';
         const s = l.serial;
         const client = clientCell(l.client);
-        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + "</span></td><td>" + client + '</td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
-          "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
+        return '<tr><td><span class="key">' + esc(s) + "</span><br>" + button("копировать", JSON.stringify(["copy", s])) + '</td><td class="client">' + client + '</td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
+          "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + '</td><td><div class="acts">' +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
           button("продлить", JSON.stringify(["extend", s])) +
           button("разрешить перенос сейчас", JSON.stringify(["act", s, "reset_transfers"])) +
           button("заметка", JSON.stringify(["note", s])) +
           button("клиент", JSON.stringify(["client", s])) +
           button("отправить ключ", JSON.stringify(["send", s])) +
-          button("новый ключ восстановления", JSON.stringify(["recovery", s])) +
-          '<button class="small danger" data-h="' + esc(JSON.stringify(["delete", s])) + '">удалить</button>' + "</td></tr>";
+          '<button class="small danger" data-h="' + esc(JSON.stringify(["delete", s])) + '">удалить</button>' + "</div></td></tr>";
       }).join("") + "</table>";
   });
 }
@@ -238,12 +265,11 @@ async function search() {
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b) return;
   const [kind, x, y] = JSON.parse(b.dataset.h);
-  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x), client: () => editClient(x), delete: () => removeLicense(x), send: () => sendLicense(x) })[kind]();
+  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), copy: () => copyText(x), client: () => editClient(x), delete: () => removeLicense(x), send: () => sendLicense(x) })[kind]();
 });
 
 async function act(serial, action, value) { await run(async () => { await api("POST", "license", { serial, action, value }); say("Готово: " + serial); search(); }); }
 function extend(serial) { const d = prompt("На сколько дней продлить? (0 — сделать бессрочным)", "365"); if (d !== null) act(serial, "extend", +d); }
-function newRecovery(serial) { if (confirm("Сделать новый ключ восстановления? Старый перестанет работать на сайте.")) act(serial, "new_recovery"); }
 let licenses = {};
 let clientSerial = "";
 function editClient(serial) {
@@ -272,7 +298,7 @@ function clientCell(c) {
     c.phone ? '<a href="tel:' + esc(phone) + '">' + esc(c.phone) + "</a>" : "",
     c.email ? '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + "</a>" : "",
     c.telegram ? '<a href="https://t.me/' + esc(c.telegram) + '" target="_blank">@' + esc(c.telegram) + "</a>" : "",
-    c.birthday ? "ДР " + esc(c.birthday.split("-").reverse().join(".")) : "",
+    c.birthday ? '<span title="День рождения">' + esc(c.birthday.split("-").reverse().join(".")) + "</span>" : "",
   ].filter(Boolean).join("<br>") || '<span class="muted">—</span>';
 }
 
@@ -289,8 +315,8 @@ async function loadRequests() {
     $("reqCount").textContent = fresh ? "(" + fresh + ")" : "";
     if (!data.requests.length) { $("requests").innerHTML = '<p class="muted">Заявок пока нет</p>'; return; }
     $("requests").innerHTML = "<table><tr><th>№</th><th>Когда</th><th>Клиент</th><th>Комментарий</th><th>Состояние</th><th></th></tr>" +
-      data.requests.map((r) => "<tr><td>" + r.id + "</td><td>" + date(r.createdAt) + "</td><td>" + clientCell(r.client) + "</td><td>" + esc(r.message) +
-        "</td><td>" + (REQ_STATUS[r.status] || esc(r.status)) + (r.serial ? '<br><span class="mono">' + esc(r.serial) + "</span>" : "") + "</td><td>" +
+      data.requests.map((r) => "<tr><td>" + r.id + "</td><td>" + date(r.createdAt) + '</td><td class="client">' + clientCell(r.client) + "</td><td>" + esc(r.message) +
+        "</td><td>" + (REQ_STATUS[r.status] || esc(r.status)) + (r.serial ? '<br><span class="key">' + esc(r.serial) + "</span> " + button("копировать", JSON.stringify(["copy", r.serial])) : "") + "</td><td>" +
         (r.serial
           ? button("отправить ключ", JSON.stringify(["send", r.serial]))
           : button("создать ключ", JSON.stringify(["key", r.id])) +
@@ -304,7 +330,7 @@ async function loadRequests() {
 $("requests").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b) return;
   const [kind, x, y] = JSON.parse(b.dataset.h);
-  ({ key: () => keyFromRequest(x), status: () => requestStatus(x, y), send: () => sendLicense(x) })[kind]();
+  ({ key: () => keyFromRequest(x), status: () => requestStatus(x, y), send: () => sendLicense(x), copy: () => copyText(x) })[kind]();
 });
 
 async function requestStatus(id, action) {
@@ -319,7 +345,7 @@ async function keyFromRequest(id) {
   await run(async () => {
     const data = await api("POST", "request_key", { id, days: +days || null });
     say("Ключ создан: " + data.key.serial);
-    openSend(r.client, data.key.serial, data.key.recoveryCode);
+    openSend(r.client, data.key.serial);
     loadRequests(); search();
   });
 }
@@ -330,23 +356,23 @@ async function sendLicense(serial) {
     const data = await api("GET", "licenses?q=" + encodeURIComponent(serial));
     const l = data.licenses.find((x) => x.serial === serial);
     if (!l) throw new Error("Ключ не найден");
-    openSend(l.client, l.serial, l.recoveryCode);
+    openSend(l.client, l.serial);
   });
 }
 
-function keyText(c, serial, recovery) {
+function keyText(c, serial) {
   return "Здравствуйте" + (c.firstName ? ", " + c.firstName : "") + "!\\n\\n" +
     "Ваш ключ Strassio: " + serial + "\\n" +
-    (recovery ? "Ключ восстановления (для страницы «Моя лицензия», никому не показывайте): " + recovery + "\\n" : "") + "\\n" +
+    "Сохраните этот ключ — он нужен для активации и на странице «Моя лицензия».\\n\\n" +
     "1. Скачайте и установите плагин: https://github.com/little-7o7/strassio/releases\\n" +
     "2. В CorelDRAW: панель Strassio → Настройки (шестерёнка) → «Лицензия…» → «Открыть сайт активации».\\n" +
     "3. На сайте введите ключ, скопируйте код активации и вставьте его в окно «Лицензия» → «Активировать».\\n\\n" +
     "Сайт: https://strassio.vercel.app";
 }
 
-function openSend(c, serial, recovery) {
+function openSend(c, serial) {
   c = c || {};
-  const text = keyText(c, serial, recovery);
+  const text = keyText(c, serial);
   $("sendText").value = text;
   const mail = $("sendMail"), tg = $("sendTg"), sms = $("sendSms");
   mail.hidden = !c.email; tg.hidden = !c.telegram; sms.hidden = !c.phone;
@@ -357,6 +383,37 @@ function openSend(c, serial, recovery) {
   $("sendHint").hidden = !c.telegram;
   $("sendDlg").showModal();
 }
+
+// Буфер обмена: ключ одним нажатием.
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select();
+    document.execCommand("copy"); t.remove();
+  }
+  say("Скопировано: " + text);
+}
+
+// ---------- Пробные периоды ----------
+async function loadTrials() {
+  await run(async () => {
+    const data = await api("GET", "trials");
+    if (!data.trials.length) { $("trials").innerHTML = '<p class="muted">Пробных периодов пока нет</p>'; return; }
+    const active = data.trials.filter((t) => t.active).length;
+    $("trials").innerHTML = '<p class="muted">Всего: ' + data.trials.length + ", идут сейчас: " + active + "</p>" +
+      "<table><tr><th>Код компьютера</th><th>Начало</th><th>Конец</th><th>Осталось</th><th></th></tr>" +
+      data.trials.map((t) => '<tr><td class="key">' + esc(t.code) + "</td><td>" + date(t.startedAt) + "</td><td>" + date(t.endsAt) + "</td><td>" +
+        (t.active ? '<span class="ok">' + t.daysLeft + " дн.</span>" : '<span class="muted">закончился</span>') + "</td><td>" +
+        '<button class="small danger" data-h="' + esc(JSON.stringify(["trialDelete", t.id])) + '">удалить</button></td></tr>').join("") + "</table>";
+  });
+}
+
+$("trials").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-h]"); if (!b) return;
+  const [, id] = JSON.parse(b.dataset.h);
+  if (!confirm("Удалить пробный период? Этот компьютер сможет взять 14 дней заново.")) return;
+  await run(async () => { await api("POST", "trial_delete", { id }); say("Пробный период удалён"); loadTrials(); });
+});
 
 async function copySend() {
   const text = $("sendText").value;

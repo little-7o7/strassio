@@ -29,15 +29,11 @@
       и получить файл лицензии для компьютера без интернета.</p>
 
     <form class="panel" id="loginForm">
-      <div class="row2">
-        <label class="field">Ключ
-          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
-        <label class="field">Ключ восстановления
-          <input id="recovery" type="password" autocomplete="off" spellcheck="false" placeholder="RCV-XXXX-XXXX-XXXX-XXXX" required></label>
-      </div>
+      <label class="field">Ключ
+        <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
       <button class="btn primary" id="loginBtn">Открыть</button>
       <p class="msg" id="loginMsg"></p>
-      <p class="note">Ключ восстановления выдаётся вместе с ключом. Если потеряли — напишите автору, он выдаст новый.</p>
+      <p class="note">Ключ вы получили при покупке. Если потеряли — напишите автору.</p>
     </form>
 
     <div id="info" hidden>
@@ -73,8 +69,7 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const ERRORS = {
-  bad_recovery: "Ключ или ключ восстановления неверный.",
-  not_found: "Этот компьютер уже освобождён. Обновите страницу.",
+  not_found: "Такого ключа нет (или этот компьютер уже освобождён). Проверьте ключ.",
   transfer_limit: "Переносить можно раз в 7 дней. Если нужно раньше — напишите автору в Telegram.",
   occupied: "Все места ключа заняты. Сначала освободите старый компьютер выше.",
   blocked: "Ключ заблокирован. Напишите автору.",
@@ -89,7 +84,7 @@ function date(s) { return s ? new Date(s).toLocaleDateString("ru-RU") : "—"; }
 function say(id, text, good) { $(id).textContent = text; $(id).className = "msg " + (good ? "ok" : "bad"); }
 
 async function call(action, extra) {
-  const res = await fetch("/api/recovery/" + action, {
+  const res = await fetch("/api/mylicense/" + action, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(Object.assign({}, creds, extra)),
@@ -124,7 +119,7 @@ function show(l) {
 $("loginForm").onsubmit = (e) => {
   e.preventDefault();
   busy($("loginBtn"), "loginMsg", async () => {
-    creds = { serial: $("serial").value, recovery: $("recovery").value };
+    creds = { serial: $("serial").value };
     try { show((await call("lookup")).license); } catch (err) { creds = null; $("info").hidden = true; throw err; }
   });
 };

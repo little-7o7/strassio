@@ -49,9 +49,9 @@ export class RateLimiter {
 }
 
 const CLIENT_ACTIONS = ["activate", "transfer", "check", "deactivate", "trial"] as const;
-const RECOVERY_ACTIONS = ["lookup", "release", "offline"] as const;
+const MY_LICENSE_ACTIONS = ["lookup", "release", "offline"] as const;
 
-/** Считает только неудачи: после limit неверных ключей восстановления за windowMs адрес ждёт. */
+/** Считает только неудачи: после limit несуществующих ключей за windowMs адрес ждёт (перебор бессмыслен). */
 export class FailureLimiter {
   private readonly fails = new Map<string, number[]>();
 
@@ -82,7 +82,7 @@ export class App {
     adminPassword: string | undefined,
     private readonly clientLimiter = new RateLimiter(30, 60_000),
     private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
-    private readonly recoveryFailures = new FailureLimiter(10, 15 * 60_000),
+    private readonly lookupFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly requestLimiter = new RateLimiter(5, 60 * 60_000),
   ) {
     // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
@@ -127,18 +127,17 @@ export class App {
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
-    // Сайт: восстановление лицензии по ключу восстановления. Неудачные попытки ограничены строго —
-    // перебирать ключ восстановления бессмысленно.
-    const recoveryAction = RECOVERY_ACTIONS.find((a) => path === "/api/recovery/" + a);
-    if (recoveryAction) {
+    // Сайт: «Моя лицензия» — по одному ключу. Неудачные попытки (нет такого ключа) ограничены строго.
+    const myAction = MY_LICENSE_ACTIONS.find((a) => path === "/api/mylicense/" + a);
+    if (myAction) {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
-      if (this.recoveryFailures.blocked(req.ip)) return tooMany();
+      if (this.lookupFailures.blocked(req.ip)) return tooMany();
       const result =
-        recoveryAction === "lookup" ? await this.service.recoveryLookup(body.serial, body.recovery) :
-        recoveryAction === "release" ? await this.service.recoveryRelease(body.serial, body.recovery, body.activationId) :
-        await this.service.recoveryOffline(body.serial, body.recovery, body.hwid);
-      if (!result.ok && result.error === "bad_recovery") this.recoveryFailures.fail(req.ip);
+        myAction === "lookup" ? await this.service.siteLookup(body.serial) :
+        myAction === "release" ? await this.service.siteRelease(body.serial, body.activationId) :
+        await this.service.siteOffline(body.serial, body.hwid);
+      if (!result.ok && result.error === "not_found" && myAction === "lookup") this.lookupFailures.fail(req.ip);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
@@ -194,6 +193,10 @@ export class App {
       }
       case "GET licenses":
         return ok({ licenses: await s.search(req.query.get("q") ?? "") });
+      case "GET trials":
+        return ok({ trials: await s.listTrials() });
+      case "POST trial_delete":
+        return (await s.deleteTrial(body.id)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
       case "GET requests":
         return ok({ requests: await s.listRequests() });
       case "POST request":

@@ -1,7 +1,6 @@
 // Правила лицензий (SPEC 13.2–13.6) без привязки к платформе: всё время — через clock, данные —
 // через Store, подпись — через Signer. Ответы клиенту: { ok: true, license } или { ok: false, error }.
-import { timingSafeEqual } from "node:crypto";
-import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial, toActivationCode } from "./crypto.js";
+import { Signer, SignedDocument, newSerial, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
 import type { ActivationRow, ClientInfo, LicenseRow, RequestRow, Store, UpdateRow } from "./store.js";
 
@@ -34,8 +33,8 @@ export interface ClientRequest {
   corelVersion?: unknown;
 }
 
-/** Что видит владелец ключа на сайте (страница восстановления). Коды компьютеров — только короткие. */
-export interface RecoveryView {
+/** Что видит владелец ключа на сайте (страница «Моя лицензия»). Коды компьютеров — только короткие. */
+export interface SiteLicenseView {
   serial: string;
   plan: string;
   status: string;
@@ -47,7 +46,18 @@ export interface RecoveryView {
   computers: Array<{ id: number; code: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
 }
 
-export type RecoveryResult<T> = { ok: true } & T | { ok: false; error: ErrorCode | "bad_recovery" };
+export type SiteResult<T> = { ok: true } & T | { ok: false; error: ErrorCode };
+
+/** Пробный период в админке. */
+export interface TrialView {
+  id: number;
+  /** Короткий код компьютера — как в окне «Лицензия». */
+  code: string;
+  startedAt: string;
+  endsAt: string;
+  daysLeft: number;
+  active: boolean;
+}
 
 export interface KeyOptions {
   count?: number;
@@ -253,7 +263,7 @@ export class LicenseService {
   }
 
   /** Создать ключ по заявке: данные клиента переходят в ключ, заявка — «выполнена» и привязана к ключу. */
-  async requestKey(id: unknown, days: unknown): Promise<{ serial: string; recoveryCode: string } | null> {
+  async requestKey(id: unknown, days: unknown): Promise<{ serial: string } | null> {
     const request = await this.store.findRequest(Number(id));
     if (!request || request.serial) return null;
     const [key] = await this.createKeys({
@@ -271,16 +281,15 @@ export class LicenseService {
   // ---------- Админка ----------
 
   /** Данные клиента проверяет http (parseClient); неверные сюда не доходят — на всякий случай пустые. */
-  async createKeys(options: KeyOptions): Promise<Array<{ serial: string; recoveryCode: string }>> {
+  async createKeys(options: KeyOptions): Promise<Array<{ serial: string }>> {
     const client = (options.client === undefined ? null : parseClient(options.client)) ?? EMPTY_CLIENT;
     const count = clamp(Math.floor(options.count ?? 1), 1, 500);
     const now = this.clock();
     const expiresAt = options.days && options.days > 0 ? new Date(now.getTime() + options.days * DAY) : null;
-    const keys: Array<{ serial: string; recoveryCode: string }> = [];
+    const keys: Array<{ serial: string }> = [];
     for (let i = 0; i < count; i++) {
       let serial = newSerial();
       while (await this.store.findLicense(serial)) serial = newSerial();
-      const recoveryCode = newRecoveryCode();
       await this.store.insertLicense({
         serial,
         plan: "full",
@@ -291,10 +300,9 @@ export class LicenseService {
         transfersSince: now,
         note: (options.note ?? "").slice(0, 500),
         createdAt: now,
-        recoveryCode,
         client: { ...client },
       });
-      keys.push({ serial, recoveryCode });
+      keys.push({ serial });
     }
 
     await this.log("admin", "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., срок: ${options.days || "бессрочно"}`);
@@ -318,7 +326,7 @@ export class LicenseService {
     return true;
   }
 
-  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, note, new_recovery, client. */
+  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, note, client. */
   async adminLicense(serialText: unknown, action: string, value: unknown): Promise<LicenseRow | null> {
     const serial = normalizeSerial(serialText);
     const license = serial ? await this.store.findLicense(serial) : null;
@@ -350,16 +358,12 @@ export class LicenseService {
         license.client = client;
         break;
       }
-      case "new_recovery":
-        // Старый код перестаёт работать (клиент его потерял или показал кому-то).
-        license.recoveryCode = newRecoveryCode();
-        break;
       default:
         return null;
     }
 
     await this.store.updateLicense(license);
-    await this.log("admin", action, license.serial, value === undefined || action === "new_recovery" || action === "client" ? "" : String(value));
+    await this.log("admin", action, license.serial, value === undefined || action === "client" ? "" : String(value));
     return license;
   }
 
@@ -397,22 +401,22 @@ export class LicenseService {
     return this.store.auditLog(limit);
   }
 
-  // ---------- Сайт: восстановление лицензии по ключу восстановления ----------
+  // ---------- Сайт: «Моя лицензия» (по одному ключу, решение автора 22.09.2026) ----------
 
-  /** Ключ + ключ восстановления → сведения о лицензии и её компьютерах. */
-  async recoveryLookup(serialText: unknown, codeText: unknown): Promise<RecoveryResult<{ license: RecoveryView }>> {
-    const license = await this.recoveryLicense(serialText, codeText);
-    if (!license) return { ok: false, error: "bad_recovery" };
-    return { ok: true, license: await this.recoveryView(license) };
+  /** Ключ → сведения о лицензии и её компьютерах. */
+  async siteLookup(serialText: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+    const license = await this.siteLicense(serialText);
+    if (!license) return { ok: false, error: "not_found" };
+    return { ok: true, license: await this.siteView(license) };
   }
 
   /**
    * «Освободить» компьютер с сайта (например, старый сломался или Windows переустановили на другом
    * железе). Считается переносом (раз в 7 дней): иначе ключ можно было бы передавать по кругу.
    */
-  async recoveryRelease(serialText: unknown, codeText: unknown, activationId: unknown): Promise<RecoveryResult<{ license: RecoveryView }>> {
-    const license = await this.recoveryLicense(serialText, codeText);
-    if (!license) return { ok: false, error: "bad_recovery" };
+  async siteRelease(serialText: unknown, activationId: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+    const license = await this.siteLicense(serialText);
+    if (!license) return { ok: false, error: "not_found" };
     const activation = await this.store.findActivation(Number(activationId));
     if (!activation || activation.licenseId !== license.id || activation.status !== "active") return { ok: false, error: "not_found" };
 
@@ -423,16 +427,16 @@ export class LicenseService {
     this.countTransfer(license);
     await this.store.updateLicense(license);
     await this.log("site", "release", license.serial, `активация ${activation.id}, ${activation.hwid}`);
-    return { ok: true, license: await this.recoveryView(license) };
+    return { ok: true, license: await this.siteView(license) };
   }
 
   /**
    * Файл лицензии для компьютера без интернета (сам клиент, без автора): код компьютера из окна
-   * «Лицензия» → подписанный файл. Число компьютеров ключа соблюдается — место должно быть свободно.
+   * «Лицензия» → подписанный файл. Один ключ — один компьютер: место должно быть свободно.
    */
-  async recoveryOffline(serialText: unknown, codeText: unknown, hwidText: unknown): Promise<RecoveryResult<{ file: SignedDocument }>> {
-    const license = await this.recoveryLicense(serialText, codeText);
-    if (!license) return { ok: false, error: "bad_recovery" };
+  async siteOffline(serialText: unknown, hwidText: unknown): Promise<SiteResult<{ file: SignedDocument }>> {
+    const license = await this.siteLicense(serialText);
+    if (!license) return { ok: false, error: "not_found" };
     const problem = this.licenseProblem(license);
     if (problem) return { ok: false, error: problem };
     const parts = parseHwid(hwidText);
@@ -449,18 +453,12 @@ export class LicenseService {
     return { ok: true, file: this.sign(license.serial, hwid, license.plan, license.expiresAt, true) };
   }
 
-  private async recoveryLicense(serialText: unknown, codeText: unknown): Promise<LicenseRow | null> {
+  private async siteLicense(serialText: unknown): Promise<LicenseRow | null> {
     const serial = normalizeSerial(serialText);
-    const code = normalizeRecoveryCode(codeText);
-    if (!serial || !code) return null;
-    const license = await this.store.findLicense(serial);
-    if (!license || !license.recoveryCode) return null;
-    const a = Buffer.from(license.recoveryCode);
-    const b = Buffer.from(code);
-    return a.length === b.length && timingSafeEqual(a, b) ? license : null;
+    return serial ? this.store.findLicense(serial) : null;
   }
 
-  private async recoveryView(license: LicenseRow): Promise<RecoveryView> {
+  private async siteView(license: LicenseRow): Promise<SiteLicenseView> {
     const activations = await this.store.activations(license.id);
     return {
       serial: license.serial,
@@ -479,6 +477,33 @@ export class LicenseService {
         corelVersion: a.corelVersion,
       })),
     };
+  }
+
+  // ---------- Админка: пробные периоды ----------
+
+  async listTrials(): Promise<TrialView[]> {
+    const now = this.clock().getTime();
+    return (await this.store.listTrials(300)).map((t) => {
+      const ends = t.startedAt.getTime() + TRIAL_DAYS * DAY;
+      return {
+        id: t.id,
+        code: hwidDisplay(parseHwid(t.hwid) ?? t.hwid.split(".")),
+        startedAt: iso(t.startedAt),
+        endsAt: iso(new Date(ends)),
+        daysLeft: Math.max(0, Math.ceil((ends - now) / DAY)),
+        active: ends > now,
+      };
+    });
+  }
+
+  /** Удалить пробный период: компьютер сможет взять 14 дней заново. */
+  async deleteTrial(id: unknown): Promise<boolean> {
+    const trials = await this.store.listTrials(10000);
+    const trial = trials.find((t) => t.id === Number(id));
+    if (!trial) return false;
+    await this.store.deleteTrial(trial.id);
+    await this.log("admin", "trial_delete", "", trial.hwid);
+    return true;
   }
 
   // ---------- Внутреннее ----------

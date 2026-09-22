@@ -1,7 +1,7 @@
 // Правила лицензий из SPEC 13 — по пунктам.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateKeys, normalizeRecoveryCode, normalizeSerial, newSerial, Signer, verifyDocument } from "../core/crypto.js";
+import { generateKeys, normalizeSerial, newSerial, Signer, verifyDocument } from "../core/crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "../core/hwid.js";
 import { MemoryStore } from "../core/memoryStore.js";
 import { LicenseService } from "../core/service.js";
@@ -186,18 +186,16 @@ test("короткий код компьютера на сайте — тот ж
   assert.equal(hwidDisplay(parseHwid(PC1)!), "7289-FDB0-F904-5FFC");
 });
 
-test("восстановление: без верного ключа восстановления — ничего не видно и не меняется", async () => {
+test("«Моя лицензия»: по одному ключу видны компьютеры; неизвестный ключ — not_found", async () => {
   const { service } = setup();
-  const [{ serial, recoveryCode }] = await service.createKeys({});
-  assert.match(recoveryCode, /^RCV-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
-  assert.equal(normalizeRecoveryCode(" rcv " + recoveryCode.slice(4).toLowerCase().replace(/-/g, " ")), recoveryCode);
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
 
-  assert.deepEqual(await service.recoveryLookup(serial, "RCV-AAAA-BBBB-CCCC-DDDD"), { ok: false, error: "bad_recovery" });
-  assert.deepEqual(await service.recoveryLookup("STRS-AAAA-BBBB-CCCC", recoveryCode), { ok: false, error: "bad_recovery" });
-  assert.deepEqual(await service.recoveryRelease(serial, "мусор", 1), { ok: false, error: "bad_recovery" });
+  assert.deepEqual(await service.siteLookup("STRS-AAAA-BBBB-CCCC"), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteLookup("мусор"), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteRelease("мусор", 1), { ok: false, error: "not_found" });
 
-  const view = await service.recoveryLookup(serial, recoveryCode);
+  const view = await service.siteLookup(serial.toLowerCase().replace(/-/g, " "));
   assert.ok(view.ok);
   if (view.ok) {
     assert.equal(view.license.computers.length, 1);
@@ -208,37 +206,37 @@ test("восстановление: без верного ключа восст�
   }
 });
 
-test("восстановление: освободить старый компьютер с сайта — это перенос (раз в 7 дней), потом ключ встаёт на новый", async () => {
+test("«Моя лицензия»: освободить старый компьютер с сайта — это перенос (раз в 7 дней), потом ключ встаёт на новый", async () => {
   const { service } = setup();
-  const [{ serial, recoveryCode }] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
   assert.equal((await service.activate({ serial, hwid: PC2 })).ok, false);
 
-  const view = await service.recoveryLookup(serial, recoveryCode);
+  const view = await service.siteLookup(serial);
   const id = view.ok ? view.license.computers[0].id : -1;
-  const released = await service.recoveryRelease(serial, recoveryCode, id);
+  const released = await service.siteRelease(serial, id);
   assert.ok(released.ok);
   if (released.ok) {
     assert.equal(released.license.transfersLeft, 0);
     assert.ok(released.license.nextTransferAt);
   }
-  assert.deepEqual(await service.recoveryRelease(serial, recoveryCode, id), { ok: false, error: "not_found" }, "дважды не освобождается");
+  assert.deepEqual(await service.siteRelease(serial, id), { ok: false, error: "not_found" }, "дважды не освобождается");
 
   payload(await service.activate({ serial, hwid: PC2 }));
   assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
 
   // Чужую активацию (другого ключа) освободить нельзя.
-  const [{ serial: other, recoveryCode: otherCode }] = await service.createKeys({});
-  assert.deepEqual(await service.recoveryRelease(other, otherCode, id), { ok: false, error: "not_found" });
+  const [{ serial: other }] = await service.createKeys({});
+  assert.deepEqual(await service.siteRelease(other, id), { ok: false, error: "not_found" });
 });
 
-test("восстановление: ожидание 7 дней действует и на сайте", async () => {
+test("«Моя лицензия»: ожидание 7 дней действует и на сайте", async () => {
   const { service, advance } = setup();
-  const [{ serial, recoveryCode }] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   const releaseActive = async () => {
-    const v = await service.recoveryLookup(serial, recoveryCode);
+    const v = await service.siteLookup(serial);
     const active = v.ok ? v.license.computers.find((c) => c.active) : undefined;
-    return service.recoveryRelease(serial, recoveryCode, active!.id);
+    return service.siteRelease(serial, active!.id);
   };
 
   payload(await service.activate({ serial, hwid: PC1 }));
@@ -249,28 +247,50 @@ test("восстановление: ожидание 7 дней действуе
   assert.ok((await releaseActive()).ok);
 });
 
-test("восстановление: файл лицензии для компьютера без интернета — только если есть свободное место", async () => {
+test("«Моя лицензия»: файл лицензии для компьютера без интернета — только если есть свободное место", async () => {
   const { service } = setup();
-  const [{ serial, recoveryCode }] = await service.createKeys({});
-  const file = await service.recoveryOffline(serial, recoveryCode, PC1);
+  const [{ serial }] = await service.createKeys({});
+  const file = await service.siteOffline(serial, PC1);
   assert.ok(file.ok);
   if (file.ok) {
     assert.ok(verifyDocument(file.file, keys.publicKey));
     assert.equal(JSON.parse(file.file.payload).offline, true);
   }
 
-  assert.ok((await service.recoveryOffline(serial, recoveryCode, PC1_NEW_DISK)).ok, "тот же компьютер — можно ещё раз");
-  assert.deepEqual(await service.recoveryOffline(serial, recoveryCode, PC2), { ok: false, error: "occupied" });
-  assert.deepEqual(await service.recoveryOffline(serial, recoveryCode, "zz"), { ok: false, error: "bad_request" });
+  assert.ok((await service.siteOffline(serial, PC1_NEW_DISK)).ok, "тот же компьютер — можно ещё раз");
+  assert.deepEqual(await service.siteOffline(serial, PC2), { ok: false, error: "occupied" });
+  assert.deepEqual(await service.siteOffline(serial, "zz"), { ok: false, error: "bad_request" });
 });
 
-test("админка: новый ключ восстановления — старый перестаёт работать", async () => {
+test("админка: пробные периоды видны (код компьютера, дни); удалённый можно взять заново", async () => {
+  const { service, advance } = setup();
+  payload(await service.trial({ hwid: PC1 }));
+  advance(3);
+  payload(await service.trial({ hwid: PC2 }));
+
+  const trials = await service.listTrials();
+  assert.equal(trials.length, 2);
+  assert.equal(trials[0].code, hwidDisplay(parseHwid(PC2)!), "новые сверху");
+  assert.equal(trials[0].daysLeft, 14);
+  assert.equal(trials[1].daysLeft, 11);
+  assert.ok(trials.every((t) => t.active));
+
+  advance(12);
+  const later = await service.listTrials();
+  assert.equal(later[1].active, false);
+  assert.equal(later[1].daysLeft, 0);
+
+  assert.ok(await service.deleteTrial(later[1].id));
+  assert.equal(await service.deleteTrial(later[1].id), false);
+  assert.equal((await service.listTrials()).length, 1);
+  payload(await service.trial({ hwid: PC1 }));
+  assert.equal((await service.listTrials())[0].daysLeft, 14, "после удаления — снова 14 дней");
+});
+
+test("админка: действия new_recovery больше нет", async () => {
   const { service } = setup();
-  const [{ serial, recoveryCode }] = await service.createKeys({});
-  const updated = await service.adminLicense(serial, "new_recovery", undefined);
-  assert.ok(updated && updated.recoveryCode !== recoveryCode);
-  assert.deepEqual(await service.recoveryLookup(serial, recoveryCode), { ok: false, error: "bad_recovery" });
-  assert.ok((await service.recoveryLookup(serial, updated!.recoveryCode)).ok);
+  const [{ serial }] = await service.createKeys({});
+  assert.equal(await service.adminLicense(serial, "new_recovery", undefined), null);
 });
 
 test("сайт: активация по коду компьютера — код активации SA1 с подписанной лицензией, занято → перенос раз в 7 дней", async () => {
