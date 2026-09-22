@@ -69,7 +69,7 @@ namespace Strassio.Corel
             MethodResult result;
             try
             {
-                result = MethodRunner.Run(method.Info.Kind, contours, size.Size.DiameterMm, Params);
+                result = MethodRunner.Run(method.Info.Kind, contours, size.Size.DiameterMm, Params, SizeTable);
             }
             catch (Exception ex)
             {

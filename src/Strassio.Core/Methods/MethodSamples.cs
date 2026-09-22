@@ -14,6 +14,12 @@ namespace Strassio.Core.Methods
             Parameters = parameters;
         }
 
+        /// <summary>Маленькая таблица размеров образца — для методов с несколькими размерами.</summary>
+        public IReadOnlyDictionary<string, double> Sizes { get; } = new Dictionary<string, double>
+        {
+            ["s"] = 1.6, ["m"] = 2.4, ["l"] = 3.4,
+        };
+
         /// <summary>Фигура примерно 24×24 мм.</summary>
         public Curve Shape { get; }
 
@@ -42,6 +48,18 @@ namespace Strassio.Core.Methods
                     return new MethodSample(
                         Circle(11), 2.4,
                         new MethodParameters { GapMm = 0.8, OffsetMm = 4.5, OffsetSide = MethodChoices.SideInside });
+                case MethodKind.L4:
+                    return new MethodSample(Wave(), 1.8, new MethodParameters { GapMm = 0.4, RowCount = 3, RowGapMm = 0.4 });
+                case MethodKind.L5:
+                    return new MethodSample(Wave(), 2.4, new MethodParameters { GapMm = 0.4, FromSize = "l", ToSize = "s" });
+                case MethodKind.L6:
+                    return new MethodSample(Wave(), 2.4, new MethodParameters { GapMm = 0.4, SizePattern = "s, s, l" });
+                case MethodKind.L7:
+                    return new MethodSample(Wave(), 2.2, new MethodParameters { GapMm = 0.4, DashCount = 2, SkipCount = 1 });
+                case MethodKind.L8:
+                    return new MethodSample(
+                        Zigzag(), 1.8,
+                        new MethodParameters { GapMm = 0.4, AccentSize = "l", AccentWhere = MethodChoices.AccentBoth, CornerAngleDeg = 30 });
                 case MethodKind.F1:
                     return new MethodSample(Circle(11), 3.0, new MethodParameters { GapMm = 0.5 });
                 case MethodKind.F2:
@@ -62,7 +80,7 @@ namespace Strassio.Core.Methods
         public static MethodResult Run(MethodKind kind, out MethodSample sample)
         {
             sample = For(kind);
-            return MethodRunner.Run(kind, new[] { sample.Shape }, sample.StoneDiameterMm, sample.Parameters);
+            return MethodRunner.Run(kind, new[] { sample.Shape }, sample.StoneDiameterMm, sample.Parameters, sample.Sizes);
         }
 
         /// <summary>Пологая волна слева направо — для методов по линии.</summary>
@@ -77,6 +95,10 @@ namespace Strassio.Core.Methods
 
             return Curve.FromPolyline(points, isClosed: false);
         }
+
+        /// <summary>Зигзаг с острыми углами — для «акцентов» в углах.</summary>
+        private static Curve Zigzag() => Curve.FromPolyline(
+            new List<Point2D> { new Point2D(1, 6), new Point2D(8, 18), new Point2D(16, 6), new Point2D(23, 18) }, isClosed: false);
 
         /// <summary>Круг с центром (12, 12) — для заливок и L3.</summary>
         private static Curve Circle(double radius)

@@ -14,6 +14,21 @@ namespace Strassio.Core.Methods
         /// <summary>По смещённой линии — один ряд на расстоянии от линии.</summary>
         L3,
 
+        /// <summary>Каллиграфия — число рядов меняется вдоль линии.</summary>
+        L4,
+
+        /// <summary>Переход размера вдоль линии.</summary>
+        L5,
+
+        /// <summary>Чередование размеров по шаблону.</summary>
+        L6,
+
+        /// <summary>Пунктир — группы по N камней, пропуск M.</summary>
+        L7,
+
+        /// <summary>Акценты — крупный камень на концах и/или в углах.</summary>
+        L8,
+
         /// <summary>Сетка.</summary>
         F1,
 
@@ -126,14 +141,49 @@ namespace Strassio.Core.Methods
             "centerPattern", new[] { MethodChoices.PatternHoneycomb, MethodChoices.PatternSquare },
             p => p.CenterPattern, (p, v) => p.CenterPattern = v);
 
+        public static readonly MethodField EdgeSize = MethodField.SizeChoice(
+            "edgeSize", allowSame: true, p => p.EdgeSize, (p, v) => p.EdgeSize = v);
+
+        public static readonly MethodField WidthProfile = MethodField.Choice(
+            "widthProfile", new[] { MethodChoices.ProfileMiddle, MethodChoices.ProfileGrow, MethodChoices.ProfileShrink },
+            p => p.WidthProfile, (p, v) => p.WidthProfile = v);
+
+        public static readonly MethodField FromSize = MethodField.SizeChoice(
+            "fromSize", allowSame: true, p => p.FromSize, (p, v) => p.FromSize = v);
+
+        public static readonly MethodField ToSize = MethodField.SizeChoice(
+            "toSize", allowSame: true, p => p.ToSize, (p, v) => p.ToSize = v);
+
+        public static readonly MethodField SizePattern = MethodField.TextField(
+            "sizePattern", p => p.SizePattern, (p, v) => p.SizePattern = v);
+
+        public static readonly MethodField DashCount = MethodField.Number(
+            "dashCount", FieldKind.Integer, 1, 1000, p => p.DashCount, (p, v) => p.DashCount = (int)v);
+
+        public static readonly MethodField SkipCount = MethodField.Number(
+            "skipCount", FieldKind.Integer, 1, 1000, p => p.SkipCount, (p, v) => p.SkipCount = (int)v);
+
+        public static readonly MethodField AccentSize = MethodField.SizeChoice(
+            "accentSize", allowSame: false, p => p.AccentSize, (p, v) => p.AccentSize = v);
+
+        public static readonly MethodField AccentWhere = MethodField.Choice(
+            "accentWhere", new[] { MethodChoices.AccentBoth, MethodChoices.AccentEnds, MethodChoices.AccentCorners },
+            p => p.AccentWhere, (p, v) => p.AccentWhere = v);
+
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
                 Gap, Step, ExactStep, ExactCount, StartOffset, EndMargin, Reverse, CornerAngle),
             new MethodInfo(MethodKind.L2, isFill: false, needsClosed: false,
-                Gap, RowCount, RowGap, RowSide, Stagger, Corners, Intersections, CornerAngle),
+                Gap, RowCount, RowGap, RowSide, EdgeSize, Stagger, Corners, Intersections, CornerAngle),
             new MethodInfo(MethodKind.L3, isFill: false, needsClosed: false,
                 Gap, Offset, OffsetSide, Corners, CornerAngle),
+            new MethodInfo(MethodKind.L4, isFill: false, needsClosed: false,
+                Gap, RowCount, RowGap, WidthProfile, Corners, CornerAngle),
+            new MethodInfo(MethodKind.L5, isFill: false, needsClosed: false, Gap, FromSize, ToSize),
+            new MethodInfo(MethodKind.L6, isFill: false, needsClosed: false, Gap, SizePattern),
+            new MethodInfo(MethodKind.L7, isFill: false, needsClosed: false, Gap, DashCount, SkipCount, CornerAngle),
+            new MethodInfo(MethodKind.L8, isFill: false, needsClosed: false, Gap, AccentSize, AccentWhere, CornerAngle),
             new MethodInfo(MethodKind.F1, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin),
             new MethodInfo(MethodKind.F2, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin),
             new MethodInfo(MethodKind.F3, isFill: true, needsClosed: true, Gap, EdgeMargin, CenterPattern),

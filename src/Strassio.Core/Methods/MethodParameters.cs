@@ -99,6 +99,42 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "centerPattern")]
         public string CenterPattern { get; set; } = MethodChoices.PatternHoneycomb;
 
+        /// <summary>L2: размер крайних рядов (название из таблицы камней); пусто — как основной камень.</summary>
+        [DataMember(Name = "edgeSize")]
+        public string EdgeSize { get; set; } = string.Empty;
+
+        /// <summary>L5: с какого размера начинать (название из таблицы); пусто — основной камень.</summary>
+        [DataMember(Name = "fromSize")]
+        public string FromSize { get; set; } = string.Empty;
+
+        /// <summary>L5: каким размером заканчивать; все размеры таблицы между ними идут по порядку.</summary>
+        [DataMember(Name = "toSize")]
+        public string ToSize { get; set; } = string.Empty;
+
+        /// <summary>L6: шаблон размеров, например «ss6, ss6, ss10» — повторяется вдоль линии.</summary>
+        [DataMember(Name = "sizePattern")]
+        public string SizePattern { get; set; } = string.Empty;
+
+        /// <summary>L7: страз в одной группе пунктира.</summary>
+        [DataMember(Name = "dashCount")]
+        public int DashCount { get; set; }
+
+        /// <summary>L7: пропуск между группами — сколько мест под стразы оставить пустыми.</summary>
+        [DataMember(Name = "skipCount")]
+        public int SkipCount { get; set; }
+
+        /// <summary>L8: размер акцентов (название из таблицы).</summary>
+        [DataMember(Name = "accentSize")]
+        public string AccentSize { get; set; } = string.Empty;
+
+        /// <summary>L8: где акценты — на концах, в углах или и там, и там.</summary>
+        [DataMember(Name = "accentWhere")]
+        public string AccentWhere { get; set; } = MethodChoices.AccentBoth;
+
+        /// <summary>L4: где линия шире всего — в середине или к концу.</summary>
+        [DataMember(Name = "widthProfile")]
+        public string WidthProfile { get; set; } = MethodChoices.ProfileMiddle;
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -126,6 +162,15 @@ namespace Strassio.Core.Methods
             EdgeMarginMm = 0;
             Rings = 2;
             CenterPattern = MethodChoices.PatternHoneycomb;
+            EdgeSize = string.Empty;
+            FromSize = string.Empty;
+            ToSize = string.Empty;
+            SizePattern = string.Empty;
+            DashCount = 3;
+            SkipCount = 1;
+            AccentSize = string.Empty;
+            AccentWhere = MethodChoices.AccentBoth;
+            WidthProfile = MethodChoices.ProfileMiddle;
         }
     }
 
@@ -149,5 +194,16 @@ namespace Strassio.Core.Methods
 
         public const string PatternHoneycomb = "honeycomb";
         public const string PatternSquare = "square";
+
+        public const string AccentEnds = "ends";
+        public const string AccentCorners = "corners";
+        public const string AccentBoth = "both";
+
+        public const string ProfileMiddle = "middle";
+        public const string ProfileGrow = "grow";
+        public const string ProfileShrink = "shrink";
+
+        /// <summary>Для поля «размер»: как у основного камня.</summary>
+        public const string SameSize = "";
     }
 }

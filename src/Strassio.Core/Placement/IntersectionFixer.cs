@@ -171,7 +171,10 @@ namespace Strassio.Core.Placement
                     for (int k = 0; k < count; k++)
                     {
                         int idx = row[k];
-                        if (removed[idx])
+
+                        // Угловая страза (и акцент L8) — опора ряда: угол должен остаться углом, даже
+                        // если соседей рядом с ней пришлось убрать.
+                        if (removed[idx] || stones[idx].IsCorner)
                         {
                             continue;
                         }

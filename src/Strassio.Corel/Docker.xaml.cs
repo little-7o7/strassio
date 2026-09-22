@@ -9,6 +9,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using Corel.Interop.VGCore;
 using Strassio.Core.Geometry;
+using Strassio.Core.Editing;
 using Strassio.Core.Localization;
 using Strassio.Core.Methods;
 using Strassio.Core.Placement;
@@ -73,6 +74,38 @@ namespace Strassio.Corel
         private Localizer Loc => context.Localizer;
 
         private StoneSet? ActiveSet => context.Stones.Sets.FirstOrDefault();
+
+        /// <summary>Размеры таблицы «название → диаметр» — для методов с несколькими размерами (L2, L5, L6, L8).</summary>
+        private Dictionary<string, double> SizeTable
+        {
+            get
+            {
+                var table = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                foreach (StoneSize s in ActiveSet?.Sizes ?? new List<StoneSize>())
+                {
+                    if (!string.IsNullOrWhiteSpace(s.Name) && !table.ContainsKey(s.Name.Trim()))
+                    {
+                        table[s.Name.Trim()] = s.DiameterMm;
+                    }
+                }
+
+                return table;
+            }
+        }
+
+        /// <summary>Название размера для камня этого диаметра (в методах с несколькими размерами); иначе — выбранный размер.</summary>
+        private string SizeNameFor(double diameterMm, string fallback)
+        {
+            foreach (StoneSize s in ActiveSet?.Sizes ?? new List<StoneSize>())
+            {
+                if (Math.Abs(s.DiameterMm - diameterMm) < 0.005)
+                {
+                    return s.Name;
+                }
+            }
+
+            return fallback;
+        }
 
         private void Localizer_PropertyChanged(object? sender, PropertyChangedEventArgs e) => RebuildAll();
 
@@ -294,7 +327,7 @@ namespace Strassio.Corel
                     return;
                 }
 
-                MethodResult result = MethodRunner.Run(method.Info.Kind, contours, size.DiameterMm, Params);
+                MethodResult result = MethodRunner.Run(method.Info.Kind, contours, size.DiameterMm, Params, SizeTable);
                 IReadOnlyList<PlacedStone> stones = result.Stones;
                 if (stones.Count == 0)
                 {
@@ -317,8 +350,11 @@ namespace Strassio.Corel
                         PlacedStone stone = stones[i];
                         double radius = stone.DiameterMm / 2.0;
                         Shape circle = layer.CreateEllipse2(stone.Center.X, stone.Center.Y, radius, radius);
-                        circle.Name = stoneName;
-                        StoneShapes.Mark(circle, size.Name, color.Name);
+
+                        // В методах с несколькими размерами (L5, L6, L8, L2) у каждого камня своё имя размера.
+                        string sizeName = Math.Abs(stone.DiameterMm - size.DiameterMm) < 0.005 ? size.Name : SizeNameFor(stone.DiameterMm, size.Name);
+                        circle.Name = sizeName == size.Name ? stoneName : StoneNames.Compose(sizeName, color.Name);
+                        StoneShapes.Mark(circle, sizeName, color.Name);
                         created[i] = circle;
                     }
 

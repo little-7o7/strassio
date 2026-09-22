@@ -202,6 +202,7 @@ static void RenderMethodsScenario()
         ("zigzag", BuildZigzag().Item1),
     };
 
+    var previewSizes = new Dictionary<string, double> { ["ss5"] = 2.1, ["ss6"] = 2.4, ["ss10"] = 2.9, ["ss16"] = 3.9 };
     var variants = new List<(string Name, MethodKind Kind, MethodParameters Params)>();
     foreach (MethodInfo info in MethodCatalog.All)
     {
@@ -213,6 +214,11 @@ static void RenderMethodsScenario()
     variants.Add(("l2-5rows-stagger", MethodKind.L2, new MethodParameters { RowCount = 5, Stagger = true }));
     variants.Add(("l3-inside", MethodKind.L3, new MethodParameters { OffsetSide = MethodChoices.SideInside }));
     variants.Add(("f1-angle30", MethodKind.F1, new MethodParameters { AngleDeg = 30 }));
+    variants.Add(("l2-edge-ss5", MethodKind.L2, new MethodParameters { EdgeSize = "ss5" }));
+    variants.Add(("l5-ss16-ss5", MethodKind.L5, new MethodParameters { FromSize = "ss16", ToSize = "ss5" }));
+    variants.Add(("l6-pattern", MethodKind.L6, new MethodParameters { SizePattern = "ss6, ss6, ss16" }));
+    variants.Add(("l8-accents", MethodKind.L8, new MethodParameters { AccentSize = "ss16" }));
+    variants.Add(("l4-grow", MethodKind.L4, new MethodParameters { RowCount = 5, WidthProfile = MethodChoices.ProfileGrow }));
 
     foreach ((string shapeName, Curve curve) in shapes)
     {
@@ -224,7 +230,7 @@ static void RenderMethodsScenario()
                 continue;
             }
 
-            MethodResult result = MethodRunner.Run(kind, new[] { curve }, 2.4, p);
+            MethodResult result = MethodRunner.Run(kind, new[] { curve }, 2.4, p, previewSizes);
             string file = Path.Combine(outDir, name + "-" + shapeName + ".svg");
             File.WriteAllText(file, SvgWriter.Render(flat.Points.Select(pt => pt.Position).ToList(), flat.IsClosed, result.Stones));
 

@@ -70,7 +70,11 @@ namespace Strassio.Corel
             label.SetResourceReference(StyleProperty, "Strassio.Caption");
             Place(label, row, 0);
 
-            FrameworkElement input = field.Kind == FieldKind.Choice ? CreateChoice(field) : CreateNumberBox(field);
+            FrameworkElement input =
+                field.Kind == FieldKind.Choice ? CreateChoice(field) :
+                field.Kind == FieldKind.Size ? CreateSizeChoice(field) :
+                field.Kind == FieldKind.Text ? CreateTextBox(field) :
+                CreateNumberBox(field);
             input.ToolTip = Loc[field.TooltipKey];
             input.Margin = new Thickness(0, 0, 0, 6);
             Place(input, row, 1);
@@ -94,6 +98,84 @@ namespace Strassio.Corel
                 }
             };
             return combo;
+        }
+
+        /// <summary>
+        /// Размер из таблицы камней (L2 крайние ряды, L5, L8). «Как основной камень» — пустое значение.
+        /// Если поле пустое, а такого варианта нет — выбирается самый крупный размер таблицы.
+        /// </summary>
+        private ComboBox CreateSizeChoice(MethodField field)
+        {
+            PluginSettings settings = context.Settings;
+            string unit = Loc[settings.Units == LengthUnit.Inch ? "unit.in" : "unit.mm"];
+            var options = new List<ChoiceOption>();
+            if (field.AllowsSameSize)
+            {
+                options.Add(new ChoiceOption(MethodChoices.SameSize, Loc["param.size.same"]));
+            }
+
+            foreach (Strassio.Core.Stones.StoneSize size in ActiveSet?.Sizes ?? new List<Strassio.Core.Stones.StoneSize>())
+            {
+                options.Add(new ChoiceOption(size.Name, Loc.Format(
+                    "size.item", size.Name,
+                    LengthUnits.Format(size.DiameterMm, settings.Units, settings.Decimals, CultureInfo.CurrentCulture), unit)));
+            }
+
+            var combo = new ComboBox { DisplayMemberPath = nameof(ChoiceOption.Text), ItemsSource = options };
+            string current = field.GetChoice(Params);
+            ChoiceOption? chosen = options.FirstOrDefault(o => string.Equals(o.Value, current, System.StringComparison.OrdinalIgnoreCase));
+            if (chosen == null && !field.AllowsSameSize && ActiveSet != null && ActiveSet.Sizes.Count > 0)
+            {
+                string largest = ActiveSet.Sizes.OrderByDescending(s => s.DiameterMm).First().Name;
+                chosen = options.FirstOrDefault(o => o.Value == largest);
+                field.TrySetChoice(Params, largest);
+            }
+
+            combo.SelectedItem = chosen ?? options.FirstOrDefault();
+            combo.SelectionChanged += (s, e) =>
+            {
+                if (combo.SelectedItem is ChoiceOption picked && field.TrySetChoice(Params, picked.Value))
+                {
+                    context.SaveSettingsQuietly();
+                }
+            };
+            return combo;
+        }
+
+        /// <summary>Строка — шаблон размеров L6 «ss6, ss6, ss10»; проверяется по таблице камней.</summary>
+        private TextBox CreateTextBox(MethodField field)
+        {
+            var box = new TextBox { Text = field.GetChoice(Params) };
+            box.LostKeyboardFocus += (s, e) => CommitText(field, box, reportError: true);
+            box.KeyDown += (s, e) =>
+            {
+                if (e.Key == Key.Enter)
+                {
+                    CommitText(field, box, reportError: true);
+                }
+            };
+            return box;
+        }
+
+        private bool CommitText(MethodField field, TextBox box, bool reportError)
+        {
+            string text = box.Text.Trim();
+            IReadOnlyList<string> unknown = SizePatterns.Unknown(text, KnownSizes);
+            string? error = SizePatterns.Split(text).Length == 0 ? "param.pattern.empty" : unknown.Count > 0 ? "param.pattern.invalid" : null;
+            if (error == null && field.TrySetChoice(Params, text))
+            {
+                box.ClearValue(BorderBrushProperty);
+                context.SaveSettingsQuietly();
+                return true;
+            }
+
+            box.SetResourceReference(BorderBrushProperty, "Strassio.Error");
+            if (reportError)
+            {
+                SetStatus(error ?? "param.pattern.empty", string.Join(", ", unknown));
+            }
+
+            return false;
         }
 
         private TextBox CreateNumberBox(MethodField field)
@@ -139,8 +221,15 @@ namespace Strassio.Corel
         {
             foreach (ParamRow row in paramRows)
             {
-                if (row.Input is TextBox box && row.Input.Visibility == Visibility.Visible &&
-                    !CommitNumber(row.Field, box, reportError: true))
+                if (!(row.Input is TextBox box) || row.Input.Visibility != Visibility.Visible)
+                {
+                    continue;
+                }
+
+                bool ok = row.Field.Kind == FieldKind.Text
+                    ? CommitText(row.Field, box, reportError: true)
+                    : CommitNumber(row.Field, box, reportError: true);
+                if (!ok)
                 {
                     box.Focus();
                     box.SelectAll();

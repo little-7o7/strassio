@@ -20,6 +20,12 @@ namespace Strassio.Core.Methods
 
         /// <summary>Галочка.</summary>
         Toggle,
+
+        /// <summary>Размер из таблицы камней (список строит докер — таблица у каждого своя).</summary>
+        Size,
+
+        /// <summary>Строка, например шаблон размеров «ss6, ss6, ss10».</summary>
+        Text,
     }
 
     /// <summary>
@@ -117,9 +123,23 @@ namespace Strassio.Core.Methods
             return true;
         }
 
-        /// <summary>Записывает вариант; незнакомое слово не записывается.</summary>
+        /// <summary>Для <see cref="FieldKind.Size"/>: есть ли вариант «как основной камень» (пустое значение).</summary>
+        public bool AllowsSameSize { get; private set; }
+
+        /// <summary>Записывает вариант; незнакомое слово не записывается. Для размеров — любое название из таблицы.</summary>
         public bool TrySetChoice(MethodParameters p, string choice)
         {
+            if (Kind == FieldKind.Size || Kind == FieldKind.Text)
+            {
+                if (Kind == FieldKind.Size && choice.Length == 0 && !AllowsSameSize)
+                {
+                    return false;
+                }
+
+                setChoice!(p, choice.Trim());
+                return true;
+            }
+
             foreach (string c in Choices)
             {
                 if (c == choice)
@@ -144,6 +164,16 @@ namespace Strassio.Core.Methods
             string id, string[] choices,
             Func<MethodParameters, string> get, Action<MethodParameters, string> set) =>
             new MethodField(id, FieldKind.Choice, 0, 0, choices, null, null, get, set, null, null, null);
+
+        internal static MethodField SizeChoice(
+            string id, bool allowSame, Func<MethodParameters, string> get, Action<MethodParameters, string> set) =>
+            new MethodField(id, FieldKind.Size, 0, 0, Array.Empty<string>(), null, null, get, set, null, null, null)
+            {
+                AllowsSameSize = allowSame,
+            };
+
+        internal static MethodField TextField(string id, Func<MethodParameters, string> get, Action<MethodParameters, string> set) =>
+            new MethodField(id, FieldKind.Text, 0, 0, Array.Empty<string>(), null, null, get, set, null, null, null);
 
         internal static MethodField Toggle(
             string id, Func<MethodParameters, bool> get, Action<MethodParameters, bool> set) =>

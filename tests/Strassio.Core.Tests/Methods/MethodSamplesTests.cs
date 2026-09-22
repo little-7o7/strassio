@@ -23,11 +23,9 @@ public class MethodSamplesTests
     [Fact]
     public void Samples_LookDifferent()
     {
-        var counts = MethodCatalog.All
-            .Select(i => MethodSamples.Run(i.Kind, out MethodSample _).Stones.Count)
-            .ToArray();
+        int Count(MethodKind kind) => MethodSamples.Run(kind, out MethodSample _).Stones.Count;
 
         // F1 (сетка) и F2 (соты) на одном круге дают разное число кружков — схемы различимы.
-        Assert.NotEqual(counts[3], counts[4]);
+        Assert.NotEqual(Count(MethodKind.F1), Count(MethodKind.F2));
     }
 }

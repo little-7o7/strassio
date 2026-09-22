@@ -30,8 +30,13 @@ namespace Strassio.Core.Methods
     {
         /// <param name="contours">Все контуры фигуры (внешний и отверстия), мм.</param>
         /// <param name="stoneDiameterMm">Диаметр выбранного камня.</param>
+        /// <param name="sizes">
+        /// Таблица размеров «название → диаметр, мм» — для методов с несколькими размерами (L2 с другими
+        /// крайними рядами, L5, L6, L8). Нет таблицы или размера в ней — берётся основной камень.
+        /// </param>
         public static MethodResult Run(
-            MethodKind kind, IReadOnlyList<Curve> contours, double stoneDiameterMm, MethodParameters p)
+            MethodKind kind, IReadOnlyList<Curve> contours, double stoneDiameterMm, MethodParameters p,
+            IReadOnlyDictionary<string, double>? sizes = null)
         {
             if (contours == null || contours.Count == 0)
             {
@@ -50,10 +55,25 @@ namespace Strassio.Core.Methods
                     return Plain(LineScatterer.Scatter(OuterContour(contours), LineOptions(d, p)));
 
                 case MethodKind.L2:
-                    return AroundLine(OuterContour(contours), d, p);
+                    return AroundLine(OuterContour(contours), d, p, sizes);
 
                 case MethodKind.L3:
                     return OffsetLine(OuterContour(contours), d, p);
+
+                case MethodKind.L4:
+                    return Calligraphy(OuterContour(contours), d, p);
+
+                case MethodKind.L5:
+                    return SizeTransition(OuterContour(contours), d, p, sizes);
+
+                case MethodKind.L6:
+                    return SizeAlternation(OuterContour(contours), d, p, sizes);
+
+                case MethodKind.L7:
+                    return Dashes(OuterContour(contours), d, p);
+
+                case MethodKind.L8:
+                    return Accents(OuterContour(contours), d, p, sizes);
 
                 case MethodKind.F1:
                 case MethodKind.F2:
@@ -176,11 +196,27 @@ namespace Strassio.Core.Methods
         /// относительно линии (при нечётном числе рядов средний лежит на самой линии). Ряд ближе
         /// к линии идёт в списке раньше — при наложениях он главнее (раздел 6.3).
         /// </summary>
-        private static MethodResult AroundLine(Curve curve, double d, MethodParameters p)
+        private static MethodResult AroundLine(Curve curve, double d, MethodParameters p, IReadOnlyDictionary<string, double>? sizes)
         {
-            double rowStep = d + p.RowGapMm;
             double outward = OutwardSign(curve);
             int count = Math.Max(1, p.RowCount);
+            bool bothSides = p.RowSide != MethodChoices.SideOutside && p.RowSide != MethodChoices.SideInside;
+
+            // Крайние ряды — своим размером (раздел 4: «центр ss10, края ss6»); остальные — основным.
+            double edge = Diameter(p.EdgeSize, d, sizes);
+            var diameters = new double[count];
+            for (int i = 0; i < count; i++)
+            {
+                bool isEdge = count > 1 && (i == count - 1 || (bothSides && i == 0));
+                diameters[i] = isEdge ? edge : d;
+            }
+
+            // Центры рядов поперёк линии: соседние — через половины их диаметров и зазор между рядами.
+            var across = new double[count];
+            for (int i = 1; i < count; i++)
+            {
+                across[i] = across[i - 1] + (diameters[i - 1] + diameters[i]) / 2 + p.RowGapMm;
+            }
 
             var rows = new List<(double Offset, int Position)>();
             for (int i = 0; i < count; i++)
@@ -189,27 +225,28 @@ namespace Strassio.Core.Methods
                 switch (p.RowSide)
                 {
                     case MethodChoices.SideOutside:
-                        offset = outward * i * rowStep;
+                        offset = outward * across[i];
                         break;
                     case MethodChoices.SideInside:
-                        offset = -outward * i * rowStep;
+                        offset = -outward * across[i];
                         break;
                     default:
-                        offset = (i - (count - 1) / 2.0) * rowStep;
+                        offset = across[i] - across[count - 1] / 2;
                         break;
                 }
 
                 rows.Add((offset, i));
             }
 
-            double halfStep = (d + p.GapMm) / 2;
             RowSpec[] specs = rows
                 .OrderBy(r => Math.Abs(r.Offset))
                 .Select(r => new RowSpec
                 {
                     OffsetMm = r.Offset,
                     CornerStyle = Corners(p),
-                    ScatterOptions = RowOptions(d, p, p.Stagger && r.Position % 2 == 1 ? halfStep : 0),
+                    ScatterOptions = RowOptions(
+                        diameters[r.Position], p,
+                        p.Stagger && r.Position % 2 == 1 ? (diameters[r.Position] + p.GapMm) / 2 : 0),
                 })
                 .ToArray();
 
@@ -238,6 +275,175 @@ namespace Strassio.Core.Methods
             return new MethodResult(
                 fixedResult.Stones,
                 action == IntersectionAction.ShowOnly ? fixedResult.ConflictIndices : Array.Empty<int>());
+        }
+
+        /// <summary>
+        /// L4 «каллиграфия» (раздел 4): число рядов меняется вдоль линии — 1 на концах и все ряды в
+        /// середине (или от начала к концу). Строим все ряды, как в L2 «в обе стороны», и в каждом
+        /// месте оставляем только столько рядов, сколько там «помещается» по профилю ширины.
+        /// </summary>
+        private static MethodResult Calligraphy(Curve curve, double d, MethodParameters p)
+        {
+            int count = Math.Max(1, p.RowCount);
+            double rowStep = d + p.RowGapMm;
+            var specs = new List<RowSpec>();
+            var halfIndex = new List<double>();
+            for (int i = 0; i < count; i++)
+            {
+                double j = i - (count - 1) / 2.0;
+                specs.Add(new RowSpec { OffsetMm = j * rowStep, CornerStyle = Corners(p), ScatterOptions = RowOptions(d, p, 0) });
+                halfIndex.Add(Math.Abs(j));
+            }
+
+            // Ряд у линии — первым: при наложениях он главнее.
+            int[] order = Enumerable.Range(0, count).OrderBy(i => halfIndex[i]).ToArray();
+            IReadOnlyList<PlacedStone> all = RingScatterer.Scatter(curve, order.Select(i => specs[i]).ToList());
+
+            FlattenedCurve flat = CurveFlattener.Flatten(curve);
+            var kept = new List<PlacedStone>();
+            foreach (PlacedStone stone in all)
+            {
+                double j = halfIndex[order[stone.RowId]];
+                double t = VariableLineScatterer.ProjectFraction(flat, stone.Center);
+                // Ширина в рядах, округлённая: у самого края профиля уже виден последний ряд.
+                double rowsHere = Math.Round(1 + (count - 1) * WidthProfile(p.WidthProfile, t));
+                if (2 * j + 1 <= rowsHere + 1e-9)
+                {
+                    kept.Add(stone);
+                }
+            }
+
+            return Plain(IntersectionFixer.Fix(kept, new IntersectionFixOptions { MinGapMm = Math.Min(p.GapMm, p.RowGapMm) / 2 }).Stones);
+        }
+
+        /// <summary>Доля полной ширины линии в точке t (0…1) для L4.</summary>
+        private static double WidthProfile(string profile, double t)
+        {
+            switch (profile)
+            {
+                case MethodChoices.ProfileGrow:
+                    return t;
+                case MethodChoices.ProfileShrink:
+                    return 1 - t;
+                default:
+                    return Math.Sin(Math.PI * t);
+            }
+        }
+
+        /// <summary>
+        /// L5 «переход размера» (раздел 4): камни меняют размер вдоль линии — от «с размера» до «до
+        /// размера», через все размеры таблицы между ними, каждому — равная доля длины.
+        /// </summary>
+        private static MethodResult SizeTransition(Curve curve, double d, MethodParameters p, IReadOnlyDictionary<string, double>? sizes)
+        {
+            List<double> steps = SizeRange(Diameter(p.FromSize, d, sizes), Diameter(p.ToSize, d, sizes), sizes);
+            int k = steps.Count;
+            IReadOnlyList<PlacedStone> stones = VariableLineScatterer.Scatter(
+                curve, (i, t) => steps[Math.Min(k - 1, (int)Math.Floor(t * k))], p.GapMm);
+            return Plain(FixSingleRow(stones, p));
+        }
+
+        /// <summary>L6 «чередование размеров» по шаблону, например «ss6, ss6, ss10».</summary>
+        private static MethodResult SizeAlternation(Curve curve, double d, MethodParameters p, IReadOnlyDictionary<string, double>? sizes)
+        {
+            List<double> pattern = SizePatterns.Parse(p.SizePattern, sizes);
+            if (pattern.Count == 0)
+            {
+                pattern.Add(d);
+            }
+
+            IReadOnlyList<PlacedStone> stones = VariableLineScatterer.Scatter(curve, (i, t) => pattern[i % pattern.Count], p.GapMm);
+            return Plain(FixSingleRow(stones, p));
+        }
+
+        /// <summary>L7 «пунктир»: ряд, как «по линии», но из каждых (группа + пропуск) мест заняты только первые «группа».</summary>
+        private static MethodResult Dashes(Curve curve, double d, MethodParameters p)
+        {
+            IReadOnlyList<PlacedStone> row = LineScatterer.Scatter(curve, LineOptions(d, p));
+            int dash = Math.Max(1, p.DashCount);
+            int period = dash + Math.Max(0, p.SkipCount);
+            return Plain(row.Where((stone, i) => i % period < dash).ToList());
+        }
+
+        /// <summary>
+        /// L8 «акценты»: крупный камень на концах линии и/или в углах. Ряд строится как «по линии»,
+        /// акценты заменяют камни на своих местах, а соседи, на которых акцент налез, убираются
+        /// (оставшиеся раздвигаются, дырки нет).
+        /// </summary>
+        private static MethodResult Accents(Curve curve, double d, MethodParameters p, IReadOnlyDictionary<string, double>? sizes)
+        {
+            IReadOnlyList<PlacedStone> row = LineScatterer.Scatter(curve, LineOptions(d, p));
+            if (row.Count == 0)
+            {
+                return Plain(row);
+            }
+
+            double accent = Diameter(p.AccentSize, d * 1.5, sizes);
+            bool ends = p.AccentWhere != MethodChoices.AccentCorners && !CurveFlattener.Flatten(curve).IsClosed;
+            bool corners = p.AccentWhere != MethodChoices.AccentEnds;
+
+            var stones = new List<PlacedStone>(row.Count);
+            for (int i = 0; i < row.Count; i++)
+            {
+                bool isAccent = (ends && (i == 0 || i == row.Count - 1)) || (corners && row[i].IsCorner);
+
+                // Акцент помечаем как «угловой» — у таких приоритет при исправлении наложений (раздел 6.3).
+                stones.Add(isAccent
+                    ? new PlacedStone(row[i].Center, accent, isCorner: true, row[i].RowId)
+                    : new PlacedStone(row[i].Center, row[i].DiameterMm, isCorner: false, row[i].RowId));
+            }
+
+            return Plain(FixSingleRow(stones, p));
+        }
+
+        /// <summary>Убирает наложения в одном ряду (у острых углов, у акцентов); соседи раздвигаются.</summary>
+        private static List<PlacedStone> FixSingleRow(IReadOnlyList<PlacedStone> stones, MethodParameters p)
+        {
+            double minGap = p.GapMm / 2;
+            IReadOnlyList<PlacedStone> fixedRow = IntersectionFixer.Fix(stones, new IntersectionFixOptions { MinGapMm = minGap }).Stones;
+
+            // Раздвигание соседей в острых углах иногда задевает камень другого «плеча» угла, особенно
+            // когда камни разного размера (звезда в Preview "methods"). Последняя проверка — без раздвигания.
+            return IntersectionFixer.RemoveOverlaps(fixedRow, minGap);
+        }
+
+        /// <summary>Диаметр размера по названию; нет названия или таблицы — <paramref name="fallback"/>.</summary>
+        private static double Diameter(string? name, double fallback, IReadOnlyDictionary<string, double>? sizes)
+        {
+            if (sizes == null || string.IsNullOrWhiteSpace(name))
+            {
+                return fallback;
+            }
+
+            foreach (KeyValuePair<string, double> size in sizes)
+            {
+                if (string.Equals(size.Key.Trim(), name!.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    return size.Value;
+                }
+            }
+
+            return fallback;
+        }
+
+        /// <summary>От одного диаметра к другому через все размеры таблицы между ними (в любую сторону).</summary>
+        private static List<double> SizeRange(double from, double to, IReadOnlyDictionary<string, double>? sizes)
+        {
+            double lo = Math.Min(from, to);
+            double hi = Math.Max(from, to);
+            var list = new List<double> { lo, hi };
+            if (sizes != null)
+            {
+                list.AddRange(sizes.Values.Where(v => v > lo + 1e-6 && v < hi - 1e-6));
+            }
+
+            list = list.Distinct().OrderBy(v => v).ToList();
+            if (from > to)
+            {
+                list.Reverse();
+            }
+
+            return list;
         }
 
         /// <summary>L3 «по смещённой линии»: один ряд на заданном расстоянии наружу или внутрь, без наложений.</summary>
