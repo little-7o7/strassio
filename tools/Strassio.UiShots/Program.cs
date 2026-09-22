@@ -44,6 +44,8 @@ namespace Strassio.UiShots
                     SnapDocker(outDir, "docker-line" + theme, DockerLayout.Vertical, fillTab: false, 300, 900);
                     SnapDocker(outDir, "docker-fill" + theme, DockerLayout.Vertical, fillTab: true, 300, 900);
                     SnapDocker(outDir, "docker-horizontal" + theme, DockerLayout.Horizontal, fillTab: true, 960, 420);
+                    SnapDocker(outDir, "docker-edit" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 2);
+                    SnapDocker(outDir, "docker-color" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 3);
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
                 }
@@ -89,7 +91,7 @@ namespace Strassio.UiShots
         private static Window Make(string typeName, params object?[] args) =>
             (Window)Activator.CreateInstance(Addon.GetType(typeName), args);
 
-        private static void SnapDocker(string outDir, string name, DockerLayout layout, bool fillTab, int width, int height)
+        private static void SnapDocker(string outDir, string name, DockerLayout layout, bool fillTab, int width, int height, int tab = -1)
         {
             Settings.Layout = layout;
             Settings.LastMethod = string.Empty; // иначе докер сам откроет метод с прошлого снимка
@@ -98,6 +100,11 @@ namespace Strassio.UiShots
             {
                 ((TabControl)docker.FindName("MethodTabs")).SelectedIndex = 1;
                 ((ComboBox)docker.FindName("MethodCombo")).SelectedIndex = 3;
+            }
+
+            if (tab >= 0)
+            {
+                ((TabControl)docker.FindName("MethodTabs")).SelectedIndex = tab;
             }
 
             var window = new Window

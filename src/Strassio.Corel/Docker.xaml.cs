@@ -116,6 +116,8 @@ namespace Strassio.Corel
             }
 
             RebuildColors();
+            RebuildEditTexts();
+            ShowTabPanels();
             StatusText.Text = Loc.Format(statusKey, statusArgs);
         }
 
@@ -129,7 +131,9 @@ namespace Strassio.Corel
         private void RebuildMethods()
         {
             string? selectedKey = (MethodCombo.SelectedItem as MethodOption)?.Key;
-            bool fill = MethodTabs.SelectedItem == FillTab;
+            // На вкладках «Правка» и «Цвет» список методов не виден — оставляем тот, что был.
+            bool fill = IsMethodTab ? MethodTabs.SelectedItem == FillTab : methodListIsFill;
+            methodListIsFill = fill;
             List<MethodOption> list = methods.Where(m => m.Info.IsFill == fill).ToList();
             MethodCombo.ItemsSource = null;
             MethodCombo.ItemsSource = list;
@@ -189,6 +193,7 @@ namespace Strassio.Corel
         private void ColorList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             ColorName.Text = (ColorList.SelectedItem as ColorOption)?.Name ?? string.Empty;
+            RebuildEditTexts();
         }
 
         private void MethodTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -196,7 +201,12 @@ namespace Strassio.Corel
             // Событие всплывает и от вложенных списков — реагируем только на смену самой вкладки.
             if (ReferenceEquals(e.OriginalSource, MethodTabs) && !refreshing)
             {
-                RebuildMethods();
+                ShowTabPanels();
+                SetStatus(MethodTabs.SelectedItem == EditTab ? "edit.ready" : MethodTabs.SelectedItem == ColorTab ? "color.ready" : "status.ready");
+                if (IsMethodTab)
+                {
+                    RebuildMethods();
+                }
             }
         }
 
@@ -308,6 +318,7 @@ namespace Strassio.Corel
                         double radius = stone.DiameterMm / 2.0;
                         Shape circle = layer.CreateEllipse2(stone.Center.X, stone.Center.Y, radius, radius);
                         circle.Name = stoneName;
+                        StoneShapes.Mark(circle, size.Name, color.Name);
                         created[i] = circle;
                     }
 

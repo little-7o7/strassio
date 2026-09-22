@@ -65,7 +65,50 @@
             <TabControl x:Name="MethodTabs" SelectionChanged="MethodTabs_SelectionChanged">
                 <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
                 <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
+                <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}"/>
+                <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}"/>
             </TabControl>
+
+            <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->
+            <StackPanel x:Name="EditPanel" Visibility="Collapsed">
+                <TextBlock Text="{Binding [edit.delete]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <ComboBox x:Name="DeleteModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                          SelectionChanged="DeleteModeCombo_SelectionChanged"/>
+                <TextBlock x:Name="DeleteModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <CheckBox x:Name="TouchingBox" Content="{Binding [edit.touching]}" ToolTip="{Binding [edit.touching.tooltip]}"
+                          Margin="0,0,0,6"/>
+                <Button Content="{Binding [edit.apply]}" Click="ApplyDelete_Click" Margin="0,0,0,14"
+                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [edit.apply.tooltip]}"/>
+
+                <TextBlock Text="{Binding [edit.tools]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <Button Content="{Binding [edit.duplicates]}" Click="Duplicates_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.duplicates.tooltip]}"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [edit.lock]}" Click="Lock_Click" ToolTip="{Binding [edit.lock.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [edit.unlock]}" Click="Unlock_Click" ToolTip="{Binding [edit.unlock.tooltip]}"/>
+                </Grid>
+                <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+            </StackPanel>
+
+            <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска и выделение по размеру/цвету — Docker.Edit.cs -->
+            <StackPanel x:Name="ColorPanel" Visibility="Collapsed">
+                <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
+                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
+                <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+
+                <TextBlock Text="{Binding [color.select]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
+                <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
+                <Button x:Name="SelectBothButton" Click="SelectBoth_Click" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+            </StackPanel>
+
+            <StackPanel x:Name="MethodPanel">
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -93,11 +136,12 @@
                     <ColumnDefinition Width="*" MinWidth="70"/>
                 </Grid.ColumnDefinitions>
             </Grid>
+            </StackPanel>
           </StackPanel>
 
           <StackPanel x:Name="ActionSection">
             <!-- Низ: «Предпросмотр» (картинка в докере, документ не меняется) и «Создать» -->
-            <Grid>
+            <Grid x:Name="CreateRow">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="6"/>
