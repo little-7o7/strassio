@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "tsc -p tsconfig.json && node --test \"dist/tests/*.test.js\"",
-    "keys": "tsc -p tsconfig.json && node dist/scripts/generate-keys.js"
+    "keys": "tsc -p tsconfig.json && node dist/scripts/generate-keys.js",
+    "local": "tsc -p tsconfig.json && node dist/scripts/local-server.js"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.0"
