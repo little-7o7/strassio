@@ -26,11 +26,15 @@
   <div class="wrap" style="max-width: 760px">
     <h2>Активация</h2>
     <p class="sub">В CorelDRAW откройте окно «Лицензия» и нажмите «Копировать» рядом с кодом компьютера
-      (или «Открыть сайт активации» — тогда код вставится сам). Здесь введите ключ и получите код активации.</p>
+      (или «Открыть сайт активации» — тогда код вставится сам). Здесь введите ключ и почту, указанную при покупке, — и получите код активации.</p>
 
     <form class="panel" id="form">
-      <label class="field">Ключ
-        <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+      <div class="row2">
+        <label class="field">Ключ
+          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+        <label class="field">Почта
+          <input id="email" type="email" autocomplete="email" placeholder="почта, указанная при покупке" required></label>
+      </div>
       <label class="field">Код компьютера
         <textarea id="hwid" spellcheck="false" required placeholder="из окна «Лицензия» — кнопка «Копировать»"></textarea></label>
       <button class="btn primary" id="go">Получить код активации</button>
@@ -65,7 +69,9 @@ const ERRORS = {
   expired: "Срок этого ключа закончился. Напишите автору, чтобы продлить.",
   bad_request: "Проверьте ключ (STRS-XXXX-XXXX-XXXX) и код компьютера — скопируйте его кнопкой «Копировать» в плагине.",
   transfer_limit: "Переносить лицензию можно раз в 7 дней. Если нужно раньше — напишите автору в Telegram.",
-  too_many: "Слишком много попыток. Подождите минуту.",
+  too_many: "Слишком много попыток. Подождите 15 минут.",
+  email_required: "Введите почту.",
+  wrong_email: "Почта не совпадает с почтой этого ключа. Введите ту, что указали при покупке, или напишите автору.",
 };
 
 function say(id, text, good) { $(id).textContent = text; $(id).className = "msg " + (good ? "ok" : "bad"); }
@@ -83,7 +89,7 @@ async function activate(transfer) {
     const res = await fetch("/api/site/activate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ serial: $("serial").value, hwid: $("hwid").value, transfer }),
+      body: JSON.stringify({ serial: $("serial").value, email: $("email").value, hwid: $("hwid").value, transfer }),
     });
     const data = await res.json().catch(() => ({ ok: false }));
     if (res.status === 429) data.error = "too_many";

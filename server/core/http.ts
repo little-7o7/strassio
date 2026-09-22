@@ -123,6 +123,15 @@ export class App {
     if (clientAction) {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
+      // Ввод ключа и перенос прямо из плагина (старые версии) — тоже только с почтой ключа.
+      if (clientAction === "activate" || clientAction === "transfer") {
+        if (this.lookupFailures.blocked(req.ip)) return tooMany();
+        const emailProblem = await this.service.verifyEmail(body.serial, body.email);
+        if (emailProblem) {
+          if (emailProblem === "wrong_email") this.lookupFailures.fail(req.ip);
+          return { status: 403, json: { ok: false, error: emailProblem } };
+        }
+      }
       const result = await this.service[clientAction](body);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
@@ -134,10 +143,10 @@ export class App {
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
       if (this.lookupFailures.blocked(req.ip)) return tooMany();
       const result =
-        myAction === "lookup" ? await this.service.siteLookup(body.serial) :
-        myAction === "release" ? await this.service.siteRelease(body.serial, body.activationId) :
-        await this.service.siteOffline(body.serial, body.hwid);
-      if (!result.ok && result.error === "not_found" && myAction === "lookup") this.lookupFailures.fail(req.ip);
+        myAction === "lookup" ? await this.service.siteLookup(body.serial, body.email) :
+        myAction === "release" ? await this.service.siteRelease(body.serial, body.activationId, body.email) :
+        await this.service.siteOffline(body.serial, body.hwid, body.email);
+      if (!result.ok && (result.error === "wrong_email" || (result.error === "not_found" && myAction === "lookup"))) this.lookupFailures.fail(req.ip);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
@@ -155,7 +164,9 @@ export class App {
     if (path === "/api/site/activate") {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
-      const result = await this.service.siteActivate(body.serial, body.hwid, body.transfer === true);
+      if (this.lookupFailures.blocked(req.ip)) return tooMany();
+      const result = await this.service.siteActivate(body.serial, body.hwid, body.transfer === true, body.email);
+      if (!result.ok && (result.error === "wrong_email" || result.error === "not_found")) this.lookupFailures.fail(req.ip);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 

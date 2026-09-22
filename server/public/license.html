@@ -29,11 +29,15 @@
       и получить файл лицензии для компьютера без интернета.</p>
 
     <form class="panel" id="loginForm">
-      <label class="field">Ключ
-        <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+      <div class="row2">
+        <label class="field">Ключ
+          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+        <label class="field">Почта
+          <input id="email" type="email" autocomplete="email" placeholder="почта, указанная при покупке" required></label>
+      </div>
       <button class="btn primary" id="loginBtn">Открыть</button>
       <p class="msg" id="loginMsg"></p>
-      <p class="note">Ключ вы получили при покупке. Если потеряли — напишите автору.</p>
+      <p class="note">Ключ вы получили при покупке. Почта — та, что указали при покупке. Если что-то потеряли — напишите автору.</p>
     </form>
 
     <div id="info" hidden>
@@ -76,6 +80,8 @@ const ERRORS = {
   expired: "Срок ключа закончился.",
   bad_request: "Код компьютера не похож на настоящий. Скопируйте его кнопкой «Копировать» в плагине.",
   too_many: "Слишком много попыток. Подождите 15 минут.",
+  email_required: "Введите почту.",
+  wrong_email: "Почта не совпадает с почтой этого ключа. Введите ту, что указали при покупке, или напишите автору.",
 };
 let creds = null;
 
@@ -119,7 +125,7 @@ function show(l) {
 $("loginForm").onsubmit = (e) => {
   e.preventDefault();
   busy($("loginBtn"), "loginMsg", async () => {
-    creds = { serial: $("serial").value };
+    creds = { serial: $("serial").value, email: $("email").value };
     try { show((await call("lookup")).license); } catch (err) { creds = null; $("info").hidden = true; throw err; }
   });
 };

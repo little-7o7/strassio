@@ -8,6 +8,8 @@ import { LicenseService } from "../core/service.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const keys = generateKeys();
+/** Почта клиента: без неё сайт не выдаёт код активации и не открывает «Моя лицензия». */
+const EMAIL = "client@example.com";
 
 function hw(a: string, b: string, c: string, d: string): string {
   const h = (x: string) => (x === "-" ? "-" : x.padEnd(16, "0").slice(0, 16));
@@ -191,11 +193,11 @@ test("«Моя лицензия»: по одному ключу видны ко�
   const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
 
-  assert.deepEqual(await service.siteLookup("STRS-AAAA-BBBB-CCCC"), { ok: false, error: "not_found" });
-  assert.deepEqual(await service.siteLookup("мусор"), { ok: false, error: "not_found" });
-  assert.deepEqual(await service.siteRelease("мусор", 1), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteLookup("STRS-AAAA-BBBB-CCCC", EMAIL), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteLookup("мусор", EMAIL), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteRelease("мусор", 1, EMAIL), { ok: false, error: "not_found" });
 
-  const view = await service.siteLookup(serial.toLowerCase().replace(/-/g, " "));
+  const view = await service.siteLookup(serial.toLowerCase().replace(/-/g, " "), EMAIL);
   assert.ok(view.ok);
   if (view.ok) {
     assert.equal(view.license.computers.length, 1);
@@ -212,31 +214,31 @@ test("«Моя лицензия»: освободить старый компь�
   await service.activate({ serial, hwid: PC1 });
   assert.equal((await service.activate({ serial, hwid: PC2 })).ok, false);
 
-  const view = await service.siteLookup(serial);
+  const view = await service.siteLookup(serial, EMAIL);
   const id = view.ok ? view.license.computers[0].id : -1;
-  const released = await service.siteRelease(serial, id);
+  const released = await service.siteRelease(serial, id, EMAIL);
   assert.ok(released.ok);
   if (released.ok) {
     assert.equal(released.license.transfersLeft, 0);
     assert.ok(released.license.nextTransferAt);
   }
-  assert.deepEqual(await service.siteRelease(serial, id), { ok: false, error: "not_found" }, "дважды не освобождается");
+  assert.deepEqual(await service.siteRelease(serial, id, EMAIL), { ok: false, error: "not_found" }, "дважды не освобождается");
 
   payload(await service.activate({ serial, hwid: PC2 }));
   assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
 
   // Чужую активацию (другого ключа) освободить нельзя.
   const [{ serial: other }] = await service.createKeys({});
-  assert.deepEqual(await service.siteRelease(other, id), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteRelease(other, id, EMAIL), { ok: false, error: "not_found" });
 });
 
 test("«Моя лицензия»: ожидание 7 дней действует и на сайте", async () => {
   const { service, advance } = setup();
   const [{ serial }] = await service.createKeys({});
   const releaseActive = async () => {
-    const v = await service.siteLookup(serial);
+    const v = await service.siteLookup(serial, EMAIL);
     const active = v.ok ? v.license.computers.find((c) => c.active) : undefined;
-    return service.siteRelease(serial, active!.id);
+    return service.siteRelease(serial, active!.id, EMAIL);
   };
 
   payload(await service.activate({ serial, hwid: PC1 }));
@@ -250,16 +252,16 @@ test("«Моя лицензия»: ожидание 7 дней действуе�
 test("«Моя лицензия»: файл лицензии для компьютера без интернета — только если есть свободное место", async () => {
   const { service } = setup();
   const [{ serial }] = await service.createKeys({});
-  const file = await service.siteOffline(serial, PC1);
+  const file = await service.siteOffline(serial, PC1, EMAIL);
   assert.ok(file.ok);
   if (file.ok) {
     assert.ok(verifyDocument(file.file, keys.publicKey));
     assert.equal(JSON.parse(file.file.payload).offline, true);
   }
 
-  assert.ok((await service.siteOffline(serial, PC1_NEW_DISK)).ok, "тот же компьютер — можно ещё раз");
-  assert.deepEqual(await service.siteOffline(serial, PC2), { ok: false, error: "occupied" });
-  assert.deepEqual(await service.siteOffline(serial, "zz"), { ok: false, error: "bad_request" });
+  assert.ok((await service.siteOffline(serial, PC1_NEW_DISK, EMAIL)).ok, "тот же компьютер — можно ещё раз");
+  assert.deepEqual(await service.siteOffline(serial, PC2, EMAIL), { ok: false, error: "occupied" });
+  assert.deepEqual(await service.siteOffline(serial, "zz", EMAIL), { ok: false, error: "bad_request" });
 });
 
 test("админка: пробные периоды видны (код компьютера, дни); удалённый можно взять заново", async () => {
@@ -297,7 +299,7 @@ test("сайт: активация по коду компьютера — код
   const { service, advance } = setup();
   const [{ serial }] = await service.createKeys({});
 
-  const first = await service.siteActivate(serial, "  " + PC1 + "\n", false);
+  const first = await service.siteActivate(serial, "  " + PC1 + "\n", false, EMAIL);
   assert.ok(first.ok);
   if (first.ok) {
     const [prefix, payloadB64, sigB64] = first.code.split(".");
@@ -309,20 +311,20 @@ test("сайт: активация по коду компьютера — код
     assert.equal(Buffer.from(sigB64, "base64url").length, 64);
   }
 
-  assert.ok((await service.siteActivate(serial, PC1_NEW_DISK, false)).ok, "тот же компьютер после смены диска");
-  const busy = await service.siteActivate(serial, PC2, false);
+  assert.ok((await service.siteActivate(serial, PC1_NEW_DISK, false, EMAIL)).ok, "тот же компьютер после смены диска");
+  const busy = await service.siteActivate(serial, PC2, false, EMAIL);
   assert.equal(busy.ok, false);
   if (!busy.ok) assert.equal(busy.error, "occupied");
 
-  assert.ok((await service.siteActivate(serial, PC2, true)).ok);
+  assert.ok((await service.siteActivate(serial, PC2, true, EMAIL)).ok);
   assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
-  const early = await service.siteActivate(serial, PC3, true);
+  const early = await service.siteActivate(serial, PC3, true, EMAIL);
   assert.equal(early.ok ? "" : early.error, "transfer_limit");
   advance(7);
-  assert.ok((await service.siteActivate(serial, PC3, true)).ok);
+  assert.ok((await service.siteActivate(serial, PC3, true, EMAIL)).ok);
 
-  assert.deepEqual(await service.siteActivate(serial, "мусор", false), { ok: false, error: "bad_request" });
-  assert.deepEqual(await service.siteActivate("STRS-AAAA-BBBB-CCCC", PC1, false), { ok: false, error: "not_found" });
+  assert.deepEqual(await service.siteActivate(serial, "мусор", false, EMAIL), { ok: false, error: "bad_request" });
+  assert.deepEqual(await service.siteActivate("STRS-AAAA-BBBB-CCCC", PC1, false, EMAIL), { ok: false, error: "not_found" });
 });
 
 test("админка: данные клиента (имя, фамилия, телефон, почта, день рождения), поиск по ним и проверка", async () => {
@@ -390,4 +392,28 @@ test("сайт: заявка на покупку → админка → ключ
 
   assert.ok(await service.adminRequest(request.id, "delete"));
   assert.equal((await service.listRequests()).length, 0);
+});
+
+test("почта — второй секрет к ключу: без неё и с чужой почтой сайт ничего не выдаёт", async () => {
+  const { service } = setup();
+  const [{ serial }] = await service.createKeys({ client: { email: "Madina@Example.com" } });
+
+  assert.deepEqual(await service.siteActivate(serial, PC1, false), { ok: false, error: "email_required" });
+  assert.deepEqual(await service.siteActivate(serial, PC1, false, "other@example.com"), { ok: false, error: "wrong_email" });
+  assert.deepEqual(await service.siteActivate(serial, PC1, false, "не почта"), { ok: false, error: "wrong_email" });
+  assert.deepEqual(await service.siteLookup(serial, "other@example.com"), { ok: false, error: "wrong_email" });
+  assert.deepEqual(await service.siteRelease(serial, 1, ""), { ok: false, error: "email_required" });
+  assert.deepEqual(await service.siteOffline(serial, PC1, "x@y.z"), { ok: false, error: "wrong_email" });
+  assert.ok((await service.siteActivate(serial, PC1, false, "  madina@example.COM ")).ok, "регистр и пробелы не важны");
+  assert.ok((await service.siteLookup(serial, "madina@example.com")).ok);
+
+  // У ключа почты нет — первая введённая привязывается, дальше нужна именно она.
+  const [{ serial: bare }] = await service.createKeys({});
+  assert.ok((await service.siteLookup(bare, "first@example.com")).ok);
+  assert.equal((await service.search(bare))[0].client.email, "first@example.com");
+  assert.deepEqual(await service.siteActivate(bare, PC2, false, "second@example.com"), { ok: false, error: "wrong_email" });
+  assert.ok((await service.auditLog(20)).some((r) => r.action === "bind_email" && r.serial === bare));
+
+  // Несуществующий ключ — обычное not_found (почту не проверяем, раз ключа нет).
+  assert.deepEqual(await service.siteLookup("STRS-AAAA-BBBB-CCCC", "a@b.cd"), { ok: false, error: "not_found" });
 });

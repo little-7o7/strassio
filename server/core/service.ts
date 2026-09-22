@@ -20,7 +20,9 @@ export type ErrorCode =
   | "occupied"
   | "transfer_limit"
   | "not_activated"
-  | "revoked";
+  | "revoked"
+  | "email_required"
+  | "wrong_email";
 
 export type ClientResult =
   | { ok: true; license: SignedDocument }
@@ -221,10 +223,35 @@ export class LicenseService {
    * занято — ответ occupied, перенос (transfer = true) — не чаще раза в 7 дней. Лицензия обычная
    * (не офлайн): плагин сверяет её с сервером каждый день.
    */
-  async siteActivate(serial: unknown, hwid: unknown, transfer: boolean): Promise<{ ok: true; code: string } | Exclude<ClientResult, { ok: true }>> {
+  async siteActivate(serial: unknown, hwid: unknown, transfer: boolean, email?: unknown): Promise<{ ok: true; code: string } | Exclude<ClientResult, { ok: true }>> {
+    const emailProblem = await this.verifyEmail(serial, email);
+    if (emailProblem) return fail(emailProblem);
     const req: ClientRequest = { serial, hwid: typeof hwid === "string" ? hwid.replace(/\s+/g, "") : hwid, pluginVersion: "site", corelVersion: "" };
     const result = transfer ? await this.transfer(req) : await this.activate(req);
     return result.ok ? { ok: true, code: toActivationCode(result.license) } : result;
+  }
+
+  /**
+   * Почта — второй секрет к ключу (решение автора, 22.09.2026): без неё по чужому ключу нельзя получить
+   * код активации, перенести лицензию или открыть «Моя лицензия». У ключа почта уже есть (заполнил
+   * автор или пришла из заявки) — должна совпасть; ещё нет — первая введённая привязывается к ключу.
+   * null — всё в порядке (или ключа нет: тогда дальше ответит обычная проверка — not_found).
+   */
+  async verifyEmail(serialText: unknown, emailText: unknown): Promise<"email_required" | "wrong_email" | null> {
+    const serial = normalizeSerial(serialText);
+    const license = serial ? await this.store.findLicense(serial) : null;
+    if (!license) return null;
+    const email = typeof emailText === "string" ? emailText.trim() : "";
+    if (!email) return "email_required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 200) return "wrong_email";
+    if (license.client.email) {
+      return license.client.email.toLowerCase() === email.toLowerCase() ? null : "wrong_email";
+    }
+
+    license.client = { ...license.client, email };
+    await this.store.updateLicense(license);
+    await this.log("site", "bind_email", license.serial, email);
+    return null;
   }
 
   // ---------- Сайт: заявка на покупку ----------
@@ -404,7 +431,9 @@ export class LicenseService {
   // ---------- Сайт: «Моя лицензия» (по одному ключу, решение автора 22.09.2026) ----------
 
   /** Ключ → сведения о лицензии и её компьютерах. */
-  async siteLookup(serialText: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+  async siteLookup(serialText: unknown, email?: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+    const emailProblem = await this.verifyEmail(serialText, email);
+    if (emailProblem) return { ok: false, error: emailProblem };
     const license = await this.siteLicense(serialText);
     if (!license) return { ok: false, error: "not_found" };
     return { ok: true, license: await this.siteView(license) };
@@ -414,7 +443,9 @@ export class LicenseService {
    * «Освободить» компьютер с сайта (например, старый сломался или Windows переустановили на другом
    * железе). Считается переносом (раз в 7 дней): иначе ключ можно было бы передавать по кругу.
    */
-  async siteRelease(serialText: unknown, activationId: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+  async siteRelease(serialText: unknown, activationId: unknown, email?: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
+    const emailProblem = await this.verifyEmail(serialText, email);
+    if (emailProblem) return { ok: false, error: emailProblem };
     const license = await this.siteLicense(serialText);
     if (!license) return { ok: false, error: "not_found" };
     const activation = await this.store.findActivation(Number(activationId));
@@ -434,7 +465,9 @@ export class LicenseService {
    * Файл лицензии для компьютера без интернета (сам клиент, без автора): код компьютера из окна
    * «Лицензия» → подписанный файл. Один ключ — один компьютер: место должно быть свободно.
    */
-  async siteOffline(serialText: unknown, hwidText: unknown): Promise<SiteResult<{ file: SignedDocument }>> {
+  async siteOffline(serialText: unknown, hwidText: unknown, email?: unknown): Promise<SiteResult<{ file: SignedDocument }>> {
+    const emailProblem = await this.verifyEmail(serialText, email);
+    if (emailProblem) return { ok: false, error: emailProblem };
     const license = await this.siteLicense(serialText);
     if (!license) return { ok: false, error: "not_found" };
     const problem = this.licenseProblem(license);

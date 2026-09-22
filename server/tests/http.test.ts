@@ -36,7 +36,8 @@ test("полный путь: ключ из админки → активация
   const serial = (created.json as { serials: string[] }).serials[0];
   const hwid = ["a", "b", "c", "d"].map((x) => x.repeat(16)).join(".");
 
-  const activated = await app.handle(req("POST", "/api/activate", { serial, hwid }));
+  assert.equal((await app.handle(req("POST", "/api/activate", { serial, hwid }))).status, 403, "без почты ключ не активируется");
+  const activated = await app.handle(req("POST", "/api/activate", { serial, hwid, email: "client@example.com" }));
   assert.equal(activated.status, 200);
   assert.equal((await app.handle(req("POST", "/api/check", { serial, hwid }))).status, 200);
   assert.equal((await app.handle(req("POST", "/api/activate", { serial: "плохо", hwid }))).status, 400);
@@ -85,15 +86,15 @@ test("сайт: «Моя лицензия» по одному ключу; пос
   const app = makeApp();
   const created = await app.handle(req("POST", "/api/admin/keys", { count: 1 }, PASSWORD));
   const key = (created.json as { keys: Array<{ serial: string }> }).keys[0];
-  const good = await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial }, undefined, "7.7.7.7"));
+  const good = await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial, email: "client@example.com" }, undefined, "7.7.7.7"));
   assert.equal(good.status, 200);
   assert.equal(JSON.stringify(created.json).includes("RCV"), false, "ключа восстановления больше нет");
 
   for (let i = 0; i < 10; i++) {
-    assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: "STRS-AAAA-BBBB-CCCC" }, undefined, "8.8.8.8"))).status, 403);
+    assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: "STRS-AAAA-BBBB-CCCC", email: "client@example.com" }, undefined, "8.8.8.8"))).status, 403);
   }
   // Перебор ключей бессмыслен: даже с верным ключом — подождать.
-  assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial }, undefined, "8.8.8.8"))).status, 429);
+  assert.equal((await app.handle(req("POST", "/api/mylicense/lookup", { serial: key.serial, email: "client@example.com" }, undefined, "8.8.8.8"))).status, 429);
   assert.equal((await app.handle(req("GET", "/api/mylicense/lookup"))).status, 405);
   assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial }))).status, 404, "старого адреса нет");
 });
@@ -170,4 +171,19 @@ test("сайт: заявка — не больше 5 в час с одного �
   assert.equal(made.status, 200);
   assert.match((made.json as any).key.serial, /^STRS-/);
   assert.equal((await app.handle(req("GET", "/api/admin/requests"))).status, 401, "заявки видит только админ");
+});
+
+test("сайт: подбор почты к чужому ключу упирается в лимит (10 неверных за 15 минут)", async () => {
+  const app = makeApp();
+  const created = await app.handle(req("POST", "/api/admin/keys", { client: { email: "owner@example.com" } }, PASSWORD));
+  const serial = (created.json as any).keys[0].serial;
+  const hwid = "a100000000000000.b100000000000000.c100000000000000.d100000000000000";
+  for (let i = 0; i < 10; i++) {
+    const r = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "guess" + i + "@example.com" }, undefined, "6.6.6.6"));
+    assert.equal((r.json as any).error, "wrong_email");
+  }
+  const blocked = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "owner@example.com" }, undefined, "6.6.6.6"));
+  assert.equal(blocked.status, 429);
+  const owner = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "owner@example.com" }, undefined, "5.5.5.5"));
+  assert.equal(owner.status, 200);
 });
