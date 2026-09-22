@@ -117,9 +117,11 @@ test("админка: скрипт страницы без синтаксиче�
   assert.doesNotThrow(() => new Function(script));
 });
 
-test("сайт «Моя лицензия»: скрипт без синтаксических ошибок", async () => {
+test("сайт: скрипты страниц «Моя лицензия» и «Активация» без синтаксических ошибок", async () => {
   const { readFileSync } = await import("node:fs");
-  const page = readFileSync(new URL("../../public/license.html", import.meta.url), "utf8");
-  const script = page.substring(page.indexOf("<script>") + 8, page.lastIndexOf("</script>"));
-  assert.doesNotThrow(() => new Function(script));
+  for (const name of ["license.html", "activate.html"]) {
+    const page = readFileSync(new URL("../../public/" + name, import.meta.url), "utf8");
+    const script = page.substring(page.indexOf("<script>") + 8, page.lastIndexOf("</script>"));
+    assert.doesNotThrow(() => new Function(script), name);
+  }
 });

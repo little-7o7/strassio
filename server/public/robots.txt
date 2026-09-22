@@ -3,3 +3,4 @@ Disallow: /admin
 Disallow: /adminpanel
 Disallow: /api/
 Disallow: /license
+Disallow: /activate

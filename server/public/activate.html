@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Активация — Strassio</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/img/logo.svg" alt="">Strassio</a>
+    <nav>
+      <a href="/">Главная</a>
+      <a href="/activate" class="on">Активация</a>
+      <a href="/license">Моя лицензия</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="block">
+  <div class="wrap" style="max-width: 760px">
+    <h2>Активация</h2>
+    <p class="sub">В CorelDRAW откройте окно «Лицензия» и нажмите «Копировать» рядом с кодом компьютера
+      (или «Открыть сайт активации» — тогда код вставится сам). Здесь введите ключ и получите код активации.</p>
+
+    <form class="panel" id="form">
+      <label class="field">Ключ
+        <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+      <label class="field">Код компьютера
+        <textarea id="hwid" spellcheck="false" required placeholder="из окна «Лицензия» — кнопка «Копировать»"></textarea></label>
+      <button class="btn primary" id="go">Получить код активации</button>
+      <button class="btn" id="move" type="button" hidden>Перенести на этот компьютер</button>
+      <p class="msg" id="msg"></p>
+    </form>
+
+    <div class="panel" id="result" hidden>
+      <h3 style="margin-top: 0">Код активации</h3>
+      <p class="muted" style="margin-top: 0">Скопируйте его и вставьте в окне «Лицензия» в поле «Код активации»,
+        затем нажмите «Активировать». Код подходит только для этого компьютера.</p>
+      <label class="field"><textarea id="code" readonly spellcheck="false" style="min-height: 110px"></textarea></label>
+      <button class="btn primary" id="copy" type="button">Копировать код</button>
+      <p class="msg" id="copyMsg"></p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Strassio</span>
+    <span><a href="/license">Моя лицензия</a></span>
+  </div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ERRORS = {
+  not_found: "Такого ключа нет. Проверьте, нет ли опечатки.",
+  blocked: "Этот ключ заблокирован. Напишите автору.",
+  expired: "Срок этого ключа закончился. Напишите автору, чтобы продлить.",
+  bad_request: "Проверьте ключ (STRS-XXXX-XXXX-XXXX) и код компьютера — скопируйте его кнопкой «Копировать» в плагине.",
+  transfer_limit: "Переносить лицензию можно раз в 7 дней. Если нужно раньше — напишите автору в Telegram.",
+  too_many: "Слишком много попыток. Подождите минуту.",
+};
+
+function say(id, text, good) { $(id).textContent = text; $(id).className = "msg " + (good ? "ok" : "bad"); }
+function date(s) { return new Date(s).toLocaleDateString("ru-RU"); }
+
+// Кнопка «Открыть сайт активации» в плагине передаёт код компьютера в адресе: /activate#hwid=…
+const fromPlugin = new URLSearchParams(location.hash.slice(1)).get("hwid");
+if (fromPlugin) { $("hwid").value = fromPlugin; history.replaceState(null, "", location.pathname); }
+
+async function activate(transfer) {
+  $("go").disabled = $("move").disabled = true;
+  $("msg").textContent = ""; $("result").hidden = true;
+  let canMove = false;
+  try {
+    const res = await fetch("/api/site/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serial: $("serial").value, hwid: $("hwid").value, transfer }),
+    });
+    const data = await res.json().catch(() => ({ ok: false }));
+    if (res.status === 429) data.error = "too_many";
+    if (data.ok) {
+      $("code").value = data.code;
+      $("result").hidden = false;
+      say("msg", transfer ? "Лицензия перенесена на этот компьютер. Старый отключится при следующей проверке." : "Готово!", true);
+      $("result").scrollIntoView({ behavior: "smooth" });
+    } else if (data.error === "occupied" && data.nextTransferAt) {
+      say("msg", "Ключ работает на другом компьютере. Перенести можно с " + date(data.nextTransferAt) + ". Раньше — напишите автору в Telegram.");
+    } else if (data.error === "occupied") {
+      canMove = true;
+      say("msg", "Ключ работает на другом компьютере. Можно перенести лицензию сюда — старый компьютер отключится. Следующий перенос — через 7 дней.");
+    } else {
+      say("msg", ERRORS[data.error] || "Ошибка сервера. Попробуйте позже.");
+    }
+  } catch (e) {
+    say("msg", "Нет связи с сервером. Проверьте интернет.");
+  } finally {
+    $("move").hidden = !canMove;
+    $("go").disabled = $("move").disabled = false;
+  }
+}
+
+$("form").onsubmit = (e) => { e.preventDefault(); activate(false); };
+$("move").onclick = () => {
+  if (confirm("Перенести лицензию на этот компьютер? Старый компьютер отключится. Следующий перенос будет возможен через 7 дней.")) activate(true);
+};
+$("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText($("code").value); }
+  catch (e) { $("code").select(); document.execCommand("copy"); }
+  say("copyMsg", "Скопировано. Вставьте в окне «Лицензия» в CorelDRAW.", true);
+};
+</script>
+</body>
+</html>
