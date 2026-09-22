@@ -67,6 +67,8 @@
                     ToolTip="{Binding [transfer.import.tooltip]}"/>
             <Button Content="{Binding [settings.openFolder]}" Click="OpenFolder_Click" Margin="0,0,6,6"
                     ToolTip="{Binding [settings.openFolder.tooltip]}"/>
+            <Button Content="{Binding [settings.license]}" Click="License_Click" Margin="0,0,6,6"
+                    ToolTip="{Binding [settings.license.tooltip]}"/>
         </WrapPanel>
 
         <DockPanel Margin="0,6,0,0" LastChildFill="False">

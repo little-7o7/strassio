@@ -8,7 +8,7 @@
     <RootNamespace>Strassio.Corel</RootNamespace>
     <AssemblyName>Strassio.Corel</AssemblyName>
     <!-- Та же версия, что в installer\Strassio.iss (AppVersion): её видит автор в админке. -->
-    <Version>0.7.0</Version>
+    <Version>0.7.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -46,12 +46,12 @@
   </ItemGroup>
 
   <!--
-    Требовать лицензию для создания страз. Пока сервер лицензий не запущен в интернете, выключено:
-    окно «Лицензия» работает, но стразы создаются и без неё. Включить: StrassioEnforceLicense=true
-    (dotnet build -p:StrassioEnforceLicense=true или в этом файле).
+    Требовать лицензию для создания страз. Включено с версии 0.7.1 (решение автора, 22.09.2026):
+    без лицензии или пробного периода стразы не создаются. Выключить для отладки:
+    dotnet build -p:StrassioEnforceLicense=false.
   -->
   <PropertyGroup>
-    <StrassioEnforceLicense Condition="'$(StrassioEnforceLicense)' == ''">false</StrassioEnforceLicense>
+    <StrassioEnforceLicense Condition="'$(StrassioEnforceLicense)' == ''">true</StrassioEnforceLicense>
     <DefineConstants Condition="'$(StrassioEnforceLicense)' == 'true'">$(DefineConstants);STRASSIO_ENFORCE_LICENSE</DefineConstants>
   </PropertyGroup>
 

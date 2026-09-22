@@ -23,9 +23,11 @@ namespace Strassio.Corel
     public partial class SettingsWindow : Window
     {
         private readonly PluginContext context = PluginContext.Instance;
+        private readonly CorelApplication? app;
 
         public SettingsWindow(CorelApplication? app)
         {
+            this.app = app;
             InitializeComponent();
             DataContext = context.Localizer;
             SetOwner(app);
@@ -193,6 +195,9 @@ namespace Strassio.Corel
             ErrorText.SetResourceReference(TextBlock.ForegroundProperty, "Strassio.Error");
             ErrorText.Visibility = Visibility.Visible;
         }
+
+        /// <summary>Окно «Лицензия» (активация через сайт) — живёт в настройках, а не в шапке докера.</summary>
+        private void License_Click(object sender, RoutedEventArgs e) => new LicenseWindow(app) { Owner = this }.ShowDialog();
 
         private void OpenFolder_Click(object sender, RoutedEventArgs e)
         {

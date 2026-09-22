@@ -294,8 +294,6 @@ namespace Strassio.Corel
             new SettingsWindow(app).ShowDialog();
         }
 
-        private void License_Click(object sender, RoutedEventArgs e) => new LicenseWindow(app).ShowDialog();
-
         private void LicenseLine_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => new LicenseWindow(app).ShowDialog();
 
         /// <summary>Лицензия изменилась (фоновая сверка, окно «Лицензия») — событие приходит не из потока окна.</summary>
