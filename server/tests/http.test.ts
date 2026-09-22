@@ -73,3 +73,10 @@ test("перебор паролей админки упирается в лим�
   assert.equal(statuses[0], 401);
   assert.equal(statuses[11], 429);
 });
+
+test("админка: пробелы и перенос строки по краям пароля (так вставили в Vercel) не мешают войти", async () => {
+  const app = makeApp("  " + PASSWORD + "\n");
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, PASSWORD))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, " " + PASSWORD + " "))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, "wrong-password"))).status, 401);
+});

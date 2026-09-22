@@ -36,6 +36,8 @@ export const ADMIN_PAGE = `<!doctype html>
 <body>
 <main>
   <h1>Strassio — лицензии</h1>
+  <!-- Сообщения — вне блока app: ошибка входа («Неверный пароль») должна быть видна и до входа. -->
+  <div id="msg"></div>
 
   <section id="login">
     <h2>Вход</h2>
@@ -53,7 +55,6 @@ export const ADMIN_PAGE = `<!doctype html>
       <button data-tab="audit">Журнал</button>
       <button onclick="logout()" style="float:right">Выйти</button>
     </div>
-    <div id="msg"></div>
 
     <div data-page="keys">
       <section>
@@ -130,7 +131,8 @@ function say(text, bad) { $("msg").innerHTML = '<span class="' + (bad ? "bad" : 
 async function run(fn) { try { await fn(); } catch (e) { say(e.message, true); } }
 
 async function login() {
-  password = $("pwd").value;
+  password = $("pwd").value.trim();
+  $("msg").innerHTML = "";
   await run(async () => { await api("POST", "login"); sessionStorage.setItem("strassio-admin", password); show(); });
 }
 function logout() { password = ""; sessionStorage.removeItem("strassio-admin"); $("app").hidden = true; $("login").hidden = false; }

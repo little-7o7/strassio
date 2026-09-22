@@ -52,10 +52,15 @@ const CLIENT_ACTIONS = ["activate", "transfer", "check", "deactivate", "trial"] 
 export class App {
   constructor(
     private readonly service: LicenseService,
-    private readonly adminPassword: string | undefined,
+    adminPassword: string | undefined,
     private readonly clientLimiter = new RateLimiter(30, 60_000),
     private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
-  ) {}
+  ) {
+    // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
+    this.adminPassword = adminPassword?.trim();
+  }
+
+  private readonly adminPassword: string | undefined;
 
   async handle(req: HttpRequest): Promise<HttpResponse> {
     try {
@@ -162,7 +167,7 @@ export class App {
   }
 
   private isAdmin(header: string | undefined): boolean {
-    const given = (header ?? "").replace(/^Bearer\s+/i, "");
+    const given = (header ?? "").replace(/^Bearer\s+/i, "").trim();
     const a = createHash("sha256").update(given).digest();
     const b = createHash("sha256").update(this.adminPassword!).digest();
     return given.length > 0 && timingSafeEqual(a, b);
