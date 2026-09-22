@@ -1,5 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "tsc -p tsconfig.json --noEmit",
+  "outputDirectory": "public",
   "rewrites": [
     { "source": "/", "destination": "/api?__path=admin" },
     { "source": "/admin", "destination": "/api?__path=admin" },
