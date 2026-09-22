@@ -57,6 +57,18 @@
     </Window.Resources>
 
     <DockPanel Margin="14">
+        <!-- Наборы таблицы (раздел 3.1): несколько таблиц, например под разных поставщиков -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+            <TextBlock DockPanel.Dock="Left" Text="{Binding [stones.set]}" Style="{StaticResource Strassio.Caption}"/>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="6,0,0,0">
+                <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE710;" Click="AddSet_Click" ToolTip="{Binding [stones.addSet]}"/>
+                <Button Style="{StaticResource Strassio.IconButton}" Content="&#xE8AC;" Click="RenameSet_Click" ToolTip="{Binding [stones.renameSet]}"/>
+                <Button x:Name="RemoveSetButton" Style="{StaticResource Strassio.IconButton}" Content="&#xE738;" Click="RemoveSet_Click"
+                        ToolTip="{Binding [stones.removeSet]}"/>
+            </StackPanel>
+            <ComboBox x:Name="SetCombo" DisplayMemberPath="Name" SelectionChanged="SetCombo_SelectionChanged"/>
+        </DockPanel>
+
         <!-- Низ: ошибки и кнопки -->
         <StackPanel DockPanel.Dock="Bottom">
             <TextBlock x:Name="ErrorText" Foreground="{DynamicResource Strassio.Error}" TextWrapping="Wrap"

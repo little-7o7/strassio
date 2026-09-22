@@ -27,7 +27,7 @@ namespace Strassio.Corel
     {
         private readonly PluginContext context = PluginContext.Instance;
         private readonly StoneTable table;
-        private readonly StoneSet set;
+        private StoneSet set;
         private readonly ObservableCollection<SizeRow> sizeRows = new ObservableCollection<SizeRow>();
         private readonly ObservableCollection<ColorRow> colorRows = new ObservableCollection<ColorRow>();
         private bool loading;
@@ -46,7 +46,8 @@ namespace Strassio.Corel
                 table.Sets.Add(new StoneSet { Name = Loc["stones.default.set"] });
             }
 
-            set = table.Sets[0];
+            set = StoneTableRules.FindSet(table, context.Settings.ActiveSet) ?? table.Sets[0];
+            RebuildSets();
             SizeList.ItemsSource = sizeRows;
             ColorList.ItemsSource = colorRows;
 
@@ -77,6 +78,70 @@ namespace Strassio.Corel
             {
                 WindowStartupLocation = WindowStartupLocation.CenterScreen;
             }
+        }
+
+        // ---- Наборы ----------------------------------------------------------------------------
+
+        private void RebuildSets()
+        {
+            loading = true;
+            try
+            {
+                SetCombo.ItemsSource = null;
+                SetCombo.ItemsSource = table.Sets;
+                SetCombo.SelectedItem = set;
+                RemoveSetButton.IsEnabled = table.Sets.Count > 1;
+            }
+            finally
+            {
+                loading = false;
+            }
+        }
+
+        private void SetCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!loading && SetCombo.SelectedItem is StoneSet chosen)
+            {
+                set = chosen;
+                RebuildSizes(set.Sizes.FirstOrDefault());
+            }
+        }
+
+        private void AddSet_Click(object sender, RoutedEventArgs e)
+        {
+            string? name = NameDialog.Ask(null, this, Loc["stones.addSet"], Loc["stones.setName"], StoneTableRules.UniqueName(table.Sets.Select(s => s.Name), Loc["stones.newSet"]));
+            if (name == null)
+            {
+                return;
+            }
+
+            set = StoneTableRules.AddSet(table, set, name);
+            RebuildSets();
+            RebuildSizes(set.Sizes.FirstOrDefault());
+        }
+
+        private void RenameSet_Click(object sender, RoutedEventArgs e)
+        {
+            string? name = NameDialog.Ask(null, this, Loc["stones.renameSet"], Loc["stones.setName"], set.Name);
+            if (name != null)
+            {
+                set.Name = name;
+                RebuildSets();
+            }
+        }
+
+        private void RemoveSet_Click(object sender, RoutedEventArgs e)
+        {
+            if (table.Sets.Count <= 1)
+            {
+                return;
+            }
+
+            int index = table.Sets.IndexOf(set);
+            table.Sets.Remove(set);
+            set = table.Sets[Math.Min(index, table.Sets.Count - 1)];
+            RebuildSets();
+            RebuildSizes(set.Sizes.FirstOrDefault());
         }
 
         // ---- Размеры ---------------------------------------------------------------------------
@@ -365,7 +430,7 @@ namespace Strassio.Corel
 
         private void Ok_Click(object sender, RoutedEventArgs e)
         {
-            IReadOnlyList<StoneProblem> problems = StoneTableRules.Validate(set);
+            IReadOnlyList<StoneProblem> problems = StoneTableRules.Validate(table);
             if (problems.Count > 0)
             {
                 // Показываем до трёх ошибок сразу — чтобы не чинить по одной вслепую.
@@ -377,7 +442,13 @@ namespace Strassio.Corel
                 return;
             }
 
-            StoneTableRules.Tidy(set);
+            foreach (StoneSet each in table.Sets)
+            {
+                StoneTableRules.Tidy(each);
+            }
+
+            context.Settings.ActiveSet = set.Name;
+            context.SaveSettingsQuietly();
             context.ReplaceStones(table);
             DialogResult = true;
         }

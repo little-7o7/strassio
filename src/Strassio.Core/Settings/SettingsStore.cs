@@ -43,6 +43,9 @@ namespace Strassio.Core.Settings
 
         public string StonesPath => Path.Combine(Directory, "stones.json");
 
+        /// <summary>Папка пресетов (раздел 12): presets\*.json.</summary>
+        public string PresetsDirectory => Path.Combine(Directory, "presets");
+
         public PluginSettings LoadSettings() => Load<PluginSettings>(SettingsPath) ?? new PluginSettings();
 
         public void SaveSettings(PluginSettings settings) => Save(SettingsPath, settings);

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Runtime.Serialization;
 using Strassio.Core.Methods;
 
@@ -79,6 +80,14 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "livePreview")]
         public bool LivePreview { get; set; }
 
+        /// <summary>Последние настройки, с которыми создавали стразы («Недавние» в списке пресетов).</summary>
+        [DataMember(Name = "recent")]
+        public List<Preset> Recent { get; set; } = new List<Preset>();
+
+        /// <summary>Выбранный набор таблицы камней (название); пусто — первый.</summary>
+        [DataMember(Name = "activeSet")]
+        public string ActiveSet { get; set; } = string.Empty;
+
         /// <summary>Параметры методов из докера (зазор, ряды…).</summary>
         [DataMember(Name = "method")]
         public MethodParameters Method { get; set; } = new MethodParameters();
@@ -128,6 +137,8 @@ namespace Strassio.Core.Settings
             CheckUpdates = true;
             LastMethod = string.Empty;
             LivePreview = false;
+            Recent = new List<Preset>();
+            ActiveSet = string.Empty;
             Method = new MethodParameters();
         }
     }

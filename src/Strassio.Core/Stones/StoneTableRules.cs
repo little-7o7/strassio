@@ -94,6 +94,55 @@ namespace Strassio.Core.Stones
         }
 
         /// <summary>
+        /// Ошибки всей таблицы: у каждого набора своё непустое уникальное название (раздел 3.1, «наборы
+        /// таблиц»), и каждый набор без ошибок (<see cref="Validate(StoneSet)"/>).
+        /// </summary>
+        public static IReadOnlyList<StoneProblem> Validate(StoneTable table)
+        {
+            var problems = new List<StoneProblem>();
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (StoneSet set in table.Sets)
+            {
+                string name = (set.Name ?? string.Empty).Trim();
+                if (name.Length == 0)
+                {
+                    problems.Add(new StoneProblem("stones.error.setName"));
+                }
+                else if (!names.Add(name))
+                {
+                    problems.Add(new StoneProblem("stones.error.setDuplicate", name));
+                }
+
+                problems.AddRange(Validate(set));
+            }
+
+            return problems;
+        }
+
+        /// <summary>Набор по названию; нет такого — первый (или null, если наборов нет).</summary>
+        public static StoneSet? FindSet(StoneTable table, string? name) =>
+            table.Sets.FirstOrDefault(s => string.Equals((s.Name ?? string.Empty).Trim(), (name ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase))
+            ?? table.Sets.FirstOrDefault();
+
+        /// <summary>Новый набор — копия <paramref name="copyFrom"/> (размеры и цвета), чтобы не вводить всё заново.</summary>
+        public static StoneSet AddSet(StoneTable table, StoneSet? copyFrom, string baseName)
+        {
+            var set = new StoneSet { Name = UniqueName(table.Sets.Select(s => s.Name), baseName) };
+            if (copyFrom != null)
+            {
+                set.Sizes = copyFrom.Sizes.Select(size => new StoneSize
+                {
+                    Name = size.Name,
+                    DiameterMm = size.DiameterMm,
+                    Colors = size.Colors.Select(c => new StoneColor { Name = c.Name, Rgb = c.Rgb }).ToList(),
+                }).ToList();
+            }
+
+            table.Sets.Add(set);
+            return set;
+        }
+
+        /// <summary>
         /// Убирает пробелы по краям названий. Вызывать перед сохранением, после <see cref="Validate"/>.
         /// </summary>
         public static void Tidy(StoneSet set)

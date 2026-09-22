@@ -39,6 +39,15 @@
 
             <!-- Камень: размер и цвет -->
             <TextBlock Text="{Binding [docker.stone]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <Grid x:Name="SetRow" Margin="0,0,0,6" Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding [docker.set]}" Style="{StaticResource Strassio.Caption}"/>
+                <ComboBox x:Name="SetCombo" Grid.Column="1" DisplayMemberPath="Name" SelectionChanged="SetCombo_SelectionChanged"
+                          ToolTip="{Binding [docker.set.tooltip]}"/>
+            </Grid>
             <Grid Margin="0,0,0,6">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -160,6 +169,22 @@
             </StackPanel>
 
             <StackPanel x:Name="MethodPanel">
+            <!-- Пресеты и недавние настройки (раздел 8) -->
+            <Grid Margin="0,0,0,6">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{Binding [docker.preset]}" Style="{StaticResource Strassio.Caption}"/>
+                <ComboBox x:Name="PresetCombo" Grid.Column="1" DisplayMemberPath="Text" SelectionChanged="PresetCombo_SelectionChanged"
+                          ToolTip="{Binding [docker.preset.tooltip]}"/>
+                <Button Grid.Column="2" Margin="4,0,0,0" Padding="6,3" Click="SavePreset_Click" ToolTip="{Binding [docker.preset.save]}"
+                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE74E;"/>
+                <Button x:Name="DeletePresetButton" Grid.Column="3" Margin="4,0,0,0" Padding="6,3" Click="DeletePreset_Click"
+                        ToolTip="{Binding [docker.preset.delete]}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE74D;"/>
+            </Grid>
             <Grid Margin="0,0,0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

@@ -73,7 +73,7 @@ namespace Strassio.Corel
 
         private Localizer Loc => context.Localizer;
 
-        private StoneSet? ActiveSet => context.Stones.Sets.FirstOrDefault();
+        private StoneSet? ActiveSet => StoneTableRules.FindSet(context.Stones, context.Settings.ActiveSet);
 
         /// <summary>Размеры таблицы «название → диаметр» — для методов с несколькими размерами (L2, L5, L6, L8).</summary>
         private Dictionary<string, double> SizeTable
@@ -151,6 +151,8 @@ namespace Strassio.Corel
             RebuildColors();
             RebuildEditTexts();
             RefreshBridgeBox();
+            RebuildSets();
+            RebuildPresets();
             ShowTabPanels();
             LivePreviewBox.IsChecked = context.Settings.LivePreview;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
@@ -366,6 +368,7 @@ namespace Strassio.Corel
                     doc.EndCommandGroup();
                 }
 
+                RememberRecent(method, size.Name, color.Name);
                 if (result.ConflictIndices.Count > 0)
                 {
                     SetStatus("status.doneConflicts", stones.Count, result.ConflictIndices.Count);
