@@ -272,3 +272,35 @@ test("админка: новый ключ восстановления — ст�
   assert.deepEqual(await service.recoveryLookup(serial, recoveryCode), { ok: false, error: "bad_recovery" });
   assert.ok((await service.recoveryLookup(serial, updated!.recoveryCode)).ok);
 });
+
+test("сайт: активация по коду компьютера — код активации SA1 с подписанной лицензией, занято → перенос раз в 7 дней", async () => {
+  const { service, advance } = setup();
+  const [{ serial }] = await service.createKeys({});
+
+  const first = await service.siteActivate(serial, "  " + PC1 + "\n", false);
+  assert.ok(first.ok);
+  if (first.ok) {
+    const [prefix, payloadB64, sigB64] = first.code.split(".");
+    assert.equal(prefix, "SA1");
+    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+    assert.equal(payload.serial, serial);
+    assert.equal(payload.hwid, PC1);
+    assert.equal(payload.offline, undefined, "обычная лицензия — плагин сверяет её каждый день");
+    assert.equal(Buffer.from(sigB64, "base64url").length, 64);
+  }
+
+  assert.ok((await service.siteActivate(serial, PC1_NEW_DISK, false)).ok, "тот же компьютер после смены диска");
+  const busy = await service.siteActivate(serial, PC2, false);
+  assert.equal(busy.ok, false);
+  if (!busy.ok) assert.equal(busy.error, "occupied");
+
+  assert.ok((await service.siteActivate(serial, PC2, true)).ok);
+  assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
+  const early = await service.siteActivate(serial, PC3, true);
+  assert.equal(early.ok ? "" : early.error, "transfer_limit");
+  advance(7);
+  assert.ok((await service.siteActivate(serial, PC3, true)).ok);
+
+  assert.deepEqual(await service.siteActivate(serial, "мусор", false), { ok: false, error: "bad_request" });
+  assert.deepEqual(await service.siteActivate("STRS-AAAA-BBBB-CCCC", PC1, false), { ok: false, error: "not_found" });
+});

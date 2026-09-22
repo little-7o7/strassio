@@ -183,6 +183,21 @@ namespace Strassio.Licensing
                 return LicenseActionResult.Fail("bad_file");
             }
 
+            return Import(doc);
+        }
+
+        /// <summary>
+        /// Код активации с сайта (<see cref="ActivationCode"/>): клиент вставил на сайте код компьютера
+        /// и получил подписанную лицензию для него. Проверки — те же, что у файла лицензии.
+        /// </summary>
+        public LicenseActionResult ImportCode(string text)
+        {
+            SignedDocument? doc = ActivationCode.TryDecode(text);
+            return doc == null ? LicenseActionResult.Fail("bad_code") : Import(doc);
+        }
+
+        private LicenseActionResult Import(SignedDocument doc)
+        {
             DateTime now = clock();
             LicenseStatus plain = LicenseEvaluator.Evaluate(doc, Computer, now, null, key);
             if (plain.State == LicenseState.BadSignature || plain.State == LicenseState.WrongComputer)

@@ -1,7 +1,7 @@
 // Правила лицензий (SPEC 13.2–13.6) без привязки к платформе: всё время — через clock, данные —
 // через Store, подпись — через Signer. Ответы клиенту: { ok: true, license } или { ok: false, error }.
 import { timingSafeEqual } from "node:crypto";
-import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial } from "./crypto.js";
+import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
 import type { ActivationRow, LicenseRow, Store, UpdateRow } from "./store.js";
 
@@ -173,6 +173,20 @@ export class LicenseService {
         minVersion: row.minVersion,
       }),
     );
+  }
+
+  // ---------- Сайт: активация по коду компьютера ----------
+
+  /**
+   * Страница /activate: ключ + код компьютера (кнопка «Копировать» в плагине) → код активации для
+   * окна «Лицензия». Правила те же, что при вводе ключа в плагине: тот же компьютер восстанавливается,
+   * занято — ответ occupied, перенос (transfer = true) — не чаще раза в 7 дней. Лицензия обычная
+   * (не офлайн): плагин сверяет её с сервером каждый день.
+   */
+  async siteActivate(serial: unknown, hwid: unknown, transfer: boolean): Promise<{ ok: true; code: string } | Exclude<ClientResult, { ok: true }>> {
+    const req: ClientRequest = { serial, hwid: typeof hwid === "string" ? hwid.replace(/\s+/g, "") : hwid, pluginVersion: "site", corelVersion: "" };
+    const result = transfer ? await this.transfer(req) : await this.activate(req);
+    return result.ok ? { ok: true, code: toActivationCode(result.license) } : result;
   }
 
   // ---------- Админка ----------

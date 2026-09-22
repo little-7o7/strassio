@@ -140,6 +140,14 @@ export class App {
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
+    // Сайт: активация по коду компьютера (страница /activate).
+    if (path === "/api/site/activate") {
+      if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
+      if (!this.clientLimiter.allow(req.ip)) return tooMany();
+      const result = await this.service.siteActivate(body.serial, body.hwid, body.transfer === true);
+      return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
+    }
+
     if (path.startsWith("/api/admin/")) {
       return this.admin(req, path.substring("/api/admin/".length), body);
     }

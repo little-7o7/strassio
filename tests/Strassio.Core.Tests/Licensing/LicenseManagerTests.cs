@@ -263,6 +263,45 @@ public class LicenseManagerTests : IDisposable
         Assert.Equal(LicenseState.Valid, m.Status.State);
     }
 
+    /// <summary>Код активации с сайта: только для этого компьютера; пробелы и переносы при копировании не мешают.</summary>
+    [Fact]
+    public async Task ImportCode_FromSite_OnlyForThisComputer_AndIsCheckedOnline()
+    {
+        LicenseManager m = NewManager();
+        Assert.Equal("bad_code", m.ImportCode("").Error);
+        Assert.Equal("bad_code", m.ImportCode("STRS-AAAA-BBBB-CCCC").Error);
+        Assert.Equal("bad_code", m.ImportCode("SA1.!!!.???").Error);
+        Assert.Equal("wrong_computer", m.ImportCode(ToCode(License(OtherPc))).Error);
+
+        string code = ToCode(License(Pc));
+        Assert.True(m.ImportCode("  " + code.Substring(0, 50) + "\r\n" + code.Substring(50) + " ").Ok);
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+
+        // Лицензия с сайта обычная (не офлайн): при запуске CorelDRAW сверяется с сервером.
+        api.Reply = _ => Error("revoked");
+        await m.CheckOnStartAsync();
+        Assert.Equal(LicenseState.None, m.Status.State);
+    }
+
+    /// <summary>Код, сделанный настоящим сервером (toActivationCode), читается плагином и подпись сходится.</summary>
+    [Fact]
+    public void ActivationCode_FromServer_DecodesAndVerifies()
+    {
+        const string serverKey = "XXM+KDDcVDHl79nYdO6z3PszKjK/O+qd02NYHUHv1eK+H7vKw47V3DSbD/zwksXSaZPjJaQLyjv0h3R0cDh6wA==";
+        const string code = "SA1.eyJzZXJpYWwiOiJTVFJTLVBDNkQtN0E1Ti1EQ1pNIiwiaHdpZCI6ImExMDAwMDAwMDAwMDAwMDAuYjEwMDAwMDAwMDAwMDAwMC5jMTAwMDAwMDAwMDAwMDAwLmQxMDAwMDAwMDAwMDAwMDAiLCJwbGFuIjoiZnVsbCIsImlzc3VlZEF0IjoiMjAyNi0wOS0yMlQxMDowMDowMFoiLCJuZXh0Q2hlY2tBdCI6IjIwMjYtMDktMjNUMTA6MDA6MDBaIn0.oAOX6F07dYa184tTaTh_sfpvwEWoO5MGJU36hnioxpSRnbV6ZU37gcN4LgelQAXpwqsD0oMjkGxpXoBou5XBLw";
+        SignedDocument? doc = ActivationCode.TryDecode(code);
+        Assert.NotNull(doc);
+        Assert.Contains("\"serial\":\"STRS-PC6D-7A5N-DCZM\"", doc!.Payload);
+        Assert.Equal("oAOX6F07dYa184tTaTh/sfpvwEWoO5MGJU36hnioxpSRnbV6ZU37gcN4LgelQAXpwqsD0oMjkGxpXoBou5XBLw==", doc.Signature);
+        Assert.True(doc.IsSignedBy(LicensePublicKey.FromBase64(serverKey)));
+        Assert.False(doc.IsSignedBy(key));
+    }
+
+    private static string ToCode(SignedDocument doc) =>
+        ActivationCode.Prefix + ToBase64Url(Encoding.UTF8.GetBytes(doc.Payload)) + "." + ToBase64Url(Convert.FromBase64String(doc.Signature));
+
+    private static string ToBase64Url(byte[] bytes) => Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
     private static string ToJson(SignedDocument doc) =>
         "{\"payload\":" + System.Text.Json.JsonSerializer.Serialize(doc.Payload) + ",\"signature\":\"" + doc.Signature + "\"}";
 

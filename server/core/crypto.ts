@@ -91,3 +91,11 @@ export function normalizeRecoveryCode(text: unknown): string | null {
   if (s.length !== 16) return null;
   return "RCV-" + [0, 4, 8, 12].map((i) => s.substring(i, i + 4)).join("-");
 }
+
+/**
+ * Код активации для сайта: подписанная лицензия одной строкой «SA1.<payload>.<подпись>» (base64url).
+ * Клиент копирует его с сайта и вставляет в окно «Лицензия» (ActivationCode.TryDecode в плагине).
+ */
+export function toActivationCode(doc: SignedDocument): string {
+  return "SA1." + Buffer.from(doc.payload, "utf8").toString("base64url") + "." + Buffer.from(doc.signature, "base64").toString("base64url");
+}
