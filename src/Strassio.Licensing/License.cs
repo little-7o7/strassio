@@ -37,13 +37,13 @@ namespace Strassio.Licensing
         [DataMember(Name = "issuedAt", Order = 4)]
         public string IssuedAt { get; set; } = string.Empty;
 
-        /// <summary>Когда сверяться с сервером в следующий раз (раздел 13.3 — раз в 14 дней).</summary>
+        /// <summary>Когда сверяться с сервером в следующий раз (раздел 13.3 — раз в день).</summary>
         [DataMember(Name = "nextCheckAt", Order = 5)]
         public string NextCheckAt { get; set; } = string.Empty;
 
         /// <summary>
         /// Файл офлайн-активации от автора (раздел 13.6) для компьютера без интернета: сверка раз в
-        /// 14 дней не нужна, лицензия действует до <see cref="ExpiresAt"/>.
+        /// день не нужна, лицензия действует до <see cref="ExpiresAt"/>.
         /// </summary>
         [DataMember(Name = "offline", Order = 6, EmitDefaultValue = false)]
         public bool Offline { get; set; }

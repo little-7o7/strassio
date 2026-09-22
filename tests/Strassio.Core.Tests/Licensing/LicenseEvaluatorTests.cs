@@ -45,7 +45,7 @@ public class LicenseEvaluatorTests
     public void GoodLicense_IsValid_AndCanCreate()
     {
         (ECDsa signer, LicensePublicKey key) = NewKey();
-        LicenseStatus s = LicenseEvaluator.Evaluate(Sign(signer, Payload(Pc)), Pc, Now, Now.AddDays(-1), key);
+        LicenseStatus s = LicenseEvaluator.Evaluate(Sign(signer, Payload(Pc)), Pc, Now, Now.AddHours(-2), key);
         Assert.Equal(LicenseState.Valid, s.State);
         Assert.True(s.CanCreate);
         Assert.False(s.NeedsOnlineCheck);
@@ -90,15 +90,16 @@ public class LicenseEvaluatorTests
     }
 
     [Fact]
-    public void Offline_ChecksAfter14Days_StopsAfter30()
+    public void Offline_ChecksEveryDay_StopsAfter14()
     {
         (ECDsa signer, LicensePublicKey key) = NewKey();
         SignedDocument doc = Sign(signer, Payload(Pc, issued: Now));
-        LicenseStatus day15 = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(15), Now, key);
-        Assert.Equal(LicenseState.Valid, day15.State);
-        Assert.True(day15.NeedsOnlineCheck);
+        LicenseStatus day2 = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(2), Now, key);
+        Assert.Equal(LicenseState.Valid, day2.State);
+        Assert.True(day2.NeedsOnlineCheck);
+        Assert.Equal(LicenseState.Valid, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(14), Now, key).State);
 
-        Assert.Equal(LicenseState.OfflineTooLong, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(31), Now, key).State);
+        Assert.Equal(LicenseState.OfflineTooLong, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(15), Now, key).State);
     }
 
     [Fact]

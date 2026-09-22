@@ -102,6 +102,31 @@ namespace Strassio.Corel
                     // Сверка — дело фоновое: любая беда здесь не должна мешать работе.
                 }
             });
+
+            // CorelDRAW могут не закрывать неделями: раз в час смотрим, не пора ли сверка (пора — раз в сутки).
+            dailyCheck = new System.Threading.Timer(_ => CheckIfDue(), null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+        }
+
+        /// <summary>Держим ссылку, иначе сборщик мусора остановит таймер.</summary>
+        private System.Threading.Timer? dailyCheck;
+
+        private async void CheckIfDue()
+        {
+            try
+            {
+                if (await License.CheckAsync())
+                {
+                    return;
+                }
+
+                // Сверки не было или нет связи — всё равно перечитать состояние: могли кончиться 14 дней
+                // без интернета или пробный период, строка в докере должна это показать.
+                License.NotifyChanged();
+            }
+            catch (Exception)
+            {
+                // См. StartBackgroundCheck.
+            }
         }
 
         public void SaveSettings()

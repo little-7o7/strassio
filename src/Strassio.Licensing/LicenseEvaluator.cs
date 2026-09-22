@@ -23,7 +23,7 @@ namespace Strassio.Licensing
         /// <summary>Подпись не сходится — файл подделан или испорчен.</summary>
         BadSignature,
 
-        /// <summary>Больше 30 дней без связи с сервером (раздел 13.3).</summary>
+        /// <summary>Больше 14 дней без связи с сервером (раздел 13.3).</summary>
         OfflineTooLong,
 
         /// <summary>
@@ -64,7 +64,7 @@ namespace Strassio.Licensing
         /// <summary>Дней до конца срока (пробного или ограниченного); null — бессрочно.</summary>
         public int? DaysLeft { get; }
 
-        /// <summary>Пора тихо сверяться с сервером (раз в 14 дней).</summary>
+        /// <summary>Пора тихо сверяться с сервером (раз в день).</summary>
         public bool NeedsOnlineCheck { get; }
 
         /// <summary>Можно ли создавать и править стразы. Настройки и таблица камней доступны всегда (раздел 13.5).</summary>
@@ -73,13 +73,13 @@ namespace Strassio.Licensing
 
     /// <summary>
     /// Правила лицензии (docs/SPEC.md, разделы 13.2–13.5) — без сети и без CorelDRAW, поэтому
-    /// проверяются тестами. Сверка с сервером раз в 14 дней; без связи плагин работает до 30 дней с
+    /// проверяются тестами. Сверка с сервером при запуске и раз в день; без связи плагин работает до 14 дней с
     /// последней удачной сверки; лицензия привязана к коду компьютера с нечётким сравнением.
     /// </summary>
     public static class LicenseEvaluator
     {
-        public const int CheckEveryDays = 14;
-        public const int OfflineGraceDays = 30;
+        public const int CheckEveryDays = 1;
+        public const int OfflineGraceDays = 14;
 
         /// <param name="lastCheckUtc">Когда плагин последний раз удачно сверился с сервером (или получил лицензию).</param>
         public static LicenseStatus Evaluate(

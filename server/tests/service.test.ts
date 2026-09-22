@@ -55,7 +55,7 @@ test("активация выдаёт подписанную лицензию с
   assert.equal(p.serial, serial);
   assert.equal(p.hwid, PC1);
   assert.equal(p.plan, "full");
-  assert.equal(new Date(p.nextCheckAt).getTime() - new Date(p.issuedAt).getTime(), 14 * DAY);
+  assert.equal(new Date(p.nextCheckAt).getTime() - new Date(p.issuedAt).getTime(), 1 * DAY);
 });
 
 test("переустановка Windows / сменили диск — тот же ключ восстанавливается, место не занимается", async () => {
@@ -151,7 +151,7 @@ test("офлайн-активация и журнал", async () => {
   const [serial] = await service.createKeys({ note: "Мастер Аня" });
   const doc = await service.offline(serial, PC1);
   assert.ok(doc && verifyDocument(doc, keys.publicKey));
-  // Клиент без интернета не может сверяться раз в 14 дней — офлайн-лицензия помечена.
+  // Клиент без интернета не может сверяться каждый день — офлайн-лицензия помечена.
   assert.equal(JSON.parse(doc.payload).offline, true);
   assert.equal(payload(await service.check({ serial, hwid: PC1 })).offline, undefined);
   const log = await service.auditLog();

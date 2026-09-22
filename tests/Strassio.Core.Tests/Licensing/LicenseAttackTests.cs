@@ -88,10 +88,10 @@ public class LicenseAttackTests : IDisposable
     }
 
     [Fact]
-    public async Task InternetOff_ClockSetBack_DoesNotExtend30Days()
+    public async Task InternetOff_ClockSetBack_DoesNotExtend14Days()
     {
         await Activated();
-        now = Now.AddDays(29);
+        now = Now.AddDays(13);
         Assert.Equal(LicenseState.Valid, Start().Status.State);
 
         now = Now.AddDays(3);

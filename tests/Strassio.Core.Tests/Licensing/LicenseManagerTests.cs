@@ -148,7 +148,7 @@ public class LicenseManagerTests : IDisposable
         Assert.False(await m.CheckAsync());
         Assert.Null(api.LastAction);
 
-        now = Now.AddDays(15);
+        now = Now.AddDays(2);
         Assert.True(m.Status.NeedsOnlineCheck);
         Assert.True(await m.CheckAsync());
         Assert.Equal("check", api.LastAction);
@@ -161,7 +161,7 @@ public class LicenseManagerTests : IDisposable
         api.Reply = _ => Ok(License(Pc));
         await NewManager().ActivateAsync("STRS-AAAA-BBBB-CCCC");
 
-        // Следующий запуск через час: 14 дней не прошло, но сверка всё равно идёт.
+        // Следующий запуск через час: сутки не прошли, но сверка всё равно идёт.
         now = Now.AddHours(1);
         api.LastAction = null;
         api.Reply = _ => Error("revoked");
@@ -202,18 +202,18 @@ public class LicenseManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task Check_WithoutConnection_KeepsWorkingUpTo30Days()
+    public async Task Check_WithoutConnection_KeepsWorkingUpTo14Days()
     {
         api.Reply = _ => Ok(License(Pc));
         LicenseManager m = NewManager();
         await m.ActivateAsync("STRS-AAAA-BBBB-CCCC");
 
         api.Reply = _ => ApiReply.Offline();
-        now = Now.AddDays(20);
+        now = Now.AddDays(10);
         Assert.False(await m.CheckAsync());
         Assert.Equal(LicenseState.Valid, m.Status.State);
 
-        now = Now.AddDays(31);
+        now = Now.AddDays(15);
         Assert.Equal(LicenseState.OfflineTooLong, m.Status.State);
         Assert.False(m.CanCreate);
 

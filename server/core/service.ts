@@ -4,7 +4,7 @@ import { Signer, SignedDocument, newSerial, normalizeSerial } from "./crypto.js"
 import { hwidMatches, parseHwid } from "./hwid.js";
 import type { ActivationRow, LicenseRow, Store, UpdateRow } from "./store.js";
 
-export const CHECK_EVERY_DAYS = 14;
+export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
 export const TRANSFERS_PER_YEAR = 3;
 const DAY = 24 * 60 * 60 * 1000;
@@ -102,7 +102,7 @@ export class LicenseService {
     return this.issue(license!, created.hwid);
   }
 
-  /** Тихая сверка раз в 14 дней. */
+  /** Тихая сверка: при каждом запуске плагина и раз в день. */
   async check(req: ClientRequest): Promise<ClientResult> {
     const input = this.parse(req);
     if (!input) return fail("bad_request");
@@ -337,7 +337,7 @@ export class LicenseService {
 
   /**
    * Текст лицензии — поля в том же порядке, что LicenseData в плагине. offline — файл для клиента
-   * без интернета (SPEC 13.6): плагин не требует сверки раз в 14 дней, действует до expiresAt.
+   * без интернета (SPEC 13.6): плагин не требует ежедневной сверки, действует до expiresAt.
    */
   private sign(serial: string, hwid: string, plan: string, expiresAt: Date | null, offline = false): SignedDocument {
     const now = this.clock();
