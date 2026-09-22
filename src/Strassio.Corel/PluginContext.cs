@@ -1,6 +1,8 @@
 #nullable enable
 using System;
 using System.IO;
+using System.Linq;
+using Microsoft.Win32;
 using Strassio.Core.Localization;
 using Strassio.Core.Settings;
 using Strassio.Core.Stones;
@@ -18,7 +20,7 @@ namespace Strassio.Corel
 
         private PluginContext()
         {
-            Store = new SettingsStore(SettingsStore.DefaultDirectory);
+            Store = new SettingsStore(DataDirectory());
             Settings = Store.LoadSettings();
 
             string addonDir = Path.GetDirectoryName(typeof(PluginContext).Assembly.Location) ?? string.Empty;
@@ -168,6 +170,82 @@ namespace Strassio.Corel
 
         /// <summary>Сохранить без перерисовки докера — например, запомнить последний выбранный камень.</summary>
         public void SaveSettingsQuietly() => TrySave(() => Store.SaveSettings(Settings));
+
+        /// <summary>
+        /// Где лежат настройки, таблица камней, пресеты и лицензия: C:\Strassio\data (установщик пишет
+        /// путь в HKLM\Software\Strassio\DataDir — решение автора, всё в одном месте). Нет записи или
+        /// папка недоступна для записи — %APPDATA%\Strassio, как раньше. Проверка окон без CorelDRAW
+        /// (STRASSIO_SETTINGS_DIR) — всегда её папка.
+        /// </summary>
+        private static string DataDirectory()
+        {
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SettingsStore.DirectoryVariable)))
+            {
+                return SettingsStore.DefaultDirectory;
+            }
+
+            string? installed = InstalledDataDirectory();
+            if (installed == null)
+            {
+                return SettingsStore.DefaultDirectory;
+            }
+
+            MoveOldData(SettingsStore.DefaultDirectory, installed);
+            return installed;
+        }
+
+        private static string? InstalledDataDirectory()
+        {
+            // 32-битный CorelDRAW на 64-битной Windows иначе смотрел бы в WOW6432Node.
+            foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using RegistryKey root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using RegistryKey? key = root.OpenSubKey(@"Software\Strassio");
+                    if (key?.GetValue("DataDir") is string dir && dir.Trim().Length > 0)
+                    {
+                        Directory.CreateDirectory(dir);
+                        string probe = Path.Combine(dir, ".write-test");
+                        File.WriteAllText(probe, string.Empty);
+                        File.Delete(probe);
+                        return dir;
+                    }
+                }
+                catch (Exception)
+                {
+                    // Нет прав или ключа — пробуем другой вид реестра, потом %APPDATA%.
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Один раз: всё из старой папки %APPDATA%\Strassio копируется в новую (если она ещё пуста) —
+        /// настройки, камни, пресеты и лицензия не теряются при переходе на C:\Strassio.
+        /// </summary>
+        private static void MoveOldData(string oldDir, string newDir)
+        {
+            try
+            {
+                if (!Directory.Exists(oldDir) || Directory.EnumerateFileSystemEntries(newDir).Any())
+                {
+                    return;
+                }
+
+                foreach (string file in Directory.GetFiles(oldDir, "*", SearchOption.AllDirectories))
+                {
+                    string target = Path.Combine(newDir, file.Substring(oldDir.Length).TrimStart('\\', '/'));
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    File.Copy(file, target, false);
+                }
+            }
+            catch (Exception)
+            {
+                // Не получилось — пользователь увидит стартовые настройки; старые файлы остаются на месте.
+            }
+        }
 
         /// <summary>
         /// CorelDRAW — не .NET-программа, поэтому .NET внутри него включает только старые протоколы

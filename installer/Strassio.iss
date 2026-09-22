@@ -1,12 +1,14 @@
 ; Установщик Strassio (docs/SPEC.md, раздел 14.2).
 ;
 ; Что делает:
+;   - ставится в C:\Strassio (решение автора, 22.09.2026: всё в одном месте, легко найти);
+;     там же папка data — настройки, таблица камней, пресеты и лицензия;
 ;   - сам находит все установленные CorelDRAW (X7 и новее, 32 и 64 бит) и показывает их списком
-;     с галочками;
-;   - копирует аддон в папку Addons\Strassio каждой отмеченной версии;
+;     с галочками; копирует аддон в папку Addons\Strassio каждой отмеченной версии;
 ;   - не даёт ставить поверх запущенного CorelDRAW (файлы были бы заняты);
-;   - удаляется через «Программы и компоненты», настройки пользователя в %APPDATA%\Strassio
-;     при этом не трогаются.
+;   - удаление — «Удалить Strassio» в C:\Strassio (или «Программы и компоненты»): убирает плагин
+;     из ВСЕХ версий CorelDRAW и стирает все данные Strassio (C:\Strassio, %APPDATA%\Strassio,
+;     %LOCALAPPDATA%\Strassio, раздел реестра Software\Strassio).
 ;
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
@@ -22,7 +24,8 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={sd}\{#AppName}
+UsePreviousAppDir=no
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 DisableDirPage=yes
@@ -51,6 +54,10 @@ ru.CorelIsRunning=Сейчас запущен CorelDRAW.%n%nЗакройте е�
 ru.CopyFailed=Не удалось скопировать файлы в папку:%n%s%n%nПопробуйте запустить установщик от имени администратора.
 ru.Bits64=64 бита
 ru.Bits32=32 бита
+ru.UninstallDone=Strassio удалён из всех версий CorelDRAW, все его данные стёрты.
+en.UninstallDone=Strassio was removed from all CorelDRAW versions and all its data was deleted.
+ru.UninstallShortcut=Удалить Strassio
+en.UninstallShortcut=Uninstall Strassio
 ru.AfterInstall=Запустите CorelDRAW — вверху появится панель «Strassio» с кнопкой-камнем. Если панели нет, откройте докер через меню «Окно → Докеры → Strassio».
 
 en.PageCaption=CorelDRAW versions
@@ -63,6 +70,18 @@ en.CopyFailed=Could not copy files to:%n%s%n%nTry running the installer as admin
 en.Bits64=64-bit
 en.Bits32=32-bit
 en.AfterInstall=Start CorelDRAW — the "Strassio" toolbar with the stone button will appear. If it is missing, open the docker via "Window - Dockers - Strassio".
+
+[Dirs]
+; Настройки и лицензия — рядом с плагином; CorelDRAW запускают без прав администратора, поэтому
+; обычным пользователям разрешено писать в эту папку.
+Name: "{app}\data"; Permissions: users-modify
+
+[Icons]
+Name: "{app}\{cm:UninstallShortcut}"; Filename: "{uninstallexe}"
+
+[Registry]
+; Плагин читает отсюда, где лежат его данные (PluginContext.DataDirectory).
+Root: HKLM; Subkey: "Software\Strassio"; ValueType: string; ValueName: "DataDir"; ValueData: "{app}\data"
 
 [Files]
 ; Эталонная копия в Program Files\Strassio. Из неё файлы расходятся по версиям CorelDRAW
@@ -380,6 +399,10 @@ begin
 
   RemovePreviousInstall;
 
+  { Прошлые версии ставились в Program Files\Strassio — там остались старые файлы. }
+  if (CompareText(ExpandConstant('{autopf}\Strassio'), ExpandConstant('{app}')) <> 0) and DirExists(ExpandConstant('{autopf}\Strassio')) then
+    DelTree(ExpandConstant('{autopf}\Strassio'), True, True, True);
+
   Installed := 0;
   for I := 0 to CorelAddonDirs.Count - 1 do
   begin
@@ -408,25 +431,49 @@ end;
 
 { ---------- Удаление ---------- }
 
+{ Каталог плагина во ВСЕХ найденных CorelDRAW — даже в тех, куда ставили вручную или старой версией. }
+procedure RemoveFromAllCorels;
+var
+  I: Integer;
+begin
+  FindCorelInstallations;
+  for I := 0 to CorelAddonDirs.Count - 1 do
+    if DirExists(CorelAddonDirs[I]) then
+      DelTree(CorelAddonDirs[I], True, True, True);
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   I: Integer;
   Count: Cardinal;
   TargetDir: string;
 begin
-  if CurUninstallStep <> usUninstall then
-    Exit;
+  if CurUninstallStep = usUninstall then
+  begin
+    while IsCorelRunning do
+      if MsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL) = IDCANCEL then
+        Abort;
 
-  while IsCorelRunning do
-    if MsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL) = IDCANCEL then
-      Abort;
+    if not RegQueryDWordValue(HKLM, 'Software\Strassio', 'TargetCount', Count) then
+      Count := 0;
 
-  if not RegQueryDWordValue(HKLM, 'Software\Strassio', 'TargetCount', Count) then
-    Count := 0;
+    for I := 0 to Integer(Count) - 1 do
+      if RegQueryStringValue(HKLM, 'Software\Strassio', 'Target' + IntToStr(I), TargetDir) then
+        DelTree(TargetDir, True, True, True);
 
-  for I := 0 to Integer(Count) - 1 do
-    if RegQueryStringValue(HKLM, 'Software\Strassio', 'Target' + IntToStr(I), TargetDir) then
-      DelTree(TargetDir, True, True, True);
+    RemoveFromAllCorels;
+  end;
 
-  { Настройки и таблицу камней в %APPDATA%\Strassio намеренно НЕ трогаем (SPEC, раздел 14.2). }
+  if CurUninstallStep = usPostUninstall then
+  begin
+    { Все данные Strassio (решение автора): настройки, таблица камней, пресеты, лицензия и метки. }
+    DelTree(ExpandConstant('{app}'), True, True, True);
+    DelTree(ExpandConstant('{userappdata}\Strassio'), True, True, True);
+    DelTree(ExpandConstant('{localappdata}\Strassio'), True, True, True);
+    DelTree(ExpandConstant('{autopf}\Strassio'), True, True, True);
+    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Strassio');
+    RegDeleteKeyIncludingSubkeys(HKLM, 'Software\Strassio');
+    if not UninstallSilent then
+      MsgBox(CustomMessage('UninstallDone'), mbInformation, MB_OK);
+  end;
 end;
