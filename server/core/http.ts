@@ -210,10 +210,19 @@ export class App {
   }
 
   private isAdmin(header: string | undefined): boolean {
-    const given = (header ?? "").replace(/^Bearer\s+/i, "").trim();
+    // Браузер кодирует пароль (encodeURIComponent): в заголовке нельзя русские буквы.
+    const given = decodeHeader((header ?? "").replace(/^Bearer\s+/i, "")).trim();
     const a = createHash("sha256").update(given).digest();
     const b = createHash("sha256").update(this.adminPassword!).digest();
     return given.length > 0 && timingSafeEqual(a, b);
+  }
+}
+
+function decodeHeader(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
   }
 }
 

@@ -101,3 +101,11 @@ test("админка открывается по /adminpanel", async () => {
   assert.equal(res.status, 200);
   assert.ok(res.html?.includes("Strassio"));
 });
+
+test("админка: пароль с русскими буквами и знаками — браузер шлёт его закодированным (encodeURIComponent)", async () => {
+  const password = "Стразы2026!@#%";
+  const app = makeApp(password);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, encodeURIComponent(password)))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, encodeURIComponent("Стразы2026")))).status, 401);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, "%E0%A4%A"))).status, 401, "битая кодировка — просто неверный пароль");
+});

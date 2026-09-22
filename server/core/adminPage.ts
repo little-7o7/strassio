@@ -118,7 +118,7 @@ let password = sessionStorage.getItem("strassio-admin") || "";
 async function api(method, path, body) {
   const res = await fetch("/api/admin/" + path, {
     method,
-    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + password },
+    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + encodeURIComponent(password) },
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({ ok: false, error: "bad_response" }));
