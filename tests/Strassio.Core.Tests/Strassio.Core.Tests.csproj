@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Strassio.Core\Strassio.Core.csproj" />
+    <ProjectReference Include="..\..\src\Strassio.Licensing\Strassio.Licensing.csproj" />
   </ItemGroup>
 
 </Project>
