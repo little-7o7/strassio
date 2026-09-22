@@ -95,7 +95,7 @@ namespace Strassio.Corel
                 {
                     _ = License.Computer;
                     License.NotifyChanged();
-                    await License.CheckAsync();
+                    await License.CheckOnStartAsync();
                 }
                 catch (Exception)
                 {

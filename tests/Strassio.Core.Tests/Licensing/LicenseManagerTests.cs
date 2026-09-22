@@ -156,6 +156,52 @@ public class LicenseManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task EveryStart_ChecksWithServer_EvenIfNotDue()
+    {
+        api.Reply = _ => Ok(License(Pc));
+        await NewManager().ActivateAsync("STRS-AAAA-BBBB-CCCC");
+
+        // Следующий запуск через час: 14 дней не прошло, но сверка всё равно идёт.
+        now = Now.AddHours(1);
+        api.LastAction = null;
+        api.Reply = _ => Error("revoked");
+        LicenseManager m = NewManager();
+        Assert.True(await m.CheckOnStartAsync());
+        Assert.Equal("check", api.LastAction);
+        Assert.Equal(LicenseState.None, m.Status.State);
+    }
+
+    [Fact]
+    public async Task EveryStart_WithoutInternet_KeepsWorking()
+    {
+        api.Reply = _ => Ok(License(Pc));
+        await NewManager().ActivateAsync("STRS-AAAA-BBBB-CCCC");
+
+        now = Now.AddDays(3);
+        api.Reply = _ => ApiReply.Offline();
+        LicenseManager m = NewManager();
+        Assert.False(await m.CheckOnStartAsync());
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+    }
+
+    [Fact]
+    public async Task EveryStart_OfflineFile_IsNotChecked()
+    {
+        string payload = License(Pc).Payload.TrimEnd('}') + ",\"offline\":true}";
+        var doc = new SignedDocument
+        {
+            Payload = payload,
+            Signature = Convert.ToBase64String(signer.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)),
+        };
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(doc)).Ok);
+
+        api.LastAction = null;
+        Assert.False(await m.CheckOnStartAsync());
+        Assert.Null(api.LastAction);
+    }
+
+    [Fact]
     public async Task Check_WithoutConnection_KeepsWorkingUpTo30Days()
     {
         api.Reply = _ => Ok(License(Pc));

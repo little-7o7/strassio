@@ -257,6 +257,17 @@ namespace Strassio.Licensing
             }
         }
 
+        /// <summary>
+        /// Сверка при каждом запуске CorelDRAW (так решил автор): отозванная или перенесённая лицензия
+        /// снимается сразу, а не через 14 дней. Нет интернета — работаем дальше, до 30 дней с последней
+        /// удачной сверки. Файл офлайн-активации (для компьютера без интернета) не сверяется.
+        /// </summary>
+        public Task<bool> CheckOnStartAsync(CancellationToken cancel = default)
+        {
+            LicenseData? license = Status.License;
+            return CheckAsync(force: license != null && !license.Offline, cancel);
+        }
+
         /// <summary>Серийный ключ к виду STRS-XXXX-XXXX-XXXX: регистр, пробелы и дефисы при вводе не важны.</summary>
         public static string? NormalizeSerial(string? text)
         {
