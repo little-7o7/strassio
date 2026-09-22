@@ -25,7 +25,8 @@ namespace Strassio.Corel
             Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language, BuiltInLanguage, BuiltInLanguages);
 
             EnableModernTls();
-            Api = new HttpLicenseApi(LicenseKeys.Server);
+            // CorelDRAW часто закрыт брандмауэром — тогда связь идёт через Strassio.Connect.exe рядом с аддоном.
+            Api = new HttpLicenseApi(LicenseKeys.Server, helperPath: Path.Combine(addonDir, "Strassio.Connect.exe"));
             License = new LicenseManager(
                 Api, WmiHardwareSource.ReadCode, LicenseKeys.Key, Store.Directory, null, LicenseMarkStores())
             {

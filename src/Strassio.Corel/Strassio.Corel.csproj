@@ -8,7 +8,7 @@
     <RootNamespace>Strassio.Corel</RootNamespace>
     <AssemblyName>Strassio.Corel</AssemblyName>
     <!-- Та же версия, что в installer\Strassio.iss (AppVersion): её видит автор в админке. -->
-    <Version>0.7.2</Version>
+    <Version>0.7.3</Version>
   </PropertyGroup>
 
   <ItemGroup>
@@ -43,6 +43,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Strassio.Core\Strassio.Core.csproj" />
     <ProjectReference Include="..\Strassio.Licensing\Strassio.Licensing.csproj" />
+    <!-- Strassio.Connect.exe — связь с сервером лицензий, если CorelDRAW закрыт брандмауэром; копируется рядом с аддоном. -->
+    <ProjectReference Include="..\Strassio.Connect\Strassio.Connect.csproj" />
   </ItemGroup>
 
   <!--

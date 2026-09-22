@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Strassio.Connect.exe — связь с сервером лицензий в отдельном процессе (см. Program.cs).
+    WinExe — без чёрного окна консоли; stdin/stdout всё равно работают (плагин их перенаправляет).
+    net48 + AnyCPU, как аддон: запускается на любой Windows, где стоит CorelDRAW X7+.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Strassio.Connect</AssemblyName>
+    <RootNamespace>Strassio.Connect</RootNamespace>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+</Project>

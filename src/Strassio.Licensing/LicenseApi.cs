@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Runtime.Serialization;
 using System.Text;
@@ -63,11 +66,21 @@ namespace Strassio.Licensing
     /// HTTP-клиент сервера — встроенный HttpClient (сторонних библиотек нет, CLAUDE.md, правило 7).
     /// Любая сетевая беда превращается в ответ <see cref="ApiReply.NoConnection"/>, а не в исключение:
     /// без сети плагин должен спокойно работать дальше (раздел 13.3).
+    /// <para>
+    /// Часто CorelDRAW запрещают выходить в интернет правилом брандмауэра — тогда прямой запрос из
+    /// плагина не проходит, и он идёт через Strassio.Connect.exe рядом с аддоном (отдельная программа,
+    /// под запрет не попадает). Получилось через неё — дальше сразу через неё.
+    /// </para>
     /// </summary>
     public sealed class HttpLicenseApi : ILicenseApi, IDisposable
     {
+        private static readonly TimeSpan HelperTimeout = TimeSpan.FromSeconds(25);
+
         private readonly HttpClient http;
         private readonly Uri baseUri;
+        private readonly string? helperPath;
+        private readonly bool tryDirect;
+        private volatile bool preferHelper;
 
         /// <summary>
         /// Причина последней неудачи связи (тип ошибки и сообщение, в т. ч. вложенные) — показывается
@@ -76,51 +89,124 @@ namespace Strassio.Licensing
         /// </summary>
         public string? LastError { get; private set; }
 
-        public HttpLicenseApi(string baseUrl, TimeSpan? timeout = null)
+        /// <param name="helperPath">Путь к Strassio.Connect.exe; null или нет файла — только прямой запрос.</param>
+        /// <param name="tryDirect">false — сразу через Strassio.Connect (для тестов).</param>
+        public HttpLicenseApi(string baseUrl, TimeSpan? timeout = null, string? helperPath = null, bool tryDirect = true)
         {
             baseUri = new Uri(baseUrl.TrimEnd('/') + "/");
             http = new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(15) };
+            this.helperPath = helperPath;
+            this.tryDirect = tryDirect;
         }
 
-        public async Task<ApiReply> PostAsync(string action, ApiRequest request, CancellationToken cancel = default)
-        {
-            try
-            {
-                using var content = new StringContent(Json.Write(request), Encoding.UTF8, "application/json");
-                using HttpResponseMessage response = await http.PostAsync(new Uri(baseUri, "api/" + action), content, cancel).ConfigureAwait(false);
-                return await ReadReply(response).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
-            {
-                LastError = Describe(ex);
-                return ApiReply.Offline();
-            }
-        }
+        private bool HasHelper => helperPath != null && File.Exists(helperPath);
 
-        public async Task<ApiReply> LatestUpdateAsync(string channel, CancellationToken cancel = default)
-        {
-            try
-            {
-                using HttpResponseMessage response = await http.GetAsync(new Uri(baseUri, "api/update/latest?channel=" + Uri.EscapeDataString(channel)), cancel).ConfigureAwait(false);
-                return await ReadReply(response).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
-            {
-                LastError = Describe(ex);
-                return ApiReply.Offline();
-            }
-        }
+        public Task<ApiReply> PostAsync(string action, ApiRequest request, CancellationToken cancel = default) =>
+            SendAsync("POST", new Uri(baseUri, "api/" + action), Json.Write(request), cancel);
+
+        public Task<ApiReply> LatestUpdateAsync(string channel, CancellationToken cancel = default) =>
+            SendAsync("GET", new Uri(baseUri, "api/update/latest?channel=" + Uri.EscapeDataString(channel)), null, cancel);
 
         public void Dispose() => http.Dispose();
 
-        private async Task<ApiReply> ReadReply(HttpResponseMessage response)
+        private async Task<ApiReply> SendAsync(string method, Uri uri, string? body, CancellationToken cancel)
         {
-            string text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-
-            // 429 и 5xx — сервер есть, но сейчас ответить не может: для плагина это то же, что «нет связи».
-            if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)
+            string? directError = null;
+            if (tryDirect && !(preferHelper && HasHelper))
             {
-                LastError = "HTTP " + (int)response.StatusCode;
+                try
+                {
+                    using var content = body == null ? null : new StringContent(body, Encoding.UTF8, "application/json");
+                    using HttpResponseMessage response = method == "POST"
+                        ? await http.PostAsync(uri, content, cancel).ConfigureAwait(false)
+                        : await http.GetAsync(uri, cancel).ConfigureAwait(false);
+                    string text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                    return Parse((int)response.StatusCode, text);
+                }
+                catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
+                {
+                    directError = Describe(ex);
+                }
+            }
+
+            if (!HasHelper)
+            {
+                LastError = directError ?? "Strassio.Connect.exe не найден";
+                return ApiReply.Offline();
+            }
+
+            string? helperError = null;
+            try
+            {
+                (int status, string text)? answer = await Task.Run(() => RunHelper(method, uri, body, out helperError), cancel).ConfigureAwait(false);
+                if (answer.HasValue)
+                {
+                    preferHelper = true;
+                    return Parse(answer.Value.status, answer.Value.text);
+                }
+            }
+            catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
+            {
+                helperError = Describe(ex);
+            }
+
+            LastError = directError == null ? "Strassio.Connect: " + helperError : directError + " | Strassio.Connect: " + helperError;
+            return ApiReply.Offline();
+        }
+
+        /// <summary>Запрос через Strassio.Connect.exe: ответ «код\nтело» или null с причиной в <paramref name="error"/>.</summary>
+        private (int status, string text)? RunHelper(string method, Uri uri, string? body, out string? error)
+        {
+            var info = new ProcessStartInfo(helperPath!, method + " \"" + uri.AbsoluteUri + "\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
+            };
+
+            using Process process = Process.Start(info) ?? throw new InvalidOperationException("процесс не запустился");
+            using (Stream stdin = process.StandardInput.BaseStream)
+            {
+                byte[] bytes = new UTF8Encoding(false).GetBytes(body ?? string.Empty);
+                stdin.Write(bytes, 0, bytes.Length);
+            }
+
+            Task<string> output = process.StandardOutput.ReadToEndAsync();
+            if (!process.WaitForExit((int)HelperTimeout.TotalMilliseconds))
+            {
+                try
+                {
+                    process.Kill();
+                }
+                catch (Exception)
+                {
+                    // Уже завершился.
+                }
+
+                error = "нет ответа за " + HelperTimeout.TotalSeconds + " с";
+                return null;
+            }
+
+            string text = output.Result;
+            int newline = text.IndexOf('\n');
+            if (text.StartsWith("ERR ", StringComparison.Ordinal) || newline < 0 || !int.TryParse(text.Substring(0, newline), out int status))
+            {
+                error = text.StartsWith("ERR ", StringComparison.Ordinal) ? text.Substring(4) : "непонятный ответ: " + Cut(text);
+                return null;
+            }
+
+            error = null;
+            return (status, text.Substring(newline + 1));
+        }
+
+        private ApiReply Parse(int status, string text)
+        {
+            // 429 и 5xx — сервер есть, но сейчас ответить не может: для плагина это то же, что «нет связи».
+            if (status == 429 || status >= 500)
+            {
+                LastError = "HTTP " + status;
                 return ApiReply.Offline();
             }
 
@@ -131,13 +217,15 @@ namespace Strassio.Licensing
                 return reply;
             }
 
-            LastError = "HTTP " + (int)response.StatusCode + ": " + (text.Length > 120 ? text.Substring(0, 120) : text);
+            LastError = "HTTP " + status + ": " + Cut(text);
             return ApiReply.Offline();
         }
 
+        private static string Cut(string text) => text.Length > 120 ? text.Substring(0, 120) : text;
+
         internal static string Describe(Exception ex)
         {
-            var parts = new System.Collections.Generic.List<string>();
+            var parts = new List<string>();
             for (Exception? e = ex; e != null && parts.Count < 4; e = e.InnerException)
             {
                 parts.Add(e.GetType().Name + ": " + e.Message);

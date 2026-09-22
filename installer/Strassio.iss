@@ -11,7 +11,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.7.2"
+#define AppVersion "0.7.3"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
@@ -70,6 +70,8 @@ en.AfterInstall=Start CorelDRAW — the "Strassio" toolbar with the stone button
 Source: "{#BuildDir}\Strassio.Corel.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Strassio.Core.dll";  DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Strassio.Licensing.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\Strassio.Connect.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#BuildDir}\Strassio.Connect.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\AppUI.xslt";         DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\UserUI.xslt";        DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\CorelDrw.addon";     DestDir: "{app}"; Flags: ignoreversion
@@ -93,7 +95,7 @@ var
 
 function AddonFileCount: Integer;
 begin
-  Result := 8;
+  Result := 10;
 end;
 
 function AddonFileName(Index: Integer): string;
@@ -107,6 +109,8 @@ begin
     5: Result := 'Strassio.Corel.pdb';
     6: Result := 'Strassio.Core.pdb';
     7: Result := 'Strassio.Licensing.dll';
+    8: Result := 'Strassio.Connect.exe';
+    9: Result := 'Strassio.Connect.exe.config';
   else
     Result := '';
   end;
