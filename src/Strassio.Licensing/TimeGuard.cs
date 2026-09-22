@@ -9,7 +9,7 @@ using System.Text;
 namespace Strassio.Licensing
 {
     /// <summary>Где хранить метки времени (файл, реестр). Ошибка чтения/записи — не исключение, а null/ничего.</summary>
-    public interface IMarkStore
+    internal interface IMarkStore
     {
         string? Read();
 
@@ -17,7 +17,7 @@ namespace Strassio.Licensing
     }
 
     /// <summary>Метка в файле.</summary>
-    public sealed class FileMarkStore : IMarkStore
+    internal sealed class FileMarkStore : IMarkStore
     {
         private readonly string path;
 
@@ -66,7 +66,7 @@ namespace Strassio.Licensing
     ///   (компьютер освободили, лицензию перенесли или отозвали — старая копия файла не оживёт).</item>
     /// </list>
     /// </summary>
-    public sealed class TimeGuard
+    internal sealed class TimeGuard
     {
         /// <summary>Сколько часы могут «отставать» без подозрений (перевод времени, синхронизация).</summary>
         public static readonly TimeSpan Tolerance = TimeSpan.FromHours(2);

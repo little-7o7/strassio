@@ -12,7 +12,7 @@ namespace Strassio.Licensing
 {
     /// <summary>Запрос плагина к серверу (docs/SPEC.md, раздел 15, API).</summary>
     [DataContract]
-    public sealed class ApiRequest
+    internal sealed class ApiRequest
     {
         [DataMember(Name = "serial", Order = 0, EmitDefaultValue = false)]
         public string? Serial { get; set; }
@@ -29,7 +29,7 @@ namespace Strassio.Licensing
 
     /// <summary>Ответ сервера: { ok: true, license } или { ok: false, error, transfersLeft? }.</summary>
     [DataContract]
-    public sealed class ApiReply
+    internal sealed class ApiReply
     {
         /// <summary>Нет связи с сервером (нет интернета, сервер не отвечает, непонятный ответ).</summary>
         public const string NoConnection = "no_connection";
@@ -53,7 +53,7 @@ namespace Strassio.Licensing
     }
 
     /// <summary>Связь с сервером лицензий. В аддоне — HTTP (<see cref="HttpLicenseApi"/>), в тестах — подставной.</summary>
-    public interface ILicenseApi
+    internal interface ILicenseApi
     {
         /// <param name="action">activate, transfer, check, deactivate, trial.</param>
         Task<ApiReply> PostAsync(string action, ApiRequest request, CancellationToken cancel = default);
@@ -72,7 +72,7 @@ namespace Strassio.Licensing
     /// под запрет не попадает). Получилось через неё — дальше сразу через неё.
     /// </para>
     /// </summary>
-    public sealed class HttpLicenseApi : ILicenseApi, IDisposable
+    internal sealed class HttpLicenseApi : ILicenseApi, IDisposable
     {
         private static readonly TimeSpan HelperTimeout = TimeSpan.FromSeconds(25);
 

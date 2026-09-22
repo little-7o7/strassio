@@ -7,7 +7,7 @@ namespace Strassio.Licensing
     /// закрытый живёт только на сервере в переменной окружения LICENSE_PRIVATE_KEY.
     /// Сменили пару ключей (server: npm run keys) — поменять <see cref="PublicKey"/> и выпустить новую версию.
     /// </summary>
-    public static class LicenseKeys
+    internal static class LicenseKeys
     {
         public const string PublicKey = "UPeiXzBFzncY7G1XFP6zLssgZJTS0+xUFxmn/2luKWzaEUmZZipizIYr7xYZmdEi8z9OIMoN0HiXVTWC7lBA9g==";
 

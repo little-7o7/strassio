@@ -9,7 +9,7 @@ namespace Strassio.Licensing
     /// «SA1.&lt;payload&gt;.&lt;подпись&gt;» в base64url. Формат задаёт сервер (toActivationCode в server/core/crypto.ts).
     /// Подпись и компьютер здесь не проверяются — это делает <see cref="LicenseManager.ImportCode"/>.
     /// </summary>
-    public static class ActivationCode
+    internal static class ActivationCode
     {
         public const string Prefix = "SA1.";
 

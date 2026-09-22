@@ -48,6 +48,30 @@ if (-not $NoBuild) {
     Write-Host '   Собрано.' -ForegroundColor Green
 }
 
+# --- Обфускация (защита кода, docs/SPEC.md 13.7) -----------------------------------------------
+# Obfuscar (бесплатный, ставится как локальный инструмент dotnet: .config\dotnet-tools.json) запутывает
+# имена и прячет строки в трёх DLL плагина; установщик берёт уже запутанные копии.
+
+$obfuscatedDir = Join-Path $repoRoot 'src\Strassio.Corel\bin\Release\net48\obfuscated'
+$issDefines = @()
+if (-not $NoBuild) {
+    Write-Step 'Обфускация (Obfuscar)'
+    Push-Location $repoRoot
+    & dotnet tool restore | Out-Null
+    Pop-Location
+    Push-Location $PSScriptRoot
+    & dotnet tool run obfuscar.console obfuscar.xml | Out-Null
+    $obfuscarExit = $LASTEXITCODE
+    Pop-Location
+    if ($obfuscarExit -ne 0 -or -not (Test-Path (Join-Path $obfuscatedDir 'Strassio.Licensing.dll'))) {
+        Write-Host '   Обфускация не прошла — установщик без защиты кода собирать нельзя.' -ForegroundColor Red
+        exit 1
+    }
+
+    $issDefines += "/DPluginDllDir=$obfuscatedDir"
+    Write-Host '   Готово: Strassio.Corel, Strassio.Core, Strassio.Licensing запутаны.' -ForegroundColor Green
+}
+
 # --- Поиск компилятора Inno Setup --------------------------------------------------------------
 
 Write-Step 'Поиск Inno Setup'
@@ -76,7 +100,7 @@ Write-Host "   $iscc" -ForegroundColor Green
 
 Write-Step 'Сборка установщика'
 
-& $iscc $issPath
+& $iscc @issDefines $issPath
 if ($LASTEXITCODE -ne 0) {
     Write-Host '   Установщик собрать не удалось — смотрите ошибки выше.' -ForegroundColor Red
     exit 1

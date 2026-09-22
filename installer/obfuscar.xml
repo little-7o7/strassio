@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Обфускация аддона перед установщиком (docs/SPEC.md, 13.7). Запускает installer\build-installer.ps1:
+  dotnet tool run obfuscar.console installer\obfuscar.xml
+  InPath — папка Release-сборки аддона, OutPath — куда кладутся запутанные DLL (их и берёт установщик).
+
+  Что НЕЛЬЗЯ переименовывать:
+  - типы интеропа CorelDRAW (Corel.Interop.VGCore) — CorelDRAW ищет их по именам и GUID;
+  - Strassio.Corel.Docker — его имя записано в AppUI.xslt (hostedType);
+  - публичные типы Strassio.Corel — это окна XAML и строки списков, WPF находит их свойства по именам
+    ({Binding Text}, {Binding Brush} …). Поэтому в Strassio.Corel KeepPublicApi = true;
+  - публичные типы Strassio.Core — их имена используют привязки WPF (Localizer[ключ]) и настройки.
+  Strassio.Licensing запутывается полностью (KeepPublicApi = false): все имена — бессмыслица,
+  ссылки на них из Strassio.Corel переписываются в том же проходе. Строки (адрес сервера, открытый
+  ключ, тексты ошибок) во всех трёх DLL прячутся (HideStrings).
+-->
+<Obfuscator>
+  <Var name="InPath" value="..\src\Strassio.Corel\bin\Release\net48" />
+  <Var name="OutPath" value="..\src\Strassio.Corel\bin\Release\net48\obfuscated" />
+  <Var name="KeepPublicApi" value="true" />
+  <Var name="HidePrivateApi" value="true" />
+  <Var name="HideStrings" value="true" />
+  <Var name="RenameProperties" value="true" />
+  <Var name="RenameEvents" value="true" />
+  <Var name="RenameFields" value="true" />
+  <Var name="ReuseNames" value="true" />
+  <Var name="UseUnicodeNames" value="false" />
+  <Var name="OptimizeMethods" value="true" />
+  <Var name="SuppressIldasm" value="true" />
+  <Var name="RegenerateDebugInfo" value="false" />
+
+  <!-- .NET Framework 4.8 и WPF — есть в любой Windows, где работает CorelDRAW. -->
+  <AssemblySearchPath path="C:\Windows\Microsoft.NET\Framework64\v4.0.30319" />
+  <AssemblySearchPath path="C:\Windows\Microsoft.NET\Framework64\v4.0.30319\WPF" />
+
+  <Module file="$(InPath)\Strassio.Corel.dll">
+    <!-- Привязки WPF ищут свойства по имени — даже у внутренних классов их не переименовываем. -->
+    <Var name="RenameProperties" value="false" />
+    <SkipNamespace name="Corel.Interop.VGCore" />
+    <SkipNamespace name="XamlGeneratedNamespace" />
+    <SkipType name="Strassio.Corel.Docker" />
+  </Module>
+
+  <Module file="$(InPath)\Strassio.Licensing.dll">
+    <Var name="KeepPublicApi" value="false" />
+  </Module>
+
+  <Module file="$(InPath)\Strassio.Core.dll" />
+</Obfuscator>

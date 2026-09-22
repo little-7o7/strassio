@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace Strassio.Licensing
 {
     /// <summary>Итог действия с лицензией (ввод ключа, пробный период, перенос…).</summary>
-    public sealed class LicenseActionResult
+    internal sealed class LicenseActionResult
     {
         public LicenseActionResult(bool ok, string? error, int? transfersLeft)
         {
@@ -47,7 +47,7 @@ namespace Strassio.Licensing
     /// код компьютера нельзя — подпись перестанет сходиться. Дата последней сверки — issuedAt внутри
     /// лицензии: сервер выдаёт свежую лицензию при каждой удачной сверке.
     /// </summary>
-    public sealed class LicenseManager
+    internal sealed class LicenseManager
     {
         public const string FileName = "license.json";
 

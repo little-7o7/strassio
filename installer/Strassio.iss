@@ -13,10 +13,15 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.7.3"
+#define AppVersion "0.8.0"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
+; Три DLL плагина берутся из папки с запутанными копиями (build-installer.ps1 → Obfuscar, SPEC 13.7).
+; Без обфускации (ISCC вручную) — прямо из BuildDir.
+#ifndef PluginDllDir
+  #define PluginDllDir BuildDir
+#endif
 
 [Setup]
 AppId={{8F2A6C14-5B3D-4E27-9A61-7C0E4D8B3A52}
@@ -86,17 +91,16 @@ Root: HKLM; Subkey: "Software\Strassio"; ValueType: string; ValueName: "DataDir"
 [Files]
 ; Эталонная копия в Program Files\Strassio. Из неё файлы расходятся по версиям CorelDRAW
 ; (см. CurStepChanged ниже) — так деинсталлятор точно знает, что ставил именно он.
-Source: "{#BuildDir}\Strassio.Corel.dll"; DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BuildDir}\Strassio.Core.dll";  DestDir: "{app}"; Flags: ignoreversion
-Source: "{#BuildDir}\Strassio.Licensing.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PluginDllDir}\Strassio.Corel.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PluginDllDir}\Strassio.Core.dll";  DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PluginDllDir}\Strassio.Licensing.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Strassio.Connect.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\Strassio.Connect.exe.config"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\AppUI.xslt";         DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\UserUI.xslt";        DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\CorelDrw.addon";     DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\lang\*.json";        DestDir: "{app}\lang"; Flags: ignoreversion
-Source: "{#BuildDir}\Strassio.Corel.pdb"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
-Source: "{#BuildDir}\Strassio.Core.pdb";  DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; .pdb не ставятся: по ним видны настоящие имена классов и методов (защита кода, SPEC 13.7).
 
 [Registry]
 Root: HKLM; Subkey: "Software\Strassio"; Flags: uninsdeletekey
@@ -114,7 +118,7 @@ var
 
 function AddonFileCount: Integer;
 begin
-  Result := 10;
+  Result := 8;
 end;
 
 function AddonFileName(Index: Integer): string;
@@ -125,11 +129,9 @@ begin
     2: Result := 'AppUI.xslt';
     3: Result := 'UserUI.xslt';
     4: Result := 'CorelDrw.addon';
-    5: Result := 'Strassio.Corel.pdb';
-    6: Result := 'Strassio.Core.pdb';
-    7: Result := 'Strassio.Licensing.dll';
-    8: Result := 'Strassio.Connect.exe';
-    9: Result := 'Strassio.Connect.exe.config';
+    5: Result := 'Strassio.Licensing.dll';
+    6: Result := 'Strassio.Connect.exe';
+    7: Result := 'Strassio.Connect.exe.config';
   else
     Result := '';
   end;

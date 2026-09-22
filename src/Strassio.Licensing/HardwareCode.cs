@@ -13,7 +13,7 @@ namespace Strassio.Licensing
     /// хэша), чтобы сравнивать нечётко: смена ОДНОГО признака лицензию не ломает. Пользователю
     /// показывается как XXXX-XXXX-XXXX-XXXX.
     /// </summary>
-    public sealed class HardwareCode
+    internal sealed class HardwareCode
     {
         /// <summary>Сколько признаков.</summary>
         public const int ComponentCount = 4;
@@ -124,7 +124,7 @@ namespace Strassio.Licensing
     }
 
     /// <summary>Откуда брать признаки компьютера (в аддоне — WMI; в тестах — подставные значения).</summary>
-    public interface IHardwareSource
+    internal interface IHardwareSource
     {
         /// <summary>Четыре признака: UUID платы/BIOS, серийный номер платы, процессор, системный диск.</summary>
         IReadOnlyList<string?> ReadComponents();

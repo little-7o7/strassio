@@ -3,7 +3,7 @@ using System;
 namespace Strassio.Licensing
 {
     /// <summary>Что с лицензией сейчас.</summary>
-    public enum LicenseState
+    internal enum LicenseState
     {
         /// <summary>Лицензии нет — нужно ввести ключ или взять пробный период.</summary>
         None,
@@ -34,7 +34,7 @@ namespace Strassio.Licensing
     }
 
     /// <summary>Что помнит <see cref="TimeGuard"/> — для правил лицензии.</summary>
-    public sealed class TimeMarks
+    internal sealed class TimeMarks
     {
         public DateTime? LastSeenUtc { get; set; }
 
@@ -47,7 +47,7 @@ namespace Strassio.Licensing
     }
 
     /// <summary>Итог проверки: состояние, сколько дней осталось, пора ли сверяться с сервером.</summary>
-    public sealed class LicenseStatus
+    internal sealed class LicenseStatus
     {
         public LicenseStatus(LicenseState state, LicenseData? license, int? daysLeft, bool needsOnlineCheck)
         {
@@ -76,7 +76,7 @@ namespace Strassio.Licensing
     /// проверяются тестами. Сверка с сервером при запуске и раз в день; без связи плагин работает до 14 дней с
     /// последней удачной сверки; лицензия привязана к коду компьютера с нечётким сравнением.
     /// </summary>
-    public static class LicenseEvaluator
+    internal static class LicenseEvaluator
     {
         public const int CheckEveryDays = 1;
         public const int OfflineGraceDays = 14;

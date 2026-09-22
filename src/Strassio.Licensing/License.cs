@@ -14,7 +14,7 @@ namespace Strassio.Licensing
     /// как строку (<see cref="SignedDocument.Payload"/>), а не пересобирает заново.
     /// </summary>
     [DataContract]
-    public sealed class LicenseData
+    internal sealed class LicenseData
     {
         public const string PlanFull = "full";
         public const string PlanTrial = "trial";
@@ -70,7 +70,7 @@ namespace Strassio.Licensing
     /// в плагине только открытый (раздел 13.2).
     /// </summary>
     [DataContract]
-    public sealed class SignedDocument
+    internal sealed class SignedDocument
     {
         [DataMember(Name = "payload", Order = 0)]
         public string Payload { get; set; } = string.Empty;
@@ -101,7 +101,7 @@ namespace Strassio.Licensing
     /// Открытый ключ проверки подписи: точка кривой P-256 (X и Y по 32 байта). Задаётся как
     /// base64 от 64 байт X‖Y — тот же вид, что печатает server/scripts/generate-keys.
     /// </summary>
-    public sealed class LicensePublicKey
+    internal sealed class LicensePublicKey
     {
         private readonly ECParameters parameters;
 
