@@ -151,6 +151,7 @@ namespace Strassio.Corel
             RebuildColors();
             RebuildEditTexts();
             RefreshBridgeBox();
+            RefreshVectorBoxes();
             RebuildSets();
             RebuildPresets();
             ShowTabPanels();
@@ -241,7 +242,8 @@ namespace Strassio.Corel
             if (ReferenceEquals(e.OriginalSource, MethodTabs) && !refreshing)
             {
                 ShowTabPanels();
-                SetStatus(MethodTabs.SelectedItem == EditTab ? "edit.ready" : MethodTabs.SelectedItem == ColorTab ? "color.ready" : "status.ready");
+                SetStatus(MethodTabs.SelectedItem == EditTab ? "edit.ready" : MethodTabs.SelectedItem == ColorTab ? "color.ready" :
+                    MethodTabs.SelectedItem == VectorTab ? "vec.ready" : "status.ready");
                 if (IsMethodTab)
                 {
                     RebuildMethods();

@@ -32,6 +32,8 @@ namespace Strassio.Corel
 
         private bool IsMethodTab => MethodTabs.SelectedItem == LineTab || MethodTabs.SelectedItem == FillTab || MethodTabs.SelectedItem == null;
 
+        private bool IsVectorTab => MethodTabs.SelectedItem == VectorTab;
+
         private List<string> KnownSizes => StoneNames.SizesOf(context.Stones).ToList();
 
         /// <summary>Показывает то, что нужно выбранной вкладке: методы и «Создать» — или панель правки/цвета.</summary>
@@ -39,7 +41,9 @@ namespace Strassio.Corel
         {
             bool edit = MethodTabs.SelectedItem == EditTab;
             bool color = MethodTabs.SelectedItem == ColorTab;
-            bool method = !edit && !color;
+            bool vector = MethodTabs.SelectedItem == VectorTab;
+            bool method = !edit && !color && !vector;
+            VectorPanel.Visibility = vector ? Visibility.Visible : Visibility.Collapsed;
 
             MethodPanel.Visibility = method ? Visibility.Visible : Visibility.Collapsed;
             CreateRow.Visibility = MethodPanel.Visibility;

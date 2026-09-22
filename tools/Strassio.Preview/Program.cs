@@ -6,6 +6,7 @@ using Strassio.Core.Editing;
 using Strassio.Core.Geometry;
 using Strassio.Core.Methods;
 using Strassio.Core.Placement;
+using Strassio.Core.Vector;
 using Strassio.Preview;
 
 string scenario = args.Length > 0 ? args[0] : "line";
@@ -19,6 +20,12 @@ if (scenario == "methods")
 if (scenario == "icons")
 {
     RenderIconsScenario();
+    return;
+}
+
+if (scenario == "vector")
+{
+    RenderVectorScenario();
     return;
 }
 
@@ -403,6 +410,51 @@ static void RenderEditScenario()
 
     EditResult dups = StoneEditor.FindDuplicates(dup);
     Console.WriteLine($"дубли: добавлено {dup.Count - clean.Count}, найдено {dups.Deleted.Count}");
+    Console.WriteLine($"SVG сохранены: {outDir}");
+}
+
+// Векторные инструменты (раздел 10) — out/preview/vector/: центральная линия толстых форм,
+// смещение и параллельные линии. Исходник — серым, результат — синим.
+static void RenderVectorScenario()
+{
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview", "vector");
+    Directory.CreateDirectory(outDir);
+
+    List<Point2D> Pts(Curve c) => CurveFlattener.Flatten(c).Points.Select(pt => pt.Position).ToList();
+
+    void Save(string name, IEnumerable<Curve> sources, IEnumerable<Curve> results)
+    {
+        var lines = sources.Select(c => ((IReadOnlyList<Point2D>)ClosePts(Pts(c), c.IsClosed), "#bbbbbb"))
+            .Concat(results.Select(c => ((IReadOnlyList<Point2D>)ClosePts(Pts(c), c.IsClosed), "#1E88E5")))
+            .ToList();
+        File.WriteAllText(Path.Combine(outDir, name + ".svg"), SvgWriter.RenderMulti(lines, new List<PlacedStone>()));
+    }
+
+    List<Point2D> ClosePts(List<Point2D> p, bool closed) => closed ? p.Append(p[0]).ToList() : p;
+
+    // Толстая буква «S» из двух дуг и «гантель».
+    var sShape = new List<Point2D>();
+    for (int i = 0; i <= 40; i++) { double a = Math.PI * i / 40; sShape.Add(new Point2D(10 * Math.Cos(a) , 10 + 10 * Math.Sin(a))); }
+    for (int i = 40; i >= 0; i--) { double a = Math.PI * i / 40; sShape.Add(new Point2D(4 * Math.Cos(a), 10 + 4 * Math.Sin(a))); }
+    Curve sTop = Curve.FromPolyline(sShape, isClosed: true);
+
+    foreach ((string name, Curve[] shape) in new[]
+    {
+        ("centerline-dumbbell", new[] { BuildLettersCurve() }),
+        ("centerline-star", new[] { BuildStarCurve() }),
+        ("centerline-arch", new[] { sTop }),
+        ("centerline-heart", new[] { BuildHeart().Item1 }),
+    })
+    {
+        List<Curve> center = Centerline.Build(shape);
+        Save(name, shape, center);
+        Console.WriteLine($"{name,-22} линий: {center.Count}");
+    }
+
+    Curve star = BuildStarCurve();
+    Save("offset-star", new[] { star }, new[] { VectorTools.Offset(star, 3, true), VectorTools.Offset(star, -1.5, false) });
+    Curve wave = BuildSCurve().Item1;
+    Save("parallel-scurve", new[] { wave }, VectorTools.Parallel(wave, 3, 2.6, bothSides: true, roundCorners: true));
     Console.WriteLine($"SVG сохранены: {outDir}");
 }
 

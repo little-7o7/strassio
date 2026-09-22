@@ -76,6 +76,7 @@
                 <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
                 <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}"/>
                 <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}"/>
+                <TabItem x:Name="VectorTab" Header="{Binding [docker.tab.vector]}"/>
             </TabControl>
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->
@@ -166,6 +167,94 @@
 
                 <Button Content="{Binding [color.palette]}" Click="Palette_Click" Margin="0,0,0,8"
                         ToolTip="{Binding [color.palette.tooltip]}"/>
+            </StackPanel>
+
+            <!-- «Векторы» (docs/SPEC.md, раздел 10): подготовка линий — Docker.Vector.cs -->
+            <StackPanel x:Name="VectorPanel" Visibility="Collapsed">
+                <TextBlock Text="{Binding [vec.lines]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [vec.offset]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,4"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.offsetOut]}" Click="OffsetOut_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [vec.offsetIn]}" Click="OffsetIn_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
+                    <TextBox x:Name="OffsetBox" Grid.Column="4" ToolTip="{Binding [vec.distance.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.parallel]}" Click="Parallel_Click" ToolTip="{Binding [vec.parallel.tooltip]}"/>
+                    <TextBox x:Name="ParallelCountBox" Grid.Column="2" Text="3" ToolTip="{Binding [vec.count.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <CheckBox x:Name="ParallelBothBox" Content="{Binding [vec.bothSides]}" IsChecked="True" VerticalAlignment="Center"/>
+                    <TextBox x:Name="ParallelStepBox" Grid.Column="2" ToolTip="{Binding [vec.step.tooltip]}"/>
+                </Grid>
+                <CheckBox x:Name="SharpCornersBox" Content="{Binding [vec.sharp]}" ToolTip="{Binding [vec.sharp.tooltip]}" Margin="0,0,0,10"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.split]}" Click="Split_Click" ToolTip="{Binding [vec.split.tooltip]}"/>
+                    <TextBox x:Name="SplitBox" Grid.Column="2" Text="2" ToolTip="{Binding [vec.parts.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.join]}" Click="Join_Click" ToolTip="{Binding [vec.join.tooltip]}"/>
+                    <TextBox x:Name="JoinToleranceBox" Grid.Column="2" ToolTip="{Binding [vec.tolerance.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.close]}" Click="Close_Click" ToolTip="{Binding [vec.close.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [vec.gaps]}" Click="Gaps_Click" ToolTip="{Binding [vec.gaps.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.reverse]}" Click="Reverse_Click" ToolTip="{Binding [vec.reverse.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [vec.start]}" Click="ShowStart_Click" ToolTip="{Binding [vec.start.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [vec.smooth]}" Click="Smooth_Click" ToolTip="{Binding [vec.smooth.tooltip]}"/>
+                    <TextBox x:Name="SmoothBox" Grid.Column="2" ToolTip="{Binding [vec.smoothTolerance.tooltip]}"/>
+                </Grid>
+                <Button Content="{Binding [vec.centerline]}" Click="Centerline_Click" Margin="0,0,0,14"
+                        ToolTip="{Binding [vec.centerline.tooltip]}"/>
+
+                <TextBlock Text="{Binding [vec.checkTitle]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <Button Content="{Binding [vec.check]}" Click="Check_Click" Margin="0,0,0,6" ToolTip="{Binding [vec.check.tooltip]}"/>
+                <TextBlock Text="{Binding [vec.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
             </StackPanel>
 
             <StackPanel x:Name="MethodPanel">

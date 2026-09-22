@@ -46,6 +46,7 @@ namespace Strassio.UiShots
                     SnapDocker(outDir, "docker-horizontal" + theme, DockerLayout.Horizontal, fillTab: true, 960, 420);
                     SnapDocker(outDir, "docker-edit" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 2);
                     SnapDocker(outDir, "docker-color" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 3);
+                    SnapDocker(outDir, "docker-vector" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 4);
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
                 }

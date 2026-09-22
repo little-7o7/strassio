@@ -14,7 +14,7 @@ public class UiKeysTests
     private static readonly Regex XamlKey = new(@"\{Binding \[([A-Za-z0-9_.]+)\]\}");
 
     private static readonly Regex CodeKey = new(
-        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo|transfer|edit|color|live|prod|preset)\\.[A-Za-z0-9_.]+)\"");
+        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo|transfer|edit|color|live|prod|preset|vec)\\.[A-Za-z0-9_.]+)\"");
 
     [Fact]
     public void EveryKeyUsedInAddon_ExistsInBothLanguages()
@@ -56,6 +56,21 @@ public class UiKeysTests
             IReadOnlyDictionary<string, string> texts = Localizer.Parse(File.ReadAllText(Path.Combine(root, "lang", lang)));
             string[] missing = used.Where(k => !texts.ContainsKey(k)).ToArray();
             Assert.True(missing.Length == 0, lang + ": нет ключей " + string.Join(", ", missing));
+        }
+    }
+
+    [Fact]
+    public void LanguageFiles_HaveNoDuplicateKeys()
+    {
+        // Одинаковый ключ дважды — второй тихо затирает первый (так кнопка «Разрезать» однажды
+        // получила текст сообщения «Разрезано: …»).
+        var keyLine = new Regex(@"^\s*""([^""]+)""\s*:", RegexOptions.Multiline);
+        foreach (string lang in new[] { "ru.json", "en.json" })
+        {
+            string json = File.ReadAllText(Path.Combine(FindRepoRoot(), "lang", lang));
+            string[] duplicates = keyLine.Matches(json).Cast<Match>().Select(m => m.Groups[1].Value)
+                .GroupBy(k => k).Where(g => g.Count() > 1).Select(g => g.Key).ToArray();
+            Assert.True(duplicates.Length == 0, lang + ": повторяются ключи " + string.Join(", ", duplicates));
         }
     }
 
