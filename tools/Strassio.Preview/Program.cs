@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Strassio.Core.Editing;
 using Strassio.Core.Geometry;
 using Strassio.Core.Methods;
 using Strassio.Core.Placement;
@@ -18,6 +19,12 @@ if (scenario == "methods")
 if (scenario == "icons")
 {
     RenderIconsScenario();
+    return;
+}
+
+if (scenario == "edit")
+{
+    RenderEditScenario();
     return;
 }
 
@@ -246,6 +253,103 @@ static void RenderIconsScenario()
         Console.WriteLine($"{name}: {result.Stones.Count} страз");
     }
 
+    Console.WriteLine($"SVG сохранены: {outDir}");
+}
+
+// Правка страз в документе (docs/SPEC.md, раздел 7.1) — out/preview/edit/. Исходник: соты на звезде
+// плюс их копия, сдвинутая на 1 мм «поверх» (типичная ошибка копирования), и отдельно — несколько
+// точных дублей. Зелёные — остались на месте, красные — сдвинуты, удалённых нет на картинке.
+static void RenderEditScenario()
+{
+    string outDir = Path.Combine(FindRepoRoot(), "out", "preview", "edit");
+    Directory.CreateDirectory(outDir);
+
+    Curve star = BuildStarCurve();
+    FlattenedCurve starFlat = CurveFlattener.Flatten(star);
+    List<Point2D> outline = starFlat.Points.Select(pt => pt.Position).ToList();
+
+    MethodResult fill = MethodRunner.Run(MethodKind.F2, new[] { star }, 2.4, new MethodParameters());
+    var stones = new List<DocStone>();
+    int order = 0;
+    foreach (PlacedStone st in fill.Stones)
+    {
+        stones.Add(new DocStone(st.Center, st.DiameterMm, order++));
+    }
+
+    // Копия правой половины, сдвинутая на 1 мм и лежащая выше.
+    foreach (PlacedStone st in fill.Stones.Where(x => x.Center.X > 0))
+    {
+        stones.Add(new DocStone(new Point2D(st.Center.X + 1, st.Center.Y), st.DiameterMm, order++));
+    }
+
+    void Save(string name, IReadOnlyList<DocStone> source, EditResult result, IReadOnlyList<(IReadOnlyList<Point2D> Points, string Color)> extra)
+    {
+        var moved = result.Moved.ToDictionary(m => m.Index, m => m.NewCenter);
+        var deleted = new HashSet<int>(result.Deleted);
+        var shown = new List<PlacedStone>();
+        for (int i = 0; i < source.Count; i++)
+        {
+            if (deleted.Contains(i))
+            {
+                continue;
+            }
+
+            bool isMoved = moved.TryGetValue(i, out Point2D c);
+            shown.Add(new PlacedStone(isMoved ? c : source[i].Center, source[i].DiameterMm, isCorner: isMoved));
+        }
+
+        var lines = new List<(IReadOnlyList<Point2D> Points, string Color)> { (outline, "#cccccc") };
+        lines.AddRange(extra);
+        File.WriteAllText(Path.Combine(outDir, name + ".svg"), SvgWriter.RenderMulti(lines, shown));
+        int overlaps = IntersectionFixer.FindIndicesToRemove(shown, 0.04, 0.01).Count(x => x);
+        Console.WriteLine($"{name,-14} удалено {result.Deleted.Count,4}, сдвинуто {result.Moved.Count,4}, осталось наложений {overlaps}");
+    }
+
+    var none = new List<(IReadOnlyList<Point2D> Points, string Color)>();
+    Save("0-before", stones, EditResult.Nothing, none);
+    Save("1-keep-top", stones, StoneEditor.ResolveOverlaps(stones, keepTop: true), none);
+    Save("2-keep-bottom", stones, StoneEditor.ResolveOverlaps(stones, keepTop: false), none);
+    Save("5-shift", stones, StoneEditor.ShiftApart(stones), none);
+
+    // «Сдвинуть» там, где есть место: редкая сетка, каждая седьмая страза съехала на соседа.
+    MethodResult sparse = MethodRunner.Run(MethodKind.F1, new[] { star }, 2.4, new MethodParameters { GapMm = 1.2 });
+    var loose = new List<DocStone>();
+    for (int i = 0; i < sparse.Stones.Count; i++)
+    {
+        Point2D c = sparse.Stones[i].Center;
+        loose.Add(new DocStone(i % 7 == 3 ? new Point2D(c.X + 1.5, c.Y + 0.3) : c, 2.4, i));
+    }
+
+    Save("5-shift-loose-before", loose, EditResult.Nothing, none);
+    Save("5-shift-loose", loose, StoneEditor.ShiftApart(loose), none);
+
+    // Режимы 3 и 4 — на исходных сотах без копии.
+    List<DocStone> clean = stones.Take(fill.Stones.Count).ToList();
+    var cutter = Curve.FromPolyline(new[] { new Point2D(-40, -10), new Point2D(0, 5), new Point2D(40, -5) }, isClosed: false);
+    Save("3-along-line", clean, StoneEditor.DeleteAlongLines(clean, new[] { cutter }),
+        new List<(IReadOnlyList<Point2D> Points, string Color)> { (CurveFlattener.Flatten(cutter).Points.Select(pt => pt.Position).ToList(), "#1E88E5") });
+
+    var circlePts = new List<Point2D>();
+    for (int i = 0; i < 64; i++)
+    {
+        double a = 2 * Math.PI * i / 64;
+        circlePts.Add(new Point2D(12 * Math.Cos(a), 12 * Math.Sin(a)));
+    }
+
+    var circle = Curve.FromPolyline(circlePts, isClosed: true);
+    var circleLine = new List<(IReadOnlyList<Point2D> Points, string Color)> { (circlePts.Append(circlePts[0]).ToList(), "#1E88E5") };
+    Save("4-inside", clean, StoneEditor.DeleteByShape(clean, new[] { circle }, inside: true), circleLine);
+    Save("4-outside", clean, StoneEditor.DeleteByShape(clean, new[] { circle }, inside: false), circleLine);
+
+    // Дубли: каждую пятую стразу скопировали точно на место.
+    var dup = new List<DocStone>(clean);
+    for (int i = 0; i < clean.Count; i += 5)
+    {
+        dup.Add(new DocStone(clean[i].Center, clean[i].DiameterMm, order++));
+    }
+
+    EditResult dups = StoneEditor.FindDuplicates(dup);
+    Console.WriteLine($"дубли: добавлено {dup.Count - clean.Count}, найдено {dups.Deleted.Count}");
     Console.WriteLine($"SVG сохранены: {outDir}");
 }
 
