@@ -41,6 +41,13 @@ namespace Strassio.Licensing
         [DataMember(Name = "nextCheckAt", Order = 5)]
         public string NextCheckAt { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Файл офлайн-активации от автора (раздел 13.6) для компьютера без интернета: сверка раз в
+        /// 14 дней не нужна, лицензия действует до <see cref="ExpiresAt"/>.
+        /// </summary>
+        [DataMember(Name = "offline", Order = 6, EmitDefaultValue = false)]
+        public bool Offline { get; set; }
+
         public bool IsTrial => Plan == PlanTrial;
 
         public DateTime? ExpiresUtc => ParseUtc(ExpiresAt);

@@ -4,6 +4,7 @@ using System.IO;
 using Strassio.Core.Localization;
 using Strassio.Core.Settings;
 using Strassio.Core.Stones;
+using Strassio.Licensing;
 
 namespace Strassio.Corel
 {
@@ -22,6 +23,12 @@ namespace Strassio.Corel
 
             string addonDir = Path.GetDirectoryName(typeof(PluginContext).Assembly.Location) ?? string.Empty;
             Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language, BuiltInLanguage, BuiltInLanguages);
+
+            License = new LicenseManager(
+                new HttpLicenseApi(LicenseKeys.Server), WmiHardwareSource.ReadCode, LicenseKeys.Key, Store.Directory, null, LicenseMarkStores())
+            {
+                PluginVersion = typeof(PluginContext).Assembly.GetName().Version?.ToString(3),
+            };
 
             bool firstRun = !File.Exists(Store.StonesPath);
             Stones = Store.LoadStones(key => Localizer[key]);
@@ -48,6 +55,54 @@ namespace Strassio.Corel
         public Localizer Localizer { get; }
 
         public StoneTable Stones { get; private set; }
+
+        /// <summary>Лицензия (docs/SPEC.md, раздел 13).</summary>
+        public LicenseManager License { get; }
+
+        /// <summary>
+        /// Требуется ли лицензия для создания страз. Пока сервер не запущен в интернете — нет
+        /// (см. StrassioEnforceLicense в Strassio.Corel.csproj).
+        /// </summary>
+#if STRASSIO_ENFORCE_LICENSE
+        public const bool LicenseEnforced = true;
+#else
+        public const bool LicenseEnforced = false;
+#endif
+
+        /// <summary>
+        /// Можно создавать и править стразы. Спрашивается в нескольких местах докера (SPEC 13.2),
+        /// а не один раз при запуске.
+        /// </summary>
+        public bool CanCreate => !LicenseEnforced || License.CanCreate;
+
+        private int backgroundCheckStarted;
+
+        /// <summary>
+        /// Один раз за сеанс CorelDRAW: код компьютера (WMI) и тихая сверка с сервером — в фоне, чтобы
+        /// докер открывался сразу. Итог приходит событием License.Changed (не в потоке окна!).
+        /// </summary>
+        public void StartBackgroundCheck(string? corelVersion)
+        {
+            if (System.Threading.Interlocked.Exchange(ref backgroundCheckStarted, 1) == 1)
+            {
+                return;
+            }
+
+            License.CorelVersion = corelVersion;
+            System.Threading.Tasks.Task.Run(async () =>
+            {
+                try
+                {
+                    _ = License.Computer;
+                    License.NotifyChanged();
+                    await License.CheckAsync();
+                }
+                catch (Exception)
+                {
+                    // Сверка — дело фоновое: любая беда здесь не должна мешать работе.
+                }
+            });
+        }
 
         public void SaveSettings()
         {
@@ -82,6 +137,22 @@ namespace Strassio.Corel
 
         /// <summary>Сохранить без перерисовки докера — например, запомнить последний выбранный камень.</summary>
         public void SaveSettingsQuietly() => TrySave(() => Store.SaveSettings(Settings));
+
+        /// <summary>
+        /// Метки времени лицензии (защита от перевода часов) — не рядом с license.json (%APPDATA%),
+        /// а в %LOCALAPPDATA% и в реестре. При отдельной папке настроек (проверка окон без CorelDRAW,
+        /// STRASSIO_SETTINGS_DIR) — только в ней, чтобы не трогать настоящие метки.
+        /// </summary>
+        private static IMarkStore[] LicenseMarkStores()
+        {
+            if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SettingsStore.DirectoryVariable)))
+            {
+                return new IMarkStore[] { new FileMarkStore(Path.Combine(SettingsStore.DefaultDirectory, "license.state")) };
+            }
+
+            string local = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Strassio", "cache.bin");
+            return new IMarkStore[] { new FileMarkStore(local), new RegistryMarkStore() };
+        }
 
         private static string? BuiltInLanguage(string code)
         {

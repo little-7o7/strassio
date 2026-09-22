@@ -36,6 +36,11 @@ namespace Strassio.UiShots
             var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
             try
             {
+                // Код компьютера (WMI) — заранее, чтобы окно «Лицензия» снялось уже готовым, а не «Связь с сервером…».
+                object context = Addon.GetType("Strassio.Corel.PluginContext").GetProperty("Instance")!.GetValue(null)!;
+                var license = (Strassio.Licensing.LicenseManager)context.GetType().GetProperty("License")!.GetValue(context)!;
+                _ = license.Computer;
+
                 foreach (bool dark in new[] { false, true })
                 {
                     string theme = dark ? "-dark" : string.Empty;
@@ -49,6 +54,7 @@ namespace Strassio.UiShots
                     SnapDocker(outDir, "docker-vector" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 4);
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
+                    SnapWindow(outDir, "license" + theme, Make("Strassio.Corel.LicenseWindow", new object?[] { null }));
                 }
 
                 Console.WriteLine("Снимки: " + outDir);

@@ -57,8 +57,25 @@ namespace Strassio.Corel
             DataContext = context.Localizer;
             context.Localizer.PropertyChanged += Localizer_PropertyChanged;
             context.SettingsChanged += Context_SettingsChanged;
+            context.License.Changed += License_Changed;
             Loaded += (s, e) => ThemeManager.Attach(this, this.app);
-            Unloaded += (s, e) => ThemeManager.Detach(this);
+            Unloaded += (s, e) =>
+            {
+                ThemeManager.Detach(this);
+                context.License.Changed -= License_Changed;
+            };
+
+            string? corelVersion = null;
+            try
+            {
+                corelVersion = this.app?.Version;
+            }
+            catch (Exception)
+            {
+                // Версия CorelDRAW — только для админки, без неё можно.
+            }
+
+            context.StartBackgroundCheck(corelVersion);
 
             ApplyLayout();
             RebuildAll();
@@ -157,6 +174,7 @@ namespace Strassio.Corel
             ShowTabPanels();
             LivePreviewBox.IsChecked = context.Settings.LivePreview;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
+            RefreshLicenseLine();
         }
 
         private void SetStatus(string key, params object[] args)
@@ -276,6 +294,60 @@ namespace Strassio.Corel
             new SettingsWindow(app).ShowDialog();
         }
 
+        private void License_Click(object sender, RoutedEventArgs e) => new LicenseWindow(app).ShowDialog();
+
+        private void LicenseLine_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => new LicenseWindow(app).ShowDialog();
+
+        /// <summary>Лицензия изменилась (фоновая сверка, окно «Лицензия») — событие приходит не из потока окна.</summary>
+        private void License_Changed(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(RefreshLicenseLine));
+
+        /// <summary>Строка под шапкой: пробный период или «нет лицензии». При действующей лицензии не видна.</summary>
+        private void RefreshLicenseLine()
+        {
+            string text = string.Empty;
+            try
+            {
+                if (!context.License.IsComputerKnown)
+                {
+                    // Код компьютера ещё считается в фоне — строка обновится по License.Changed.
+                    return;
+                }
+
+                Strassio.Licensing.LicenseStatus status = context.License.Status;
+                if (status.State == Strassio.Licensing.LicenseState.Trial)
+                {
+                    text = Loc.Format("docker.license.trial", status.DaysLeft ?? 0);
+                }
+                else if (PluginContext.LicenseEnforced && !status.CanCreate)
+                {
+                    text = Loc[status.State == Strassio.Licensing.LicenseState.None ? "docker.license.none" : "docker.license.problem"];
+                }
+            }
+            catch (Exception)
+            {
+                // Строка — только подсказка; ошибка здесь не должна ломать докер.
+            }
+
+            LicenseLine.Text = text;
+            LicenseLine.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Можно ли менять документ. Нет — сообщение внизу и окно «Лицензия». Настройки и таблица
+        /// камней доступны всегда (SPEC 13.5).
+        /// </summary>
+        private bool EnsureLicense()
+        {
+            if (context.CanCreate)
+            {
+                return true;
+            }
+
+            SetStatus("license.needed");
+            new LicenseWindow(app).ShowDialog();
+            return context.CanCreate;
+        }
+
         /// <summary>Редактор таблицы камней; по «ОК» списки размеров и цветов в докере обновятся сами.</summary>
         private void EditStones_Click(object sender, RoutedEventArgs e)
         {
@@ -318,7 +390,7 @@ namespace Strassio.Corel
         /// </summary>
         private void CreateFromSelectedCurve(string caption, StoneSize size, StoneColor color, MethodOption method)
         {
-            if (!TryGetSelection(out CorelApplication corel, out Document doc, out Shape selected))
+            if (!EnsureLicense() || !TryGetSelection(out CorelApplication corel, out Document doc, out Shape selected))
             {
                 return;
             }
@@ -402,6 +474,12 @@ namespace Strassio.Corel
             Document doc, IReadOnlyList<PlacedStone> stones, StoneSize size, string colorName,
             byte red, byte green, byte blue, IReadOnlyList<int> conflicts, string caption)
         {
+            // Ещё одна проверка лицензии — у самого создания кругов (SPEC 13.2: не в одном месте).
+            if (!context.CanCreate)
+            {
+                throw new InvalidOperationException(Loc["license.needed"]);
+            }
+
             CorelApplication corel = app!;
             PluginSettings settings = context.Settings;
             string stoneName = StoneNames.Compose(size.Name, colorName);

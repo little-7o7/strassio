@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -57,19 +58,27 @@ namespace Strassio.Licensing
         private readonly Lazy<HardwareCode> computer;
         private readonly LicensePublicKey key;
         private readonly Func<DateTime> clock;
+        private readonly TimeGuard guard;
         private readonly object sync = new object();
         private SignedDocument? document;
         private bool loaded;
         private int checking;
 
         /// <param name="computer">Код этого компьютера — считается один раз при первом обращении (WMI небыстрый).</param>
-        public LicenseManager(ILicenseApi api, Func<HardwareCode> computer, LicensePublicKey key, string directory, Func<DateTime>? clock = null)
+        /// <param name="markStores">
+        /// Где хранить метки времени (<see cref="TimeGuard"/>): в аддоне — файл и реестр, подальше от
+        /// license.json. null — файл рядом с лицензией.
+        /// </param>
+        public LicenseManager(
+            ILicenseApi api, Func<HardwareCode> computer, LicensePublicKey key, string directory,
+            Func<DateTime>? clock = null, IReadOnlyList<IMarkStore>? markStores = null)
         {
             this.api = api;
             this.computer = new Lazy<HardwareCode>(computer, LazyThreadSafetyMode.ExecutionAndPublication);
             this.key = key;
             this.clock = clock ?? (() => DateTime.UtcNow);
             FilePath = Path.Combine(directory, FileName);
+            guard = new TimeGuard(markStores ?? new IMarkStore[] { new FileMarkStore(Path.Combine(directory, "license.state")) }, () => Computer.ToStorage());
         }
 
         /// <summary>Лицензия изменилась (получена, продлена, отозвана) — обновить надписи и кнопки.</summary>
@@ -87,8 +96,26 @@ namespace Strassio.Licensing
 
         public HardwareCode Computer => computer.Value;
 
+        /// <summary>Код компьютера уже посчитан (<see cref="Status"/> не будет ждать WMI).</summary>
+        public bool IsComputerKnown => computer.IsValueCreated;
+
+        /// <summary>Сообщить подписчикам <see cref="Changed"/>, что стоит перечитать состояние (например, код компьютера готов).</summary>
+        public void NotifyChanged() => Changed?.Invoke(this, EventArgs.Empty);
+
         /// <summary>Состояние лицензии прямо сейчас (читается из памяти, подпись проверяется каждый раз).</summary>
-        public LicenseStatus Status => LicenseEvaluator.Evaluate(Document, Computer, clock(), null, key);
+        public LicenseStatus Status
+        {
+            get
+            {
+                DateTime now = clock();
+                SignedDocument? doc = Document;
+
+                // Часы идут вперёд — запоминаем; назад — метка не опускается (см. TimeGuard).
+                // Сначала запись, потом проверка: запрет записи меток виден сразу.
+                guard.Observe(now);
+                return LicenseEvaluator.Evaluate(doc, Computer, now, null, key, Marks(doc != null));
+            }
+        }
 
         /// <summary>Можно создавать и править стразы.</summary>
         public bool CanCreate => Status.CanCreate;
@@ -140,7 +167,7 @@ namespace Strassio.Licensing
                 return LicenseActionResult.Fail(reply.Error ?? ApiReply.NoConnection);
             }
 
-            Save(null);
+            Remove(license);
             return LicenseActionResult.Success();
         }
 
@@ -156,13 +183,29 @@ namespace Strassio.Licensing
                 return LicenseActionResult.Fail("bad_file");
             }
 
-            LicenseStatus status = LicenseEvaluator.Evaluate(doc, Computer, clock(), null, key);
+            DateTime now = clock();
+            LicenseStatus plain = LicenseEvaluator.Evaluate(doc, Computer, now, null, key);
+            if (plain.State == LicenseState.BadSignature || plain.State == LicenseState.WrongComputer)
+            {
+                return LicenseActionResult.Fail(plain.State == LicenseState.WrongComputer ? "wrong_computer" : "bad_license");
+            }
+
+            // Старый файл (после него лицензию с этого компьютера снимали) и перевод часов назад.
+            LicenseStatus status = LicenseEvaluator.Evaluate(doc, Computer, now, null, key, Marks(false));
+            if (status.State == LicenseState.None)
+            {
+                return LicenseActionResult.Fail("old_file");
+            }
+
             if (!status.CanCreate)
             {
-                return LicenseActionResult.Fail(status.State == LicenseState.WrongComputer ? "wrong_computer" :
+                return LicenseActionResult.Fail(status.State == LicenseState.ClockTampered ? "clock" :
                     status.State == LicenseState.Expired ? "expired" : "bad_license");
             }
 
+            // issuedAt подписан сервером — это надёжное время, от него и считаются метки.
+            guard.AcceptServerTime(plain.License!.IssuedUtc ?? now);
+            guard.Observe(now);
             Save(doc);
             return LicenseActionResult.Success();
         }
@@ -202,7 +245,7 @@ namespace Strassio.Licensing
                 if (FatalErrors.Contains(reply.Error))
                 {
                     LastProblem = reply.Error;
-                    Save(null);
+                    Remove(license);
                     return true;
                 }
 
@@ -256,15 +299,53 @@ namespace Strassio.Licensing
                 return LicenseActionResult.Fail("bad_license");
             }
 
-            LicenseStatus status = LicenseEvaluator.Evaluate(reply.License, Computer, clock(), null, key);
-            if (status.State == LicenseState.BadSignature || status.State == LicenseState.WrongComputer)
+            DateTime now = clock();
+            LicenseStatus plain = LicenseEvaluator.Evaluate(reply.License, Computer, now, null, key);
+            DateTime? issued = plain.License?.IssuedUtc;
+            if (plain.State == LicenseState.BadSignature || plain.State == LicenseState.WrongComputer || !issued.HasValue)
+            {
+                return LicenseActionResult.Fail("bad_license");
+            }
+
+            // Настоящий сервер всегда выдаёт свежую лицензию. Старая (подставной сервер повторяет
+            // когда-то полученный ответ, чтобы откатить метки времени) не принимается.
+            if ((guard.ServerTimeUtc.HasValue && issued.Value + TimeGuard.Tolerance < guard.ServerTimeUtc.Value) ||
+                (guard.ForbiddenUtc.HasValue && issued.Value <= guard.ForbiddenUtc.Value))
             {
                 return LicenseActionResult.Fail("bad_license");
             }
 
             LastProblem = null;
+            guard.AcceptServerTime(issued.Value);
             Save(reply.License);
+
+            LicenseStatus status = Status;
+            if (status.State == LicenseState.ClockTampered)
+            {
+                return LicenseActionResult.Fail("clock");
+            }
+
             return status.State == LicenseState.Expired ? LicenseActionResult.Fail("expired") : LicenseActionResult.Success();
+        }
+
+        /// <summary>Метки времени для правил; <paramref name="hasLicense"/> — лицензия лежит (тогда метки обязательны).</summary>
+        private TimeMarks Marks(bool hasLicense) => new TimeMarks
+        {
+            LastSeenUtc = guard.LastSeenUtc,
+            ServerTimeUtc = guard.ServerTimeUtc,
+            ForbiddenUtc = guard.ForbiddenUtc,
+
+            // Время сервера запоминается при каждой полученной лицензии. Лицензия есть, а его нет —
+            // метки удалили (например, чтобы вернуть старую копию файла при переведённых часах).
+            // Запись меток запрещена — тоже подделка.
+            Missing = hasLicense && (!guard.ServerTimeUtc.HasValue || guard.Broken),
+        };
+
+        /// <summary>Лицензия снята (освободили, перенесли, отозвали): файл удаляется, его копии больше не примутся.</summary>
+        private void Remove(LicenseData license)
+        {
+            guard.Forbid(license.IssuedUtc ?? clock());
+            Save(null);
         }
 
         private ApiRequest NewRequest(string? serial) => new ApiRequest

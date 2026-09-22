@@ -256,7 +256,7 @@ export class LicenseService {
     }
 
     await this.log("admin", "offline", license.serial, hwid);
-    return this.issue(license, hwid).license;
+    return this.sign(license.serial, hwid, license.plan, license.expiresAt, true);
   }
 
   async publishUpdate(row: Omit<UpdateRow, "createdAt">): Promise<void> {
@@ -335,13 +335,17 @@ export class LicenseService {
     return { ok: true, license: this.sign(license.serial, hwid, license.plan, license.expiresAt) };
   }
 
-  /** Текст лицензии — поля в том же порядке, что LicenseData в плагине. */
-  private sign(serial: string, hwid: string, plan: string, expiresAt: Date | null): SignedDocument {
+  /**
+   * Текст лицензии — поля в том же порядке, что LicenseData в плагине. offline — файл для клиента
+   * без интернета (SPEC 13.6): плагин не требует сверки раз в 14 дней, действует до expiresAt.
+   */
+  private sign(serial: string, hwid: string, plan: string, expiresAt: Date | null, offline = false): SignedDocument {
     const now = this.clock();
-    const payload: Record<string, string> = { serial, hwid, plan };
+    const payload: Record<string, string | boolean> = { serial, hwid, plan };
     if (expiresAt) payload.expiresAt = iso(expiresAt);
     payload.issuedAt = iso(now);
     payload.nextCheckAt = iso(new Date(now.getTime() + CHECK_EVERY_DAYS * DAY));
+    if (offline) payload.offline = true;
     return this.signer.sign(JSON.stringify(payload));
   }
 

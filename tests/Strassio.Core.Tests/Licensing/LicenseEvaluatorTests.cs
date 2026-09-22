@@ -101,6 +101,19 @@ public class LicenseEvaluatorTests
         Assert.Equal(LicenseState.OfflineTooLong, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(31), Now, key).State);
     }
 
+    [Fact]
+    public void OfflineFile_NeedsNoCheck_ButStillExpires()
+    {
+        (ECDsa signer, LicensePublicKey key) = NewKey();
+        string payload = Payload(Pc, expires: Now.AddDays(200), issued: Now).TrimEnd('}') + ",\"offline\":true}";
+        SignedDocument doc = Sign(signer, payload);
+
+        LicenseStatus day100 = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(100), null, key);
+        Assert.Equal(LicenseState.Valid, day100.State);
+        Assert.False(day100.NeedsOnlineCheck);
+        Assert.Equal(LicenseState.Expired, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(201), null, key).State);
+    }
+
     /// <summary>
     /// Лицензия, подписанная настоящим кодом сервера (server/core, Node.js) одноразовым ключом: плагин
     /// должен принять её подпись, формат JSON и код компьютера — иначе клиенты не смогут активироваться.

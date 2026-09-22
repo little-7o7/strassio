@@ -34,8 +34,14 @@
                 <Button x:Name="SettingsButton" DockPanel.Dock="Right" Padding="6,3" Click="Settings_Click"
                         ToolTip="{Binding [docker.settings.tooltip]}"
                         FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE713;"/>
+                <Button x:Name="LicenseButton" DockPanel.Dock="Right" Padding="6,3" Margin="0,0,4,0" Click="License_Click"
+                        ToolTip="{Binding [docker.license.tooltip]}"
+                        FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE8D7;"/>
                 <TextBlock Text="{Binding [app.title]}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </DockPanel>
+            <!-- Пробный период / «нет лицензии»; при действующей лицензии не видна -->
+            <TextBlock x:Name="LicenseLine" Style="{StaticResource Strassio.Muted}" Margin="0,-4,0,10"
+                       Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="LicenseLine_Click"/>
 
             <!-- Камень: размер и цвет -->
             <TextBlock Text="{Binding [docker.stone]}" FontWeight="SemiBold" Margin="0,0,0,6"/>

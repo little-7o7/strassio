@@ -151,7 +151,9 @@ test("офлайн-активация и журнал", async () => {
   const [serial] = await service.createKeys({ note: "Мастер Аня" });
   const doc = await service.offline(serial, PC1);
   assert.ok(doc && verifyDocument(doc, keys.publicKey));
-  payload(await service.check({ serial, hwid: PC1 }));
+  // Клиент без интернета не может сверяться раз в 14 дней — офлайн-лицензия помечена.
+  assert.equal(JSON.parse(doc.payload).offline, true);
+  assert.equal(payload(await service.check({ serial, hwid: PC1 })).offline, undefined);
   const log = await service.auditLog();
   assert.deepEqual(log.map((r) => r.action).slice(0, 2), ["offline", "create_keys"]);
   assert.equal((await service.search("аня")).length, 1);

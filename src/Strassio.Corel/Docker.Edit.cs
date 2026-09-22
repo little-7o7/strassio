@@ -306,6 +306,11 @@ namespace Strassio.Corel
         /// </summary>
         private void RunInDocument(string? undoKey, Action<Document> action)
         {
+            if (!EnsureLicense())
+            {
+                return;
+            }
+
             if (app == null)
             {
                 SetStatus("status.noApp");

@@ -57,6 +57,10 @@ public class LiveServerTests : IDisposable
         Assert.Equal("revoked", first.LastProblem);
 
         Assert.True((await second.DeactivateAsync()).Ok);
+
+        // Время выдачи — с точностью до секунды, а лицензии не позже снятой не принимаются (TimeGuard).
+        // Человек за ту же секунду ключ заново не введёт, тест — может.
+        await Task.Delay(1100);
         Assert.True((await first.ActivateAsync(serial)).Ok);
 
         var trial = new LicenseManager(api, () => pc2, key, Path.Combine(dir, "trial"));
