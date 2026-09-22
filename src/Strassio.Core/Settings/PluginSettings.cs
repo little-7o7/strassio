@@ -75,6 +75,10 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "lastMethod")]
         public string LastMethod { get; set; } = string.Empty;
 
+        /// <summary>Живой предпросмотр: картинка в докере пересчитывается сама при каждом изменении (раздел 5, [NEW]).</summary>
+        [DataMember(Name = "livePreview")]
+        public bool LivePreview { get; set; }
+
         /// <summary>Параметры методов из докера (зазор, ряды…).</summary>
         [DataMember(Name = "method")]
         public MethodParameters Method { get; set; } = new MethodParameters();
@@ -123,6 +127,7 @@ namespace Strassio.Core.Settings
             OutlineWidthMm = 0.1;
             CheckUpdates = true;
             LastMethod = string.Empty;
+            LivePreview = false;
             Method = new MethodParameters();
         }
     }

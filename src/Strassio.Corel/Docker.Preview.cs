@@ -24,6 +24,47 @@ namespace Strassio.Corel
     /// </summary>
     public partial class Docker
     {
+        /// <summary>Фигура, прочитанная последним «Предпросмотром», — для живого пересчёта без обращений к CorelDRAW.</summary>
+        private List<CoreCurve>? previewContours;
+        private List<CoreCurve>? previewGuides;
+        private System.Windows.Threading.DispatcherTimer? liveTimer;
+
+        /// <summary>
+        /// Живой предпросмотр: после любого изменения параметров, камня или метода картинка
+        /// пересчитывается сама (через четверть секунды, чтобы не считать на каждую букву).
+        /// Фигура берётся та, что была выделена при нажатии «Предпросмотр».
+        /// </summary>
+        private void ScheduleLivePreview()
+        {
+            if (LivePreviewBox?.IsChecked != true || previewContours == null || !IsMethodTab)
+            {
+                return;
+            }
+
+            if (liveTimer == null)
+            {
+                liveTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+                liveTimer.Tick += (s, e) =>
+                {
+                    liveTimer.Stop();
+                    if (previewContours != null)
+                    {
+                        ShowPreview(previewContours, previewGuides);
+                    }
+                };
+            }
+
+            liveTimer.Stop();
+            liveTimer.Start();
+        }
+
+        private void LivePreviewBox_Click(object sender, RoutedEventArgs e)
+        {
+            context.Settings.LivePreview = LivePreviewBox.IsChecked == true;
+            context.SaveSettingsQuietly();
+            ScheduleLivePreview();
+        }
+
         private void Preview_Click(object sender, RoutedEventArgs e)
         {
             if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color))
@@ -63,6 +104,27 @@ namespace Strassio.Corel
 
             if (contours == null)
             {
+                HidePreview();
+                return;
+            }
+
+            previewContours = contours;
+            previewGuides = guides;
+            ShowPreview(contours, guides);
+        }
+
+        /// <summary>Считает выбранный метод по уже прочитанной фигуре и рисует картинку (без CorelDRAW).</summary>
+        private void ShowPreview(List<CoreCurve> contours, List<CoreCurve>? guides)
+        {
+            if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color) ||
+                !(MethodCombo.SelectedItem is MethodOption method))
+            {
+                return;
+            }
+
+            if (method.Info.NeedsGuide != (guides != null))
+            {
+                // Метод сменили на такой, которому нужна другая выделенная фигура — нажмите «Предпросмотр» ещё раз.
                 HidePreview();
                 return;
             }

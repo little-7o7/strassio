@@ -43,6 +43,7 @@ namespace Strassio.Corel
 
             MethodPanel.Visibility = method ? Visibility.Visible : Visibility.Collapsed;
             CreateRow.Visibility = MethodPanel.Visibility;
+            LivePreviewBox.Visibility = MethodPanel.Visibility;
             EditPanel.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
             ColorPanel.Visibility = color ? Visibility.Visible : Visibility.Collapsed;
             if (!method)

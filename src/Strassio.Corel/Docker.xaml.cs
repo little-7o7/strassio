@@ -151,6 +151,7 @@ namespace Strassio.Corel
             RebuildColors();
             RebuildEditTexts();
             ShowTabPanels();
+            LivePreviewBox.IsChecked = context.Settings.LivePreview;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
         }
 
@@ -208,6 +209,7 @@ namespace Strassio.Corel
             ColorList.ItemsSource = colors;
             ColorList.SelectedItem = colors.FirstOrDefault(c => c.Name == colorName) ?? colors.FirstOrDefault();
             ColorName.Text = (ColorList.SelectedItem as ColorOption)?.Name ?? string.Empty;
+            RebuildMixColors();
         }
 
         private void UpdateMethodHint()
@@ -227,6 +229,7 @@ namespace Strassio.Corel
         {
             ColorName.Text = (ColorList.SelectedItem as ColorOption)?.Name ?? string.Empty;
             RebuildEditTexts();
+            ScheduleLivePreview();
         }
 
         private void MethodTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -247,9 +250,14 @@ namespace Strassio.Corel
         {
             if (!refreshing)
             {
-                HidePreview();
+                if (LivePreviewBox.IsChecked != true)
+                {
+                    HidePreview();
+                }
+
                 UpdateMethodHint();
                 RebuildParams();
+                ScheduleLivePreview();
                 if (MethodCombo.SelectedItem is MethodOption m)
                 {
                     context.Settings.LastMethod = m.Info.Kind.ToString().ToLowerInvariant();
@@ -336,51 +344,21 @@ namespace Strassio.Corel
                 }
 
                 color.TryGetRgb(out byte red, out byte green, out byte blue);
-                PluginSettings settings = context.Settings;
-                string stoneName = size.Name + " " + color.Name;
 
                 doc.BeginCommandGroup(caption);
                 try
                 {
-                    Layer layer = doc.ActiveLayer;
-                    var created = new object[stones.Count];
+                    Shape group = CreateStoneGroup(doc, stones, size, color.Name, red, green, blue, result.ConflictIndices, caption);
 
-                    for (int i = 0; i < stones.Count; i++)
+                    // «Живые» стразы (раздел 8): запоминаем на группе, из чего и чем она сделана.
+                    LiveStones.Save(group, new LiveRecipe
                     {
-                        PlacedStone stone = stones[i];
-                        double radius = stone.DiameterMm / 2.0;
-                        Shape circle = layer.CreateEllipse2(stone.Center.X, stone.Center.Y, radius, radius);
-
-                        // В методах с несколькими размерами (L5, L6, L8, L2) у каждого камня своё имя размера.
-                        string sizeName = Math.Abs(stone.DiameterMm - size.DiameterMm) < 0.005 ? size.Name : SizeNameFor(stone.DiameterMm, size.Name);
-                        circle.Name = sizeName == size.Name ? stoneName : StoneNames.Compose(sizeName, color.Name);
-                        StoneShapes.Mark(circle, sizeName, color.Name);
-                        created[i] = circle;
-                    }
-
-                    // Заливка и обводка — одним вызовом на всю пачку, а не для каждого круга (меньше COM-вызовов).
-                    ShapeRange range = doc.CreateShapeRangeFromArray(ref created);
-                    range.ApplyUniformFill(app.CreateRGBColor(red, green, blue));
-                    if (settings.Outline == OutlineStyle.None)
-                    {
-                        range.SetOutlineProperties(Width: 0);
-                    }
-                    else
-                    {
-                        double width = settings.Outline == OutlineStyle.Hairline ? HairlineMm : settings.OutlineWidthMm;
-                        range.SetOutlineProperties(Width: width, Color: app.CreateRGBColor(0, 0, 0));
-                    }
-
-                    // «Только показать» (раздел 6.4): налезающие стразы остаются, но получают красную обводку.
-                    if (result.ConflictIndices.Count > 0)
-                    {
-                        object[] conflicts = result.ConflictIndices.Select(i => created[i]).ToArray();
-                        doc.CreateShapeRangeFromArray(ref conflicts)
-                            .SetOutlineProperties(Width: ConflictOutlineMm, Color: app.CreateRGBColor(229, 57, 53));
-                    }
-
-                    Shape group = range.Group();
-                    group.Name = caption;
+                        Method = method.Info.Kind.ToString().ToLowerInvariant(),
+                        Size = size.Name,
+                        Color = color.Name,
+                        Sources = new List<int>(lastSourceIds),
+                        Parameters = Params.Clone(),
+                    });
                 }
                 finally
                 {
@@ -407,6 +385,60 @@ namespace Strassio.Corel
                 app.Optimization = prevOptimization;
                 app.Refresh();
             }
+        }
+
+        /// <summary>
+        /// Создаёт круги-стразы одной группой (вызывать внутри группы отмены, единицы — мм). У каждого
+        /// круга — имя «размер цвет» и невидимые метки; в методах с несколькими размерами имя размера
+        /// своё у каждого камня. <paramref name="conflicts"/> — стразы «только показать»: красная обводка.
+        /// </summary>
+        private Shape CreateStoneGroup(
+            Document doc, IReadOnlyList<PlacedStone> stones, StoneSize size, string colorName,
+            byte red, byte green, byte blue, IReadOnlyList<int> conflicts, string caption)
+        {
+            CorelApplication corel = app!;
+            PluginSettings settings = context.Settings;
+            string stoneName = StoneNames.Compose(size.Name, colorName);
+            Layer layer = doc.ActiveLayer;
+            var created = new object[stones.Count];
+
+            for (int i = 0; i < stones.Count; i++)
+            {
+                PlacedStone stone = stones[i];
+                double radius = stone.DiameterMm / 2.0;
+                Shape circle = layer.CreateEllipse2(stone.Center.X, stone.Center.Y, radius, radius);
+
+                // В методах с несколькими размерами (L5, L6, L8, L2) у каждого камня своё имя размера.
+                string sizeName = Math.Abs(stone.DiameterMm - size.DiameterMm) < 0.005 ? size.Name : SizeNameFor(stone.DiameterMm, size.Name);
+                circle.Name = sizeName == size.Name ? stoneName : StoneNames.Compose(sizeName, colorName);
+                StoneShapes.Mark(circle, sizeName, colorName);
+                created[i] = circle;
+            }
+
+            // Заливка и обводка — одним вызовом на всю пачку, а не для каждого круга (меньше COM-вызовов).
+            ShapeRange range = doc.CreateShapeRangeFromArray(ref created);
+            range.ApplyUniformFill(corel.CreateRGBColor(red, green, blue));
+            if (settings.Outline == OutlineStyle.None)
+            {
+                range.SetOutlineProperties(Width: 0);
+            }
+            else
+            {
+                double width = settings.Outline == OutlineStyle.Hairline ? HairlineMm : settings.OutlineWidthMm;
+                range.SetOutlineProperties(Width: width, Color: corel.CreateRGBColor(0, 0, 0));
+            }
+
+            // «Только показать» (раздел 6.4): налезающие стразы остаются, но получают красную обводку.
+            if (conflicts.Count > 0)
+            {
+                object[] marked = conflicts.Select(i => created[i]).ToArray();
+                doc.CreateShapeRangeFromArray(ref marked)
+                    .SetOutlineProperties(Width: ConflictOutlineMm, Color: corel.CreateRGBColor(229, 57, 53));
+            }
+
+            Shape group = range.Group();
+            group.Name = caption;
+            return group;
         }
 
         /// <summary>Есть CorelDRAW, открытый документ и выделенная фигура; иначе — сообщение внизу докера.</summary>
@@ -445,9 +477,13 @@ namespace Strassio.Corel
         /// вызывающий). null — прочитать не удалось или методу нужна замкнутая фигура; сообщение
         /// уже показано внизу докера.
         /// </summary>
+        /// <summary>Номера (StaticID) фигур, прочитанных последним ReadContours: форма/линия, для F7/F8 — и вторая.</summary>
+        private readonly List<int> lastSourceIds = new List<int>();
+
         private List<CoreCurve>? ReadContours(Document doc, Shape selected, MethodOption method, out List<CoreCurve>? guides)
         {
             guides = null;
+            lastSourceIds.Clear();
             if (method.Info.NeedsGuide)
             {
                 return ReadTwoShapes(doc, method, out guides);
@@ -467,6 +503,7 @@ namespace Strassio.Corel
                 return null;
             }
 
+            lastSourceIds.Add(selected.StaticID);
             if (method.Info.NeedsClosed && !MethodRunner.OuterContour(contours).IsClosed)
             {
                 SetStatus("status.needClosed");
@@ -507,6 +544,8 @@ namespace Strassio.Corel
 
             if (method.Info.Kind == MethodKind.F7)
             {
+                lastSourceIds.Add(selection[1].StaticID);
+                lastSourceIds.Add(selection[2].StaticID);
                 guides = new List<CoreCurve> { MethodRunner.OuterContour(read[1]) };
                 return new List<CoreCurve> { MethodRunner.OuterContour(read[0]) };
             }
@@ -531,6 +570,8 @@ namespace Strassio.Corel
                 return null;
             }
 
+            lastSourceIds.Add(selection[shapeIndex + 1].StaticID);
+            lastSourceIds.Add(selection[2 - shapeIndex].StaticID);
             guides = new List<CoreCurve> { MethodRunner.OuterContour(read[1 - shapeIndex]) };
             return read[shapeIndex];
         }

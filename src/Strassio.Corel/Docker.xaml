@@ -92,11 +92,19 @@
                     <Button Content="{Binding [edit.lock]}" Click="Lock_Click" ToolTip="{Binding [edit.lock.tooltip]}"/>
                     <Button Grid.Column="2" Content="{Binding [edit.unlock]}" Click="Unlock_Click" ToolTip="{Binding [edit.unlock.tooltip]}"/>
                 </Grid>
+                <Button Content="{Binding [edit.restoreSize]}" Click="RestoreSize_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.restoreSize.tooltip]}"/>
+                <Button Content="{Binding [edit.fillHoles]}" Click="FillHoles_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.fillHoles.tooltip]}"/>
+                <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.updateLive.tooltip]}"/>
                 <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
             </StackPanel>
 
             <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска и выделение по размеру/цвету — Docker.Edit.cs -->
             <StackPanel x:Name="ColorPanel" Visibility="Collapsed">
+                <Button Content="{Binding [color.pipette]}" Click="Pipette_Click" Margin="0,0,0,10"
+                        ToolTip="{Binding [color.pipette.tooltip]}"/>
                 <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
                 <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
@@ -105,7 +113,34 @@
                 <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
                 <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
                 <Button x:Name="SelectBothButton" Click="SelectBoth_Click" Margin="0,0,0,6"/>
-                <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+
+                <!-- Смешение цветов (раздел 3.4): 2–3 цвета, доли в процентах или «по очереди» -->
+                <TextBlock Text="{Binding [color.mix]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="56"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <ComboBox x:Name="MixColor1" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <TextBox x:Name="MixValue1" Grid.Column="2" Text="70" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                    <ComboBox x:Name="MixColor2" Grid.Row="1" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <TextBox x:Name="MixValue2" Grid.Row="1" Grid.Column="2" Text="30" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                    <ComboBox x:Name="MixColor3" Grid.Row="2" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <TextBox x:Name="MixValue3" Grid.Row="2" Grid.Column="2" Text="0" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                </Grid>
+                <ComboBox x:Name="MixModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6" ToolTip="{Binding [color.mix.mode.tooltip]}"/>
+                <Button Content="{Binding [color.mix.apply]}" Click="Mix_Click" Margin="0,0,0,4" ToolTip="{Binding [color.mix.apply.tooltip]}"/>
+                <TextBlock Text="{Binding [color.mix.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+
+                <Button Content="{Binding [color.palette]}" Click="Palette_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [color.palette.tooltip]}"/>
             </StackPanel>
 
             <StackPanel x:Name="MethodPanel">
@@ -152,6 +187,8 @@
                 <Button x:Name="CreateButton" Grid.Column="2" Style="{StaticResource Strassio.PrimaryButton}" Click="Create_Click"
                         Content="{Binding [docker.create]}" ToolTip="{Binding [docker.create.tooltip]}"/>
             </Grid>
+            <CheckBox x:Name="LivePreviewBox" Content="{Binding [docker.livePreview]}" Click="LivePreviewBox_Click"
+                      ToolTip="{Binding [docker.livePreview.tooltip]}" Margin="0,8,0,0"/>
             <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,8,0,0" Padding="6" CornerRadius="3"
                     Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.ControlBorder}" BorderThickness="1">
                 <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>

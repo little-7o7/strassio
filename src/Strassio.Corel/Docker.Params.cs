@@ -53,6 +53,7 @@ namespace Strassio.Corel
             {
                 field.SetToggle(Params, box.IsChecked == true);
                 context.SaveSettingsQuietly();
+                ScheduleLivePreview();
             };
             Place(box, row, 0, columnSpan: 2);
             return new ParamRow(field, null, box);
@@ -95,6 +96,7 @@ namespace Strassio.Corel
                 {
                     context.SaveSettingsQuietly();
                     UpdateParamVisibility();
+                    ScheduleLivePreview();
                 }
             };
             return combo;
@@ -140,6 +142,7 @@ namespace Strassio.Corel
                 if (combo.SelectedItem is ChoiceOption picked && field.TrySetChoice(Params, picked.Value))
                 {
                     context.SaveSettingsQuietly();
+                    ScheduleLivePreview();
                 }
             };
             return combo;
@@ -170,6 +173,7 @@ namespace Strassio.Corel
             {
                 box.ClearValue(BorderBrushProperty);
                 context.SaveSettingsQuietly();
+                ScheduleLivePreview();
                 return true;
             }
 
@@ -186,6 +190,16 @@ namespace Strassio.Corel
         {
             var box = new TextBox { Text = FormatNumber(field, field.GetNumber(Params)) };
             box.LostKeyboardFocus += (s, e) => CommitNumber(field, box, reportError: true);
+
+            // Живой предпросмотр: число принимается прямо во время ввода — без переписывания поля.
+            box.TextChanged += (s, e) =>
+            {
+                if (LivePreviewBox?.IsChecked == true && TryParseNumber(field, box.Text, out double value) && field.TrySetNumber(Params, value))
+                {
+                    box.ClearValue(BorderBrushProperty);
+                    ScheduleLivePreview();
+                }
+            };
             box.KeyDown += (s, e) =>
             {
                 if (e.Key == Key.Enter)

@@ -393,6 +393,14 @@ static void RenderEditScenario()
         dup.Add(new DocStone(clean[i].Center, clean[i].DiameterMm, order++));
     }
 
+    // Поиск дырок: из сот убрали каждую 13-ю стразу; найденные дырки — красные.
+    var holey = clean.Where((st, i) => i % 13 != 6).ToList();
+    List<Point2D> found = HoleFinder.Find(holey, 2.4, 0.2);
+    var holeStones = holey.Select(st => new PlacedStone(st.Center, st.DiameterMm, false))
+        .Concat(found.Select(h => new PlacedStone(h, 2.4, isCorner: true))).ToList();
+    File.WriteAllText(Path.Combine(outDir, "6-holes.svg"), SvgWriter.RenderMulti(new List<(IReadOnlyList<Point2D> Points, string Color)> { (outline, "#cccccc") }, holeStones));
+    Console.WriteLine($"дырки: убрано {clean.Count - holey.Count}, найдено {found.Count}");
+
     EditResult dups = StoneEditor.FindDuplicates(dup);
     Console.WriteLine($"дубли: добавлено {dup.Count - clean.Count}, найдено {dups.Deleted.Count}");
     Console.WriteLine($"SVG сохранены: {outDir}");
