@@ -311,6 +311,16 @@ namespace Strassio.Core.Placement
                 default:
                 {
                     int count = Math.Max(2, (int)Math.Round(subLength / stoneStep) + 1);
+
+                    // Подгонка может чуть сжать шаг, но не больше чем на половину зазора: при зазоре 0
+                    // любое сжатие — это налезающие стразы (скриншоты автора: ряд по прямоугольнику
+                    // рвался, лишние стразы удалялись). Тогда шаг не сжимается, а растягивается.
+                    double minSpacing = options.StoneDiameterMm + options.GapMm * 0.5;
+                    while (count > 2 && subLength / (count - 1) < minSpacing - 1e-9)
+                    {
+                        count--;
+                    }
+
                     AddEvenlySpaced(positions, subLength, count);
                     break;
                 }

@@ -95,7 +95,10 @@ namespace Strassio.Core.Placement
                 AddCenterFill(result, boundaries, field, options, ringsPlaced > 0 ? lastLevel + rowSpacing : 0);
             }
 
-            List<PlacedStone> fixedStones = IntersectionFixer.RemoveOverlaps(result);
+            // Запас на наложение — по зазору пользователя: при зазоре 0 касающиеся стразы — это норма,
+            // а не наложение (раньше здесь стояли жёсткие 0,1 мм, и при зазоре 0 «Кант» терял почти все
+            // стразы — скриншоты автора).
+            List<PlacedStone> fixedStones = IntersectionFixer.RemoveOverlaps(result, Math.Min(0.1, options.GapMm / 2), 0.02);
 
             if (options.FillCenter)
             {

@@ -205,6 +205,8 @@ static void RenderMethodsScenario()
         ("heart", BuildHeart().Item1),
         ("square", Curve.FromPolyline(
             new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) }, isClosed: true)),
+        ("rect", Curve.FromPolyline(
+            new[] { new Point2D(0, 0), new Point2D(60, 0), new Point2D(60, 45), new Point2D(0, 45) }, isClosed: true)),
         ("s-curve", BuildSCurve().Item1),
         ("zigzag", BuildZigzag().Item1),
     };
@@ -226,6 +228,14 @@ static void RenderMethodsScenario()
     variants.Add(("l6-pattern", MethodKind.L6, new MethodParameters { SizePattern = "ss6, ss6, ss16" }));
     variants.Add(("l8-accents", MethodKind.L8, new MethodParameters { AccentSize = "ss16" }));
     variants.Add(("l4-grow", MethodKind.L4, new MethodParameters { RowCount = 5, WidthProfile = MethodChoices.ProfileGrow }));
+    // Зазор 0 — как у автора на скриншотах.
+    variants.Add(("l1-gap0", MethodKind.L1, new MethodParameters { GapMm = 0 }));
+    variants.Add(("l2-gap0", MethodKind.L2, new MethodParameters { GapMm = 0, RowGapMm = 0 }));
+    variants.Add(("f3-gap0", MethodKind.F3, new MethodParameters { GapMm = 0 }));
+    variants.Add(("f4-gap0", MethodKind.F4, new MethodParameters { GapMm = 0 }));
+    variants.Add(("f5-gap0", MethodKind.F5, new MethodParameters { GapMm = 0 }));
+    variants.Add(("f6-gap0", MethodKind.F6, new MethodParameters { GapMm = 0 }));
+    variants.Add(("f9-spiral-gap0", MethodKind.F9, new MethodParameters { GapMm = 0, CenterMode = MethodChoices.CenterSpiral }));
     variants.Add(("f9-spiral", MethodKind.F9, new MethodParameters { CenterMode = MethodChoices.CenterSpiral }));
     variants.Add(("f10-mix", MethodKind.F10, new MethodParameters { MixSizes = "ss5, ss10, ss16" }));
     variants.Add(("f11-ss16-ss5", MethodKind.F11, new MethodParameters { FromSize = "ss16", ToSize = "ss5" }));
@@ -245,7 +255,8 @@ static void RenderMethodsScenario()
             string file = Path.Combine(outDir, name + "-" + shapeName + ".svg");
             File.WriteAllText(file, SvgWriter.Render(flat.Points.Select(pt => pt.Position).ToList(), flat.IsClosed, result.Stones));
 
-            int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01).Count(x => x);
+            // При зазоре 0 касающиеся стразы — норма, наложение считается только настоящее.
+            int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, Math.Min(0.05, p.GapMm / 2), 0.03).Count(x => x);
             Console.WriteLine($"{name,-18} {shapeName,-8} {result.Stones.Count,5} страз, наложений: {overlaps}");
         }
     }

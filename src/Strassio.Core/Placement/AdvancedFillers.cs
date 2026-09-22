@@ -148,19 +148,27 @@ namespace Strassio.Core.Placement
 
             if (spiral)
             {
-                // Архимедова спираль r = a·θ: соседние витки — ровно через шаг.
+                // Архимедова спираль r = a·θ: соседние витки — ровно через шаг. Идём мелкими шажками и
+                // ставим стразу, когда до предыдущей по прямой набралось не меньше шага (по дуге было бы
+                // теснее — на крутых витках у центра стразы налезали и выпадали, оставляя дырки).
                 double a = step / (2 * Math.PI);
                 double theta = 0;
+                Point2D? last = null;
                 while (a * theta <= reach)
                 {
                     double r = a * theta;
                     var p = new Point2D(center.X + r * Math.Cos(theta), center.Y + r * Math.Sin(theta));
-                    if (region.Fits(p, d / 2, margin))
+                    if (last == null || Point2D.Distance(p, last.Value) >= step - 1e-9)
                     {
-                        packer.TryAdd(p, d);
+                        if (region.Fits(p, d / 2, margin))
+                        {
+                            packer.TryAdd(p, d);
+                        }
+
+                        last = p;
                     }
 
-                    theta += step / Math.Sqrt(r * r + a * a);
+                    theta += Math.Min(0.05, step / 8 / Math.Sqrt(r * r + a * a));
                 }
             }
             else
@@ -173,7 +181,10 @@ namespace Strassio.Core.Placement
                 for (int ring = 1; ring * step <= reach; ring++)
                 {
                     double r = ring * step;
-                    int count = Math.Max(1, (int)Math.Floor(2 * Math.PI * r / step));
+
+                    // Сколько страз на кольце — по хорде, а не по дуге: хорда короче, иначе соседние
+                    // стразы кольца стояли бы теснее шага и выпадали.
+                    int count = Math.Max(1, (int)Math.Floor(Math.PI / Math.Asin(Math.Min(1, step / (2 * r)))));
                     double phase = ring % 2 == 0 ? 0 : Math.PI / count;
                     for (int i = 0; i < count; i++)
                     {

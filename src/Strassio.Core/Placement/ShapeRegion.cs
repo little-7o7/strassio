@@ -86,6 +86,9 @@ namespace Strassio.Core.Placement
     /// </summary>
     internal sealed class StonePacker
     {
+        /// <summary>Сколько стразам можно «налезть» из-за погрешности расчёта, мм.</summary>
+        public const double Tolerance = 0.02;
+
         private readonly double gap;
         private readonly double cell;
         private readonly Dictionary<(int, int), List<int>> cells = new Dictionary<(int, int), List<int>>();
@@ -112,8 +115,10 @@ namespace Strassio.Core.Placement
 
                     foreach (int i in list)
                     {
+                        // Допуск 0,02 мм: ряды строятся по карте расстояний с точностью до сотых — без
+                        // допуска стразы, стоящие ровно вплотную, отбрасывались бы через одну.
                         PlacedStone s = Stones[i];
-                        if (Point2D.Distance(s.Center, center) < (s.DiameterMm + diameter) / 2 + gap - 1e-9)
+                        if (Point2D.Distance(s.Center, center) < (s.DiameterMm + diameter) / 2 + gap - Tolerance)
                         {
                             return false;
                         }

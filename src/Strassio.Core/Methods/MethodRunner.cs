@@ -53,7 +53,9 @@ namespace Strassio.Core.Methods
             switch (kind)
             {
                 case MethodKind.L1:
-                    return Plain(LineScatterer.Scatter(OuterContour(contours), LineOptions(d, p)));
+                    // В очень острых углах при маленьком зазоре соседи с двух сторон угла могли задеть друг
+                    // друга — последняя проверка наложений убирает это (соседи раздвигаются).
+                    return Plain(FixSingleRow(LineScatterer.Scatter(OuterContour(contours), LineOptions(d, p)), p));
 
                 case MethodKind.L2:
                     return AroundLine(OuterContour(contours), d, p, sizes);
@@ -204,6 +206,7 @@ namespace Strassio.Core.Methods
                 EndMarginMm = p.EndMarginMm,
                 Reverse = p.Reverse,
                 CornerAngleThresholdDeg = p.CornerAngleDeg,
+                MaxCornerNudgeMm = CornerNudge(p),
             };
 
             switch (p.StepMode)
@@ -233,7 +236,16 @@ namespace Strassio.Core.Methods
                 Mode = StepMode.FitEven,
                 StartOffsetMm = startOffsetMm,
                 CornerAngleThresholdDeg = p.CornerAngleDeg,
+                MaxCornerNudgeMm = CornerNudge(p),
             };
+
+        /// <summary>
+        /// Сдвиг страз вбок у острых углов (LineScatterer) хорош, пока в ряду есть зазор, который он может
+        /// «съесть». При зазоре меньше 0,1 мм сдвигать некуда — соседи налезали, лишние удалялись, у углов
+        /// оставались пустоты (скриншоты автора). Тогда угол разводит <see cref="RelaxSharpCorners"/> —
+        /// вдоль сторон, не сходя с линии.
+        /// </summary>
+        private static double CornerNudge(MethodParameters p) => p.GapMm < 0.1 ? 0 : 1.0;
 
         private static CornerStyle Corners(MethodParameters p) =>
             p.Corners == MethodChoices.CornersSharp ? CornerStyle.Sharp : CornerStyle.Round;
@@ -406,7 +418,7 @@ namespace Strassio.Core.Methods
         /// <summary>L7 «пунктир»: ряд, как «по линии», но из каждых (группа + пропуск) мест заняты только первые «группа».</summary>
         private static MethodResult Dashes(Curve curve, double d, MethodParameters p)
         {
-            IReadOnlyList<PlacedStone> row = LineScatterer.Scatter(curve, LineOptions(d, p));
+            IReadOnlyList<PlacedStone> row = FixSingleRow(LineScatterer.Scatter(curve, LineOptions(d, p)), p);
             int dash = Math.Max(1, p.DashCount);
             int period = dash + Math.Max(0, p.SkipCount);
             return Plain(row.Where((stone, i) => i % period < dash).ToList());
@@ -496,11 +508,158 @@ namespace Strassio.Core.Methods
         private static List<PlacedStone> FixSingleRow(IReadOnlyList<PlacedStone> stones, MethodParameters p)
         {
             double minGap = p.GapMm / 2;
-            IReadOnlyList<PlacedStone> fixedRow = IntersectionFixer.Fix(stones, new IntersectionFixOptions { MinGapMm = minGap }).Stones;
+            IReadOnlyList<PlacedStone> relaxed = RelaxSharpCorners(stones, p.GapMm);
+            IReadOnlyList<PlacedStone> fixedRow = IntersectionFixer.Fix(relaxed, new IntersectionFixOptions { MinGapMm = minGap }).Stones;
 
             // Раздвигание соседей в острых углах иногда задевает камень другого «плеча» угла, особенно
             // когда камни разного размера (звезда в Preview "methods"). Последняя проверка — без раздвигания.
             return IntersectionFixer.RemoveOverlaps(fixedRow, minGap);
+        }
+
+        /// <summary>Сколько страз с каждой стороны острого угла участвуют в плавном сдвиге (как CornerTaperCount в L1).</summary>
+        private const int CornerTaper = 4;
+
+        /// <summary>
+        /// Острый угол ряда (раздел 4, решение автора: у угла не оставлять дыру, не растягивать весь ряд,
+        /// а распределить сдвиг по нескольким стразам). У вершины стразы двух «плеч» сходятся; при
+        /// маленьком зазоре плавный сдвиг из LineScatterer их не разводит — сдвигать некуда (скриншоты
+        /// автора, зазор 0). Здесь для каждой стороны угла: первая страза встаёт на таком расстоянии от
+        /// вершины, чтобы стороны не задевали друг друга; следующие <see cref="CornerTaper"/> страз
+        /// ровно расставляются до пятой, которая остаётся на месте. Не хватает места без наложения —
+        /// одна из них убирается. Угловая страза стоит в вершине. Соседи по ряду — соседи в списке
+        /// (ряд идёт по ходу линии), замкнутый ряд обходится по кругу.
+        /// </summary>
+        internal static List<PlacedStone> RelaxSharpCorners(IReadOnlyList<PlacedStone> stones, double gap)
+        {
+            int n = stones.Count;
+            var centers = stones.Select(s => s.Center).ToArray();
+            var removed = new bool[n];
+
+            bool Linked(int a, int b) =>
+                stones[a].RowId == stones[b].RowId &&
+                Point2D.Distance(centers[a], centers[b]) < 2.5 * ((stones[a].DiameterMm + stones[b].DiameterMm) / 2 + gap);
+
+            List<int> Arm(int corner, int dir)
+            {
+                var arm = new List<int>();
+                int prev = corner;
+                for (int k = 1; k <= CornerTaper + 1 && k < n; k++)
+                {
+                    int next = ((corner + dir * k) % n + n) % n;
+                    if (next == corner || stones[next].IsCorner || removed[next] || !Linked(prev, next))
+                    {
+                        break;
+                    }
+
+                    arm.Add(next);
+                    prev = next;
+                }
+
+                return arm;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                if (!stones[i].IsCorner)
+                {
+                    continue;
+                }
+
+                List<int> armA = Arm(i, -1);
+                List<int> armB = Arm(i, +1);
+                if (armA.Count == 0 || armB.Count == 0 || armA.Intersect(armB).Any())
+                {
+                    continue;
+                }
+
+                Point2D vertex = centers[i];
+                double pairNeed = (stones[armA[0]].DiameterMm + stones[armB[0]].DiameterMm) / 2 + gap / 2 - 0.01;
+                if (Point2D.Distance(centers[armA[0]], centers[armB[0]]) >= pairNeed)
+                {
+                    continue;
+                }
+
+                // Угол между сторонами: первые стразы на расстоянии s0 от вершины разойдутся на 2·s0·sin(θ/2).
+                Point2D dirA = (centers[armA[0]] - vertex).Normalized();
+                Point2D dirB = (centers[armB[0]] - vertex).Normalized();
+                double halfAngle = Math.Acos(Math.Max(-1, Math.Min(1, dirA.Dot(dirB)))) / 2;
+                double d = stones[i].DiameterMm;
+                double sine = Math.Max(0.05, Math.Sin(halfAngle));
+                double s0 = Math.Max(d + gap, (d + gap / 2) / (2 * sine));
+
+                RelaxArm(armA, vertex, s0, d + gap / 2, centers, removed);
+                RelaxArm(armB, vertex, s0, d + gap / 2, centers, removed);
+            }
+
+            var result = new List<PlacedStone>(n);
+            for (int i = 0; i < n; i++)
+            {
+                if (!removed[i])
+                {
+                    PlacedStone s = stones[i];
+                    result.Add(new PlacedStone(centers[i], s.DiameterMm, s.IsCorner, s.RowId));
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Одна сторона угла: ломаная «вершина → стразы стороны», последняя страза — опора (не двигается).
+        /// Первая страза — на расстоянии <paramref name="first"/> от вершины, остальные — поровну до опоры,
+        /// не теснее <paramref name="minSpacing"/>; лишние убираются.
+        /// </summary>
+        private static void RelaxArm(List<int> arm, Point2D vertex, double first, double minSpacing, Point2D[] centers, bool[] removed)
+        {
+            var path = new List<Point2D> { vertex };
+            path.AddRange(arm.Select(a => centers[a]));
+            var lengths = new double[path.Count];
+            for (int k = 1; k < path.Count; k++)
+            {
+                lengths[k] = lengths[k - 1] + Point2D.Distance(path[k - 1], path[k]);
+            }
+
+            Point2D At(double length)
+            {
+                for (int k = 1; k < path.Count; k++)
+                {
+                    if (length <= lengths[k] || k == path.Count - 1)
+                    {
+                        double seg = lengths[k] - lengths[k - 1];
+                        double t = seg <= 1e-12 ? 0 : Math.Max(0, Math.Min(1, (length - lengths[k - 1]) / seg));
+                        return Point2D.Lerp(path[k - 1], path[k], t);
+                    }
+                }
+
+                return path[path.Count - 1];
+            }
+
+            int movable = arm.Count - 1; // последняя — опора
+            double anchor = lengths[lengths.Length - 1];
+            if (movable == 0)
+            {
+                return; // одна страза — сдвигать нечего (её уберёт обычная проверка, если нужно)
+            }
+
+            double available = anchor - first;
+            int count = movable;
+            while (count > 0 && (available < 0 || available / count < minSpacing - 1e-9))
+            {
+                count--;
+            }
+
+            double step = count > 0 ? available / count : 0;
+            for (int k = 0; k < movable; k++)
+            {
+                if (k < count)
+                {
+                    centers[arm[k]] = At(first + k * step);
+                }
+                else
+                {
+                    removed[arm[k]] = true;
+                }
+            }
         }
 
         /// <summary>Диаметр размера по названию; нет названия или таблицы — <paramref name="fallback"/>.</summary>
