@@ -1,4 +1,4 @@
-﻿; Установщик Strassio (docs/SPEC.md, раздел 14.2).
+; Установщик Strassio (docs/SPEC.md, раздел 14.2).
 ;
 ; Что делает:
 ;   - сам находит все установленные CorelDRAW (X7 и новее, 32 и 64 бит) и показывает их списком
@@ -11,7 +11,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.5.0"
+#define AppVersion "0.5.1"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
