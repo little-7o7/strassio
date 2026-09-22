@@ -27,11 +27,16 @@ export class MemoryStore implements Store {
   async searchLicenses(query: string, limit: number) {
     const q = query.trim().toLowerCase();
     return this.licenses
-      .filter((l) => !q || l.serial.toLowerCase().includes(q) || l.note.toLowerCase().includes(q))
+      .filter((l) => !q || [l.serial, l.note, l.client.firstName, l.client.lastName, l.client.phone, l.client.email].some((t) => t.toLowerCase().includes(q)))
       .slice()
       .reverse()
       .slice(0, limit)
       .map((l) => ({ ...l }));
+  }
+
+  async deleteLicense(id: number) {
+    this.activationRows = this.activationRows.filter((a) => a.licenseId !== id);
+    this.licenses = this.licenses.filter((l) => l.id !== id);
   }
 
   async activations(licenseId: number) {

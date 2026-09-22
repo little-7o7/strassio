@@ -3,6 +3,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { ADMIN_PAGE } from "./adminPage.js";
 import type { LicenseService } from "./service.js";
+import { parseClient } from "./service.js";
 
 export interface HttpRequest {
   method: string;
@@ -171,16 +172,22 @@ export class App {
       case "POST login":
         return ok({});
       case "POST keys": {
+        if (body.client !== undefined && !parseClient(body.client)) return { status: 400, json: { ok: false, error: "bad_client" } };
         const keys = await s.createKeys({
           count: Number(body.count) || 1,
           days: Number(body.days) || null,
           note: typeof body.note === "string" ? body.note : "",
+          client: body.client,
         });
         return ok({ keys, serials: keys.map((k) => k.serial) });
       }
       case "GET licenses":
         return ok({ licenses: await s.search(req.query.get("q") ?? "") });
       case "POST license": {
+        if (body.action === "delete") {
+          return (await s.deleteLicense(body.serial)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
+        }
+        if (body.action === "client" && !parseClient(body.value)) return { status: 400, json: { ok: false, error: "bad_client" } };
         const license = await s.adminLicense(body.serial, String(body.action ?? ""), body.value);
         return license ? ok({ license }) : { status: 404, json: { ok: false, error: "not_found" } };
       }

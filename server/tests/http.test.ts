@@ -125,3 +125,14 @@ test("сайт: скрипты страниц «Моя лицензия» и «�
     assert.doesNotThrow(() => new Function(script), name);
   }
 });
+
+test("админка: неверная почта клиента — 400; удаление через /api/admin/license", async () => {
+  const app = makeApp();
+  const bad = await app.handle(req("POST", "/api/admin/keys", { client: { email: "плохо" } }, PASSWORD));
+  assert.equal(bad.status, 400);
+  const created = await app.handle(req("POST", "/api/admin/keys", { client: { firstName: "Иван", phone: "+7 900" } }, PASSWORD));
+  const serial = (created.json as any).keys[0].serial;
+  assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }))).status, 401, "без пароля нельзя");
+  assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }, PASSWORD))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }, PASSWORD))).status, 404);
+});

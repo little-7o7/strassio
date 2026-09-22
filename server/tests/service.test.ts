@@ -304,3 +304,35 @@ test("сайт: активация по коду компьютера — код
   assert.deepEqual(await service.siteActivate(serial, "мусор", false), { ok: false, error: "bad_request" });
   assert.deepEqual(await service.siteActivate("STRS-AAAA-BBBB-CCCC", PC1, false), { ok: false, error: "not_found" });
 });
+
+test("админка: данные клиента (имя, фамилия, телефон, почта, день рождения), поиск по ним и проверка", async () => {
+  const { service } = setup();
+  const client = { firstName: "Мадина", lastName: "Каримова", phone: "+998 90 123 45 67", email: "madina@example.com", birthday: "1995-03-08" };
+  const [{ serial }] = await service.createKeys({ client });
+  const [{ serial: other }] = await service.createKeys({});
+
+  for (const q of ["мадина", "Каримова", "123 45", "example.com"]) {
+    const found = await service.search(q);
+    assert.deepEqual(found.map((l) => l.serial), [serial], q);
+    assert.deepEqual(found[0].client, client);
+  }
+
+  assert.ok(await service.adminLicense(other, "client", { ...client, firstName: "Азиз", email: "" }));
+  assert.equal((await service.search("Азиз"))[0].serial, other);
+  assert.equal(await service.adminLicense(other, "client", { email: "не почта" }), null);
+  assert.equal(await service.adminLicense(other, "client", { birthday: "1995-02-30" }), null);
+  assert.equal(await service.adminLicense(other, "client", { birthday: "08.03.1995" }), null);
+});
+
+test("админка: удалить ключ полностью — вместе с активациями; плагин с ним отключается", async () => {
+  const { service, store } = setup();
+  const [{ serial }] = await service.createKeys({ client: { firstName: "Тест" } });
+  payload(await service.activate({ serial, hwid: PC1 }));
+
+  assert.equal(await service.deleteLicense(serial), true);
+  assert.equal(store.licenses.length, 0);
+  assert.equal(store.activationRows.length, 0);
+  assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "not_found" });
+  assert.equal(await service.deleteLicense(serial), false, "второй раз — нечего удалять");
+  assert.ok((await service.auditLog(10)).some((r) => r.action === "delete" && r.serial === serial), "в журнале остаётся запись");
+});

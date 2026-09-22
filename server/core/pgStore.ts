@@ -18,6 +18,11 @@ const SCHEMA = [
      note TEXT NOT NULL DEFAULT '',
      created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
   `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS recovery_code TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_first TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_last TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_phone TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_email TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_birthday TEXT NOT NULL DEFAULT ''`,
   `CREATE TABLE IF NOT EXISTS activations (
      id SERIAL PRIMARY KEY,
      license_id INT NOT NULL REFERENCES licenses(id),
@@ -79,26 +84,39 @@ export class PgStore implements Store {
 
   async insertLicense(r: NewLicense) {
     const rows = await this.q(
-      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at, recovery_code)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt, r.recoveryCode],
+      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at, recovery_code,
+         client_first, client_last, client_phone, client_email, client_birthday)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt, r.recoveryCode,
+        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday],
     );
     return license(rows[0]);
   }
 
   async updateLicense(r: LicenseRow) {
     await this.q(
-      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8, recovery_code=$9 WHERE id=$1`,
-      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.recoveryCode],
+      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8, recovery_code=$9,
+         client_first=$10, client_last=$11, client_phone=$12, client_email=$13, client_birthday=$14 WHERE id=$1`,
+      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.recoveryCode,
+        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday],
     );
   }
 
   async searchLicenses(query: string, limit: number) {
     const q = query.trim();
     const rows = q
-      ? await this.q("SELECT * FROM licenses WHERE serial ILIKE $1 OR note ILIKE $1 ORDER BY id DESC LIMIT $2", ["%" + escapeLike(q) + "%", limit])
+      ? await this.q(
+          `SELECT * FROM licenses WHERE serial ILIKE $1 OR note ILIKE $1 OR client_first ILIKE $1 OR client_last ILIKE $1
+             OR client_phone ILIKE $1 OR client_email ILIKE $1 ORDER BY id DESC LIMIT $2`,
+          ["%" + escapeLike(q) + "%", limit],
+        )
       : await this.q("SELECT * FROM licenses ORDER BY id DESC LIMIT $1", [limit]);
     return rows.map(license);
+  }
+
+  async deleteLicense(id: number) {
+    await this.q("DELETE FROM activations WHERE license_id = $1", [id]);
+    await this.q("DELETE FROM licenses WHERE id = $1", [id]);
   }
 
   async activations(licenseId: number) {
@@ -184,6 +202,13 @@ function license(r: Record<string, any>): LicenseRow {
     note: r.note,
     createdAt: new Date(r.created_at),
     recoveryCode: r.recovery_code ?? "",
+    client: {
+      firstName: r.client_first ?? "",
+      lastName: r.client_last ?? "",
+      phone: r.client_phone ?? "",
+      email: r.client_email ?? "",
+      birthday: r.client_birthday ?? "",
+    },
   };
 }
 

@@ -3,7 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
-import type { ActivationRow, LicenseRow, Store, UpdateRow } from "./store.js";
+import type { ActivationRow, ClientInfo, LicenseRow, Store, UpdateRow } from "./store.js";
 
 export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
@@ -53,7 +53,30 @@ export interface KeyOptions {
   count?: number;
   days?: number | null;
   note?: string;
+  client?: unknown;
 }
+
+/** Данные клиента из админки: обрезаются по длине; почта и день рождения проверяются. null — ошибка. */
+export function parseClient(value: unknown): ClientInfo | null {
+  const v = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const text = (x: unknown, max: number) => (typeof x === "string" ? x.trim().slice(0, max) : "");
+  const client: ClientInfo = {
+    firstName: text(v.firstName, 100),
+    lastName: text(v.lastName, 100),
+    phone: text(v.phone, 40),
+    email: text(v.email, 200),
+    birthday: text(v.birthday, 10),
+  };
+  if (client.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email)) return null;
+  if (client.birthday) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(client.birthday);
+    const d = m ? new Date(client.birthday + "T00:00:00Z") : null;
+    if (!m || !d || isNaN(d.getTime()) || d.toISOString().slice(0, 10) !== client.birthday || +m[1] < 1900) return null;
+  }
+  return client;
+}
+
+export const EMPTY_CLIENT: ClientInfo = { firstName: "", lastName: "", phone: "", email: "", birthday: "" };
 
 export class LicenseService {
   constructor(
@@ -191,7 +214,9 @@ export class LicenseService {
 
   // ---------- Админка ----------
 
+  /** Данные клиента проверяет http (parseClient); неверные сюда не доходят — на всякий случай пустые. */
   async createKeys(options: KeyOptions): Promise<Array<{ serial: string; recoveryCode: string }>> {
+    const client = (options.client === undefined ? null : parseClient(options.client)) ?? EMPTY_CLIENT;
     const count = clamp(Math.floor(options.count ?? 1), 1, 500);
     const now = this.clock();
     const expiresAt = options.days && options.days > 0 ? new Date(now.getTime() + options.days * DAY) : null;
@@ -211,6 +236,7 @@ export class LicenseService {
         note: (options.note ?? "").slice(0, 500),
         createdAt: now,
         recoveryCode,
+        client: { ...client },
       });
       keys.push({ serial, recoveryCode });
     }
@@ -225,7 +251,18 @@ export class LicenseService {
     return Promise.all(rows.map(async (l) => ({ ...l, activations: await this.store.activations(l.id) })));
   }
 
-  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, note, new_recovery. */
+  /** Удалить ключ полностью (с активациями). Плагин с этим ключом при следующей сверке отключится (not_found). */
+  async deleteLicense(serialText: unknown): Promise<boolean> {
+    const serial = normalizeSerial(serialText);
+    const license = serial ? await this.store.findLicense(serial) : null;
+    if (!license) return false;
+    await this.store.deleteLicense(license.id);
+    const who = [license.client.firstName, license.client.lastName].filter(Boolean).join(" ");
+    await this.log("admin", "delete", license.serial, who || license.note);
+    return true;
+  }
+
+  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, note, new_recovery, client. */
   async adminLicense(serialText: unknown, action: string, value: unknown): Promise<LicenseRow | null> {
     const serial = normalizeSerial(serialText);
     const license = serial ? await this.store.findLicense(serial) : null;
@@ -251,6 +288,12 @@ export class LicenseService {
       case "note":
         license.note = String(value ?? "").slice(0, 500);
         break;
+      case "client": {
+        const client = parseClient(value);
+        if (!client) return null;
+        license.client = client;
+        break;
+      }
       case "new_recovery":
         // Старый код перестаёт работать (клиент его потерял или показал кому-то).
         license.recoveryCode = newRecoveryCode();
@@ -260,7 +303,7 @@ export class LicenseService {
     }
 
     await this.store.updateLicense(license);
-    await this.log("admin", action, license.serial, value === undefined || action === "new_recovery" ? "" : String(value));
+    await this.log("admin", action, license.serial, value === undefined || action === "new_recovery" || action === "client" ? "" : String(value));
     return license;
   }
 

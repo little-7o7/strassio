@@ -18,6 +18,17 @@ export interface LicenseRow {
   createdAt: Date;
   /** Ключ восстановления RCV-… для сайта (освободить компьютер, файл лицензии); "" — ещё не выдан. */
   recoveryCode: string;
+  /** Клиент (заполняет автор в админке; пустые строки — не указано). */
+  client: ClientInfo;
+}
+
+export interface ClientInfo {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  /** ГГГГ-ММ-ДД или "". */
+  birthday: string;
 }
 
 export interface ActivationRow {
@@ -64,8 +75,10 @@ export interface Store {
   findLicense(serial: string): Promise<LicenseRow | null>;
   insertLicense(row: NewLicense): Promise<LicenseRow>;
   updateLicense(row: LicenseRow): Promise<void>;
-  /** Поиск для админки: по ключу или заметке; пустой запрос — последние. */
+  /** Поиск для админки: по ключу, заметке, имени, фамилии, телефону или почте; пустой запрос — последние. */
   searchLicenses(query: string, limit: number): Promise<LicenseRow[]>;
+  /** Удалить ключ полностью — вместе со всеми его активациями (журнал остаётся). */
+  deleteLicense(id: number): Promise<void>;
 
   activations(licenseId: number): Promise<ActivationRow[]>;
   insertActivation(row: NewActivation): Promise<ActivationRow>;

@@ -31,6 +31,9 @@ export const ADMIN_PAGE = `<!doctype html>
   .tabs button { margin-right:4px; } .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .scroll { overflow-x:auto; }
   #msg { min-height:20px; margin-bottom:8px; }
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  dialog::backdrop { background:rgba(0,0,0,.4); }
+  button.danger { color:var(--bad); border-color:var(--bad); }
 </style>
 </head>
 <body>
@@ -62,7 +65,14 @@ export const ADMIN_PAGE = `<!doctype html>
         <div class="row">
           <label>Сколько<input id="kCount" type="number" value="1" min="1" max="500" style="width:80px"></label>
           <label>Срок, дней (пусто — бессрочно)<input id="kDays" type="number" min="0" style="width:120px"></label>
-          <label style="flex:1">Заметка (имя клиента, Telegram)<input id="kNote"></label>
+          <label style="flex:1">Заметка<input id="kNote"></label>
+        </div>
+        <div class="row">
+          <label>Имя<input id="kFirst"></label>
+          <label>Фамилия<input id="kLast"></label>
+          <label>Телефон<input id="kPhone" type="tel" placeholder="+998 ..."></label>
+          <label>Почта<input id="kEmail" type="email"></label>
+          <label>День рождения<input id="kBirthday" type="date"></label>
           <button class="primary" onclick="createKeys()">Создать</button>
         </div>
         <textarea id="kOut" readonly hidden class="mono"></textarea>
@@ -70,12 +80,29 @@ export const ADMIN_PAGE = `<!doctype html>
       <section>
         <h2>Поиск</h2>
         <div class="row">
-          <label style="flex:1">Ключ или заметка<input id="q" onkeydown="if(event.key==='Enter')search()"></label>
+          <label style="flex:1">Ключ, имя, фамилия, телефон, почта или заметка<input id="q" onkeydown="if(event.key==='Enter')search()"></label>
           <button onclick="search()">Найти</button>
         </div>
         <div id="results" class="scroll"></div>
       </section>
     </div>
+
+    <dialog id="clientDlg">
+      <h2>Клиент <span id="cSerial" class="mono muted"></span></h2>
+      <div class="row">
+        <label>Имя<input id="cFirst"></label>
+        <label>Фамилия<input id="cLast"></label>
+      </div>
+      <div class="row">
+        <label>Телефон<input id="cPhone" type="tel"></label>
+        <label>Почта<input id="cEmail" type="email"></label>
+        <label>День рождения<input id="cBirthday" type="date"></label>
+      </div>
+      <div class="row" style="justify-content:flex-end">
+        <button onclick="$('clientDlg').close()">Отмена</button>
+        <button class="primary" onclick="saveClient()">Сохранить</button>
+      </div>
+    </dialog>
 
     <section data-page="offline" hidden>
       <h2>Офлайн-активация</h2>
@@ -122,7 +149,7 @@ async function api(method, path, body) {
   });
   const data = await res.json().catch(() => ({ ok: false, error: "bad_response" }));
   if (res.status === 401) { logout(); }
-  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля" }[data.error] || data.error);
+  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля", bad_client: "Проверьте почту и день рождения" }[data.error] || data.error);
   return data;
 }
 
@@ -145,7 +172,9 @@ document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
 
 async function createKeys() {
   await run(async () => {
-    const data = await api("POST", "keys", { count: +$("kCount").value, days: +$("kDays").value || null, note: $("kNote").value });
+    const client = { firstName: $("kFirst").value, lastName: $("kLast").value, phone: $("kPhone").value, email: $("kEmail").value, birthday: $("kBirthday").value };
+    const data = await api("POST", "keys", { count: +$("kCount").value, days: +$("kDays").value || null, note: $("kNote").value, client });
+    ["kFirst", "kLast", "kPhone", "kEmail", "kBirthday", "kNote"].forEach((id) => $(id).value = "");
     // Клиенту отдаются оба: ключ (вводит в плагине) и ключ восстановления (для сайта /license).
     $("kOut").hidden = false; $("kOut").value = data.keys.map((k) => k.serial + "   " + k.recoveryCode).join("\\n");
     say("Создано ключей: " + data.keys.length + ". Рядом с каждым — ключ восстановления, отдайте клиенту оба."); search();
@@ -158,19 +187,26 @@ async function search() {
   await run(async () => {
     const data = await api("GET", "licenses?q=" + encodeURIComponent($("q").value));
     if (!data.licenses.length) { $("results").innerHTML = '<p class="muted">Ничего нет</p>'; return; }
-    $("results").innerHTML = "<table><tr><th>Ключ</th><th>Статус</th><th>Срок</th><th>Переносы</th><th>Заметка</th><th>Активации</th><th></th></tr>" +
+    licenses = {};
+    data.licenses.forEach((l) => licenses[l.serial] = l);
+    $("results").innerHTML = "<table><tr><th>Ключ</th><th>Клиент</th><th>Статус</th><th>Срок</th><th>Переносы</th><th>Заметка</th><th>Активации</th><th></th></tr>" +
       data.licenses.map((l) => {
         const acts = l.activations.map((a) => '<div class="mono' + (a.status === "active" ? "" : " muted") + '">' + esc(a.hwid.slice(0, 22)) + "… " +
           (a.status === "active" ? "" : "(отозвана) ") + '<span class="muted">' + date(a.lastCheckAt) + " · " + esc(a.pluginVersion) + " · Corel " + esc(a.corelVersion) + "</span> " +
           (a.status === "active" ? button("отозвать", JSON.stringify(["revoke", a.id])) : "") + "</div>").join("") || '<span class="muted">нет</span>';
         const s = l.serial;
-        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + '</span></td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
+        const c = l.client || {};
+        const client = [esc([c.firstName, c.lastName].filter(Boolean).join(" ")), esc(c.phone), esc(c.email), c.birthday ? "ДР " + esc(c.birthday.split("-").reverse().join(".")) : ""]
+          .filter(Boolean).join("<br>") || '<span class="muted">—</span>';
+        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + "</span></td><td>" + client + '</td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
           "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
           button("продлить", JSON.stringify(["extend", s])) +
           button("разрешить перенос сейчас", JSON.stringify(["act", s, "reset_transfers"])) +
           button("заметка", JSON.stringify(["note", s])) +
-          button("новый ключ восстановления", JSON.stringify(["recovery", s])) + "</td></tr>";
+          button("клиент", JSON.stringify(["client", s])) +
+          button("новый ключ восстановления", JSON.stringify(["recovery", s])) +
+          '<button class="small danger" data-h="' + esc(JSON.stringify(["delete", s])) + '">удалить</button>' + "</td></tr>";
       }).join("") + "</table>";
   });
 }
@@ -179,12 +215,31 @@ async function search() {
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b) return;
   const [kind, x, y] = JSON.parse(b.dataset.h);
-  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x) })[kind]();
+  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x), client: () => editClient(x), delete: () => removeLicense(x) })[kind]();
 });
 
 async function act(serial, action, value) { await run(async () => { await api("POST", "license", { serial, action, value }); say("Готово: " + serial); search(); }); }
 function extend(serial) { const d = prompt("На сколько дней продлить? (0 — сделать бессрочным)", "365"); if (d !== null) act(serial, "extend", +d); }
 function newRecovery(serial) { if (confirm("Сделать новый ключ восстановления? Старый перестанет работать на сайте.")) act(serial, "new_recovery"); }
+let licenses = {};
+let clientSerial = "";
+function editClient(serial) {
+  const c = (licenses[serial] && licenses[serial].client) || {};
+  clientSerial = serial; $("cSerial").textContent = serial;
+  $("cFirst").value = c.firstName || ""; $("cLast").value = c.lastName || ""; $("cPhone").value = c.phone || "";
+  $("cEmail").value = c.email || ""; $("cBirthday").value = c.birthday || "";
+  $("clientDlg").showModal();
+}
+async function saveClient() {
+  const value = { firstName: $("cFirst").value, lastName: $("cLast").value, phone: $("cPhone").value, email: $("cEmail").value, birthday: $("cBirthday").value };
+  await run(async () => { await api("POST", "license", { serial: clientSerial, action: "client", value }); $("clientDlg").close(); say("Сохранено: " + clientSerial); search(); });
+}
+async function removeLicense(serial) {
+  const typed = prompt("Удалить ключ " + serial + " полностью? Вместе с ним удалятся все активации, плагин у клиента отключится. Вернуть нельзя.\\n\\nЧтобы подтвердить, введите последние 4 знака ключа:");
+  if (typed === null) return;
+  if (typed.trim().toUpperCase() !== serial.slice(-4)) { say("Не совпало — ключ не удалён.", true); return; }
+  await run(async () => { await api("POST", "license", { serial, action: "delete" }); say("Ключ удалён: " + serial); search(); });
+}
 function note(serial) { const t = prompt("Заметка"); if (t !== null) act(serial, "note", t); }
 async function revoke(id) { if (confirm("Отозвать активацию? Плагин на этом компьютере отключится при следующей проверке.")) await run(async () => { await api("POST", "revoke", { id }); search(); }); }
 

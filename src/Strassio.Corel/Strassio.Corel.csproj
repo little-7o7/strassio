@@ -8,7 +8,7 @@
     <RootNamespace>Strassio.Corel</RootNamespace>
     <AssemblyName>Strassio.Corel</AssemblyName>
     <!-- Та же версия, что в installer\Strassio.iss (AppVersion): её видит автор в админке. -->
-    <Version>0.7.1</Version>
+    <Version>0.7.2</Version>
   </PropertyGroup>
 
   <ItemGroup>
