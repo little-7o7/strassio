@@ -180,6 +180,11 @@ namespace Strassio.Corel
             }
 
             messageText.Text = messageKey == null ? string.Empty : Loc.Format(messageKey, messageArgs);
+            if (messageKey == "license.error.no_connection" && context.Api.LastError != null)
+            {
+                // Подробность для автора: по скриншоту видно, почему нет связи (TLS, прокси, антивирус…).
+                messageText.Text += Environment.NewLine + context.Api.LastError;
+            }
             messageText.Visibility = messageText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
             if (computerBox.Text.Length == 0 && busy)

@@ -69,6 +69,13 @@ namespace Strassio.Licensing
         private readonly HttpClient http;
         private readonly Uri baseUri;
 
+        /// <summary>
+        /// Причина последней неудачи связи (тип ошибки и сообщение, в т. ч. вложенные) — показывается
+        /// в окне «Лицензия» под «Нет связи с сервером», чтобы по скриншоту было видно, что случилось.
+        /// null — последний запрос прошёл.
+        /// </summary>
+        public string? LastError { get; private set; }
+
         public HttpLicenseApi(string baseUrl, TimeSpan? timeout = null)
         {
             baseUri = new Uri(baseUrl.TrimEnd('/') + "/");
@@ -85,6 +92,7 @@ namespace Strassio.Licensing
             }
             catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
             {
+                LastError = Describe(ex);
                 return ApiReply.Offline();
             }
         }
@@ -98,24 +106,44 @@ namespace Strassio.Licensing
             }
             catch (Exception ex) when (!(ex is OperationCanceledException) || !cancel.IsCancellationRequested)
             {
+                LastError = Describe(ex);
                 return ApiReply.Offline();
             }
         }
 
         public void Dispose() => http.Dispose();
 
-        private static async Task<ApiReply> ReadReply(HttpResponseMessage response)
+        private async Task<ApiReply> ReadReply(HttpResponseMessage response)
         {
             string text = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
 
             // 429 и 5xx — сервер есть, но сейчас ответить не может: для плагина это то же, что «нет связи».
             if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)
             {
+                LastError = "HTTP " + (int)response.StatusCode;
                 return ApiReply.Offline();
             }
 
             ApiReply? reply = Json.TryRead<ApiReply>(text);
-            return reply != null && (reply.Ok || !string.IsNullOrEmpty(reply.Error)) ? reply : ApiReply.Offline();
+            if (reply != null && (reply.Ok || !string.IsNullOrEmpty(reply.Error)))
+            {
+                LastError = null;
+                return reply;
+            }
+
+            LastError = "HTTP " + (int)response.StatusCode + ": " + (text.Length > 120 ? text.Substring(0, 120) : text);
+            return ApiReply.Offline();
+        }
+
+        internal static string Describe(Exception ex)
+        {
+            var parts = new System.Collections.Generic.List<string>();
+            for (Exception? e = ex; e != null && parts.Count < 4; e = e.InnerException)
+            {
+                parts.Add(e.GetType().Name + ": " + e.Message);
+            }
+
+            return string.Join(" → ", parts);
         }
     }
 }

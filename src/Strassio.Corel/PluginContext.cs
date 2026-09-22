@@ -24,8 +24,10 @@ namespace Strassio.Corel
             string addonDir = Path.GetDirectoryName(typeof(PluginContext).Assembly.Location) ?? string.Empty;
             Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language, BuiltInLanguage, BuiltInLanguages);
 
+            EnableModernTls();
+            Api = new HttpLicenseApi(LicenseKeys.Server);
             License = new LicenseManager(
-                new HttpLicenseApi(LicenseKeys.Server), WmiHardwareSource.ReadCode, LicenseKeys.Key, Store.Directory, null, LicenseMarkStores())
+                Api, WmiHardwareSource.ReadCode, LicenseKeys.Key, Store.Directory, null, LicenseMarkStores())
             {
                 PluginVersion = typeof(PluginContext).Assembly.GetName().Version?.ToString(3),
             };
@@ -39,6 +41,9 @@ namespace Strassio.Corel
                 TrySave(() => Store.SaveStones(Stones));
             }
         }
+
+        /// <summary>Связь с сервером лицензий (причина последней неудачи — <see cref="HttpLicenseApi.LastError"/>).</summary>
+        public HttpLicenseApi Api { get; }
 
         /// <summary>Настройки изменились (язык, единицы…) — докер перерисовывает то, что строит сам.</summary>
         public event EventHandler? SettingsChanged;
@@ -60,7 +65,7 @@ namespace Strassio.Corel
         public LicenseManager License { get; }
 
         /// <summary>
-        /// Требуется ли лицензия для создания страз. Пока сервер не запущен в интернете — нет
+        /// Требуется ли лицензия для создания страз. С версии 0.7.1 — да
         /// (см. StrassioEnforceLicense в Strassio.Corel.csproj).
         /// </summary>
 #if STRASSIO_ENFORCE_LICENSE
@@ -162,6 +167,32 @@ namespace Strassio.Corel
 
         /// <summary>Сохранить без перерисовки докера — например, запомнить последний выбранный камень.</summary>
         public void SaveSettingsQuietly() => TrySave(() => Store.SaveSettings(Settings));
+
+        /// <summary>
+        /// CorelDRAW — не .NET-программа, поэтому .NET внутри него включает только старые протоколы
+        /// (SSL3/TLS 1.0), а сервер лицензий (Vercel) принимает TLS 1.2 и новее — без этого плагин
+        /// видел «нет связи с сервером», хотя интернет есть. 12288 — TLS 1.3 (в .NET 4.8 нет имени).
+        /// </summary>
+        private static void EnableModernTls()
+        {
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
+            }
+            catch (NotSupportedException)
+            {
+                // Очень старая Windows без TLS 1.2 — связи не будет, плагин работает как без интернета.
+            }
+
+            try
+            {
+                System.Net.ServicePointManager.SecurityProtocol |= (System.Net.SecurityProtocolType)12288;
+            }
+            catch (NotSupportedException)
+            {
+                // TLS 1.3 есть не во всех Windows — хватит и TLS 1.2.
+            }
+        }
 
         /// <summary>
         /// Метки времени лицензии (защита от перевода часов) — не рядом с license.json (%APPDATA%),
