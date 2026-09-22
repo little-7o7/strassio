@@ -101,6 +101,26 @@ public class LicenseEvaluatorTests
         Assert.Equal(LicenseState.OfflineTooLong, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(31), Now, key).State);
     }
 
+    /// <summary>
+    /// Лицензия, подписанная настоящим кодом сервера (server/core, Node.js) одноразовым ключом: плагин
+    /// должен принять её подпись, формат JSON и код компьютера — иначе клиенты не смогут активироваться.
+    /// </summary>
+    [Fact]
+    public void LicenseSignedByNodeServer_IsAccepted()
+    {
+        var key = LicensePublicKey.FromBase64("6UoWBr11yeakLtq+lpOgaJpII4KNc2OJsJ5hmUa8ZFwqGiuCnyl/4fJqolqLGG6G1pVYic6DaHYXiHw7Nu+rEQ==");
+        var doc = new SignedDocument
+        {
+            Payload = "{\"serial\":\"STRS-V2NS-983Q-6SMA\",\"hwid\":\"800df271cebdee56.f1256b18fd46eae5.c2cf33951b1803d2.4c8bb04c4d977f68\",\"plan\":\"full\",\"expiresAt\":\"2026-10-22T10:00:00Z\",\"issuedAt\":\"2026-09-22T10:00:00Z\",\"nextCheckAt\":\"2026-10-06T10:00:00Z\"}",
+            Signature = "EPlQlBxOpzIMLkT4ORJF+7Jxx2qMjw81D/NQaNQivrTfwPNhLtfAthun2TC7NQ6PTD31Poh3XAFBl2nvv5/1VA==",
+        };
+
+        LicenseStatus s = LicenseEvaluator.Evaluate(doc, Pc, Now, Now, key);
+        Assert.Equal(LicenseState.Valid, s.State);
+        Assert.Equal("STRS-V2NS-983Q-6SMA", s.License!.Serial);
+        Assert.Equal(30, s.DaysLeft);
+    }
+
     [Fact]
     public void HardwareCode_JunkValues_AreUnknown_AndStorageRoundTrips()
     {

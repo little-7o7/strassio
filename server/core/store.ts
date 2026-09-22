@@ -1,0 +1,82 @@
+// Хранилище (SPEC 15, «Таблицы»). Логика лицензий работает только через этот интерфейс — поэтому
+// её можно проверить тестами без базы (MemoryStore), а на сервере подставить Postgres (PgStore).
+
+export type LicenseStatus = "active" | "blocked";
+export type ActivationStatus = "active" | "revoked";
+
+export interface LicenseRow {
+  id: number;
+  serial: string;
+  plan: string;
+  status: LicenseStatus;
+  expiresAt: Date | null;
+  maxPcs: number;
+  transfersCount: number;
+  /** С какого момента считаются переносы (раз в 365 дней счётчик обнуляется). */
+  transfersSince: Date;
+  note: string;
+  createdAt: Date;
+}
+
+export interface ActivationRow {
+  id: number;
+  licenseId: number;
+  hwid: string;
+  status: ActivationStatus;
+  firstAt: Date;
+  lastCheckAt: Date;
+  pluginVersion: string;
+  corelVersion: string;
+}
+
+export interface TrialRow {
+  id: number;
+  hwid: string;
+  startedAt: Date;
+}
+
+export interface AuditRow {
+  id: number;
+  at: Date;
+  actor: string;
+  action: string;
+  serial: string;
+  details: string;
+}
+
+export interface UpdateRow {
+  channel: string;
+  version: string;
+  url: string;
+  sha256: string;
+  notesRu: string;
+  notesEn: string;
+  minVersion: string;
+  createdAt: Date;
+}
+
+export type NewLicense = Omit<LicenseRow, "id">;
+export type NewActivation = Omit<ActivationRow, "id">;
+
+export interface Store {
+  findLicense(serial: string): Promise<LicenseRow | null>;
+  insertLicense(row: NewLicense): Promise<LicenseRow>;
+  updateLicense(row: LicenseRow): Promise<void>;
+  /** Поиск для админки: по ключу или заметке; пустой запрос — последние. */
+  searchLicenses(query: string, limit: number): Promise<LicenseRow[]>;
+
+  activations(licenseId: number): Promise<ActivationRow[]>;
+  insertActivation(row: NewActivation): Promise<ActivationRow>;
+  updateActivation(row: ActivationRow): Promise<void>;
+  findActivation(id: number): Promise<ActivationRow | null>;
+
+  /** Пробные периоды, у которых совпадает хотя бы один признак компьютера (дальше сравнивает логика). */
+  trialsSharingPart(parts: string[]): Promise<TrialRow[]>;
+  insertTrial(hwid: string, startedAt: Date): Promise<TrialRow>;
+
+  audit(entry: Omit<AuditRow, "id">): Promise<void>;
+  auditLog(limit: number): Promise<AuditRow[]>;
+
+  latestUpdate(channel: string): Promise<UpdateRow | null>;
+  insertUpdate(row: UpdateRow): Promise<void>;
+}

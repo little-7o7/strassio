@@ -1,0 +1,75 @@
+// Маршруты, пароль админки, ограничение частоты.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { generateKeys, Signer } from "../core/crypto.js";
+import { App, HttpRequest, RateLimiter } from "../core/http.js";
+import { MemoryStore } from "../core/memoryStore.js";
+import { LicenseService } from "../core/service.js";
+
+const keys = generateKeys();
+const PASSWORD = "correct-horse-battery";
+
+function makeApp(password: string | undefined = PASSWORD) {
+  return new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey)), password);
+}
+
+function req(method: string, path: string, body?: unknown, auth?: string, ip = "1.1.1.1"): HttpRequest {
+  const [p, q] = path.split("?");
+  return { method, path: p, query: new URLSearchParams(q ?? ""), headers: auth ? { authorization: "Bearer " + auth } : {}, body, ip };
+}
+
+test("админка: без пароля 401, с паролем работает, без ADMIN_PASSWORD выключена", async () => {
+  const app = makeApp();
+  assert.equal((await app.handle(req("POST", "/api/admin/keys", { count: 2 }))).status, 401);
+  assert.equal((await app.handle(req("POST", "/api/admin/keys", { count: 2 }, "wrong"))).status, 401);
+  const created = await app.handle(req("POST", "/api/admin/keys", { count: 2, note: "тест" }, PASSWORD));
+  assert.equal(created.status, 200);
+  assert.equal((created.json as { serials: string[] }).serials.length, 2);
+
+  assert.equal((await makeApp("").handle(req("POST", "/api/admin/login", {}, "x"))).status, 503);
+  assert.equal((await makeApp("short").handle(req("POST", "/api/admin/login", {}, "short"))).status, 503);
+});
+
+test("полный путь: ключ из админки → активация плагином → проверка", async () => {
+  const app = makeApp();
+  const created = await app.handle(req("POST", "/api/admin/keys", {}, PASSWORD));
+  const serial = (created.json as { serials: string[] }).serials[0];
+  const hwid = ["a", "b", "c", "d"].map((x) => x.repeat(16)).join(".");
+
+  const activated = await app.handle(req("POST", "/api/activate", { serial, hwid }));
+  assert.equal(activated.status, 200);
+  assert.equal((await app.handle(req("POST", "/api/check", { serial, hwid }))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/activate", { serial: "плохо", hwid }))).status, 400);
+  assert.equal((await app.handle(req("GET", "/api/activate"))).status, 405);
+
+  const list = await app.handle(req("GET", "/api/admin/licenses?q=" + serial, undefined, PASSWORD));
+  const licenses = (list.json as { licenses: Array<{ activations: unknown[] }> }).licenses;
+  assert.equal(licenses[0].activations.length, 1);
+});
+
+test("страница админки и неизвестные пути", async () => {
+  const app = makeApp();
+  const page = await app.handle(req("GET", "/admin"));
+  assert.equal(page.status, 200);
+  assert.match(page.html!, /Strassio/);
+  assert.equal((await app.handle(req("GET", "/api/nope"))).status, 404);
+  assert.equal((await app.handle(req("GET", "/api/update/latest"))).status, 404);
+});
+
+test("ограничение частоты: лимит на адрес, окно сдвигается", () => {
+  let t = 0;
+  const limiter = new RateLimiter(3, 1000, () => t);
+  assert.ok(limiter.allow("a") && limiter.allow("a") && limiter.allow("a"));
+  assert.ok(!limiter.allow("a"));
+  assert.ok(limiter.allow("b"));
+  t = 1001;
+  assert.ok(limiter.allow("a"));
+});
+
+test("перебор паролей админки упирается в лимит", async () => {
+  const app = makeApp();
+  const statuses = [];
+  for (let i = 0; i < 12; i++) statuses.push((await app.handle(req("POST", "/api/admin/login", {}, "guess" + i))).status);
+  assert.equal(statuses[0], 401);
+  assert.equal(statuses[11], 429);
+});
