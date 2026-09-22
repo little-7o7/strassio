@@ -15,8 +15,9 @@ using CorelApplication = Corel.Interop.VGCore.Application;
 namespace Strassio.Corel
 {
     /// <summary>
-    /// Окно «Лицензия» (docs/SPEC.md, раздел 13): состояние, код компьютера, ввод ключа, пробный
-    /// период, перенос на этот компьютер, освобождение, проверка и офлайн-файл от автора.
+    /// Окно «Лицензия» (docs/SPEC.md, раздел 13): состояние; активация через сайт в три шага
+    /// (код компьютера → сайт /activate → код активации сюда); пробный период, освобождение,
+    /// проверка и офлайн-файл.
     /// Строится кодом, как NameDialog; тексты — из файлов языков, цвета — тема CorelDRAW.
     /// </summary>
     internal sealed class LicenseWindow : Window
@@ -26,11 +27,12 @@ namespace Strassio.Corel
         private readonly TextBlock detailText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0) };
         private readonly TextBlock betaText = new TextBlock { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0) };
         private readonly TextBlock computerCaption = new TextBlock { Margin = new Thickness(0, 14, 0, 4) };
-        private readonly TextBox computerBox = new TextBox { IsReadOnly = true, FontFamily = new System.Windows.Media.FontFamily("Consolas"), VerticalContentAlignment = VerticalAlignment.Center };
+        private readonly TextBox computerBox = new TextBox { IsReadOnly = true, TextWrapping = TextWrapping.Wrap, FontFamily = new System.Windows.Media.FontFamily("Consolas"), VerticalContentAlignment = VerticalAlignment.Center };
         private readonly Button copyButton = new Button { Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 3, 8, 3) };
-        private readonly TextBlock serialCaption = new TextBlock { Margin = new Thickness(0, 14, 0, 4) };
-        private readonly TextBox serialBox = new TextBox { FontFamily = new System.Windows.Media.FontFamily("Consolas"), VerticalContentAlignment = VerticalAlignment.Center };
-        private readonly Button activateButton = new Button { Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 3, 10, 3) };
+        private readonly Button siteButton = new Button { Margin = new Thickness(0, 14, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 3, 10, 3) };
+        private readonly TextBlock codeCaption = new TextBlock { Margin = new Thickness(0, 14, 0, 4) };
+        private readonly TextBox codeBox = new TextBox { TextWrapping = TextWrapping.Wrap, Height = 52, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, FontFamily = new System.Windows.Media.FontFamily("Consolas") };
+        private readonly Button activateButton = new Button { Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(10, 3, 10, 3), VerticalAlignment = VerticalAlignment.Top };
         private readonly Button trialButton = new Button { Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 3, 10, 3) };
         private readonly Button checkButton = new Button { Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(10, 3, 10, 3) };
         private readonly Button releaseButton = new Button { Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(10, 3, 10, 3) };
@@ -75,10 +77,10 @@ namespace Strassio.Corel
             computerRow.Children.Add(copyButton);
             computerRow.Children.Add(computerBox);
 
-            var serialRow = new DockPanel();
+            var codeRow = new DockPanel();
             DockPanel.SetDock(activateButton, Dock.Right);
-            serialRow.Children.Add(activateButton);
-            serialRow.Children.Add(serialBox);
+            codeRow.Children.Add(activateButton);
+            codeRow.Children.Add(codeBox);
 
             var actions = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
             actions.Children.Add(checkButton);
@@ -95,8 +97,9 @@ namespace Strassio.Corel
             root.Children.Add(betaText);
             root.Children.Add(computerCaption);
             root.Children.Add(computerRow);
-            root.Children.Add(serialCaption);
-            root.Children.Add(serialRow);
+            root.Children.Add(siteButton);
+            root.Children.Add(codeCaption);
+            root.Children.Add(codeRow);
             root.Children.Add(trialButton);
             root.Children.Add(actions);
             root.Children.Add(messageText);
@@ -104,14 +107,8 @@ namespace Strassio.Corel
             Content = root;
 
             copyButton.Click += (s, e) => CopyComputerCode();
-            activateButton.Click += async (s, e) => await ActivateKey();
-            serialBox.KeyDown += async (s, e) =>
-            {
-                if (e.Key == System.Windows.Input.Key.Enter)
-                {
-                    await ActivateKey();
-                }
-            };
+            siteButton.Click += (s, e) => OpenSite();
+            activateButton.Click += (s, e) => ActivateCode();
             trialButton.Click += async (s, e) => await Run(() => context.License.StartTrialAsync(), "license.done.trial");
             checkButton.Click += async (s, e) => await Check();
             releaseButton.Click += async (s, e) => await Release();
@@ -161,8 +158,11 @@ namespace Strassio.Corel
             computerCaption.Text = Loc["license.computer"];
             copyButton.Content = Loc["license.copy"];
             copyButton.ToolTip = Loc["license.copy.tooltip"];
-            serialCaption.Text = Loc["license.serial"];
+            siteButton.Content = Loc["license.site"];
+            siteButton.ToolTip = Loc["license.site.tooltip"];
+            codeCaption.Text = Loc["license.code"];
             activateButton.Content = Loc["license.activate"];
+            activateButton.ToolTip = Loc["license.activate.tooltip"];
             trialButton.Content = Loc["license.trial"];
             trialButton.ToolTip = Loc["license.trial.tooltip"];
             checkButton.Content = Loc["license.check"];
@@ -174,7 +174,7 @@ namespace Strassio.Corel
             closeButton.Content = Loc["license.close"];
             betaText.Text = Loc["license.beta"];
             betaText.Visibility = PluginContext.LicenseEnforced ? Visibility.Collapsed : Visibility.Visible;
-            foreach (Button b in new[] { activateButton, trialButton, checkButton, releaseButton, importButton, copyButton })
+            foreach (Button b in new[] { siteButton, activateButton, trialButton, checkButton, releaseButton, importButton, copyButton })
             {
                 b.IsEnabled = !busy;
             }
@@ -192,7 +192,8 @@ namespace Strassio.Corel
             }
 
             LicenseStatus status = context.License.Status;
-            computerBox.Text = context.License.Computer.Display;
+            // Полный код — ровно то, что вставляют на сайте (выделить и скопировать руками тоже можно).
+            computerBox.Text = context.License.Computer.ToStorage();
             stateText.Text = StateText(status);
             detailText.Text = DetailText(status);
             detailText.Visibility = detailText.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -202,10 +203,6 @@ namespace Strassio.Corel
             trialButton.Visibility = status.State == LicenseState.None ? Visibility.Visible : Visibility.Collapsed;
             checkButton.Visibility = hasLicense ? Visibility.Visible : Visibility.Collapsed;
             releaseButton.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
-            if (full && serialBox.Text.Length == 0)
-            {
-                serialBox.Text = status.License!.Serial;
-            }
         }
 
         private string StateText(LicenseStatus status)
@@ -289,21 +286,40 @@ namespace Strassio.Corel
             return result;
         }
 
-        private async Task ActivateKey()
+        /// <summary>Шаг 3: код активации с сайта — подписанная лицензия для этого компьютера.</summary>
+        private void ActivateCode()
         {
-            string serial = serialBox.Text;
-            LicenseActionResult? result = await Run(() => context.License.ActivateAsync(serial), "license.done.activated");
-            if (result == null || !result.CanTransfer)
+            LicenseActionResult result = context.License.ImportCode(codeBox.Text);
+            if (result.Ok)
             {
-                return;
+                codeBox.Text = string.Empty;
             }
 
-            // Ключ занят другим компьютером — предлагаем перенос (SPEC 13.4).
-            MessageBoxResult answer = MessageBox.Show(
-                this, Loc.Format("license.transfer.ask", result.TransfersLeft ?? 0), Loc["license.title"], MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (answer == MessageBoxResult.Yes)
+            ShowMessage(result.Ok ? "license.done.activated" : "license.error." + result.Error);
+        }
+
+        /// <summary>Шаг 2: страница /activate в браузере, код компьютера — в адресе и в буфере обмена.</summary>
+        private void OpenSite()
+        {
+            string computer = context.License.Computer.ToStorage();
+            try
             {
-                await Run(() => context.License.TransferAsync(serial), "license.done.transferred");
+                Clipboard.SetText(computer);
+            }
+            catch (Exception)
+            {
+                // Буфер занят другой программой — на сайте код всё равно подставится из адреса.
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    LicenseKeys.Server + "/activate#hwid=" + Uri.EscapeDataString(computer)) { UseShellExecute = true });
+                ShowMessage("license.site.opened");
+            }
+            catch (Exception)
+            {
+                ShowMessage("license.error.site", LicenseKeys.Server);
             }
         }
 
@@ -342,8 +358,8 @@ namespace Strassio.Corel
         }
 
         /// <summary>
-        /// В буфер — полный код (4 части через точку): его автор вставляет в админку для офлайн-активации.
-        /// Короткий XXXX-XXXX-XXXX-XXXX в окне — только чтобы узнать компьютер на глаз.
+        /// В буфер — полный код (4 части через точку): его вставляют на сайте на странице «Активация»
+        /// (или на странице «Моя лицензия» — для файла лицензии без интернета).
         /// </summary>
         private void CopyComputerCode()
         {
