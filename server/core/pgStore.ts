@@ -1,7 +1,7 @@
 // Хранилище в Postgres (SPEC 15). Драйвер не импортируется здесь: адаптер платформы передаёт функцию
 // query(текст, параметры) → строки. Таблицы создаются сами при первом запросе (CREATE ... IF NOT EXISTS).
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, Store, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, Store, TrialRow, UpdateRow } from "./store.js";
 
 export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
 
@@ -23,6 +23,19 @@ const SCHEMA = [
   `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_phone TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_email TEXT NOT NULL DEFAULT ''`,
   `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_birthday TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS client_telegram TEXT NOT NULL DEFAULT ''`,
+  `CREATE TABLE IF NOT EXISTS requests (
+     id SERIAL PRIMARY KEY,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     client_first TEXT NOT NULL DEFAULT '',
+     client_last TEXT NOT NULL DEFAULT '',
+     client_phone TEXT NOT NULL DEFAULT '',
+     client_email TEXT NOT NULL DEFAULT '',
+     client_birthday TEXT NOT NULL DEFAULT '',
+     client_telegram TEXT NOT NULL DEFAULT '',
+     message TEXT NOT NULL DEFAULT '',
+     status TEXT NOT NULL DEFAULT 'new',
+     serial TEXT NOT NULL DEFAULT '')`,
   `CREATE TABLE IF NOT EXISTS activations (
      id SERIAL PRIMARY KEY,
      license_id INT NOT NULL REFERENCES licenses(id),
@@ -85,10 +98,10 @@ export class PgStore implements Store {
   async insertLicense(r: NewLicense) {
     const rows = await this.q(
       `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at, recovery_code,
-         client_first, client_last, client_phone, client_email, client_birthday)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+         client_first, client_last, client_phone, client_email, client_birthday, client_telegram)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt, r.recoveryCode,
-        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday],
+        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram],
     );
     return license(rows[0]);
   }
@@ -96,9 +109,9 @@ export class PgStore implements Store {
   async updateLicense(r: LicenseRow) {
     await this.q(
       `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8, recovery_code=$9,
-         client_first=$10, client_last=$11, client_phone=$12, client_email=$13, client_birthday=$14 WHERE id=$1`,
+         client_first=$10, client_last=$11, client_phone=$12, client_email=$13, client_birthday=$14, client_telegram=$15 WHERE id=$1`,
       [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.recoveryCode,
-        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday],
+        r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram],
     );
   }
 
@@ -107,7 +120,7 @@ export class PgStore implements Store {
     const rows = q
       ? await this.q(
           `SELECT * FROM licenses WHERE serial ILIKE $1 OR note ILIKE $1 OR client_first ILIKE $1 OR client_last ILIKE $1
-             OR client_phone ILIKE $1 OR client_email ILIKE $1 ORDER BY id DESC LIMIT $2`,
+             OR client_phone ILIKE $1 OR client_email ILIKE $1 OR client_telegram ILIKE $1 ORDER BY id DESC LIMIT $2`,
           ["%" + escapeLike(q) + "%", limit],
         )
       : await this.q("SELECT * FROM licenses ORDER BY id DESC LIMIT $1", [limit]);
@@ -117,6 +130,36 @@ export class PgStore implements Store {
   async deleteLicense(id: number) {
     await this.q("DELETE FROM activations WHERE license_id = $1", [id]);
     await this.q("DELETE FROM licenses WHERE id = $1", [id]);
+  }
+
+  async insertRequest(r: NewRequest) {
+    const rows = await this.q(
+      `INSERT INTO requests (created_at, client_first, client_last, client_phone, client_email, client_birthday, client_telegram, message, status, serial)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [r.createdAt, r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram, r.message, r.status, r.serial],
+    );
+    return request(rows[0]);
+  }
+
+  async listRequests(limit: number) {
+    return (await this.q("SELECT * FROM requests ORDER BY id DESC LIMIT $1", [limit])).map(request);
+  }
+
+  async findRequest(id: number) {
+    const rows = await this.q("SELECT * FROM requests WHERE id = $1", [id]);
+    return rows[0] ? request(rows[0]) : null;
+  }
+
+  async updateRequest(r: RequestRow) {
+    await this.q(
+      `UPDATE requests SET client_first=$2, client_last=$3, client_phone=$4, client_email=$5, client_birthday=$6, client_telegram=$7,
+         message=$8, status=$9, serial=$10 WHERE id=$1`,
+      [r.id, r.client.firstName, r.client.lastName, r.client.phone, r.client.email, r.client.birthday, r.client.telegram, r.message, r.status, r.serial],
+    );
+  }
+
+  async deleteRequest(id: number) {
+    await this.q("DELETE FROM requests WHERE id = $1", [id]);
   }
 
   async activations(licenseId: number) {
@@ -208,6 +251,7 @@ function license(r: Record<string, any>): LicenseRow {
       phone: r.client_phone ?? "",
       email: r.client_email ?? "",
       birthday: r.client_birthday ?? "",
+      telegram: r.client_telegram ?? "",
     },
   };
 }
@@ -231,4 +275,22 @@ function trial(r: Record<string, any>): TrialRow {
 
 function escapeLike(text: string): string {
   return text.replace(/[\\%_]/g, (c) => "\\" + c);
+}
+
+function request(r: Record<string, any>): RequestRow {
+  return {
+    id: Number(r.id),
+    createdAt: new Date(r.created_at),
+    client: {
+      firstName: r.client_first ?? "",
+      lastName: r.client_last ?? "",
+      phone: r.client_phone ?? "",
+      email: r.client_email ?? "",
+      birthday: r.client_birthday ?? "",
+      telegram: r.client_telegram ?? "",
+    },
+    message: r.message ?? "",
+    status: (r.status ?? "new") as RequestStatus,
+    serial: r.serial ?? "",
+  };
 }

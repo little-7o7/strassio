@@ -3,7 +3,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
-import type { ActivationRow, ClientInfo, LicenseRow, Store, UpdateRow } from "./store.js";
+import type { ActivationRow, ClientInfo, LicenseRow, RequestRow, Store, UpdateRow } from "./store.js";
 
 export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
@@ -66,7 +66,10 @@ export function parseClient(value: unknown): ClientInfo | null {
     phone: text(v.phone, 40),
     email: text(v.email, 200),
     birthday: text(v.birthday, 10),
+    // «@name», «t.me/name», «https://t.me/name» → «name».
+    telegram: text(v.telegram, 100).replace(/^(https?:\/\/)?(www\.)?(t\.me|telegram\.me)\//i, "").replace(/^@/, ""),
   };
+  if (client.telegram && !/^[A-Za-z0-9_]{4,32}$/.test(client.telegram)) return null;
   if (client.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(client.email)) return null;
   if (client.birthday) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(client.birthday);
@@ -76,7 +79,9 @@ export function parseClient(value: unknown): ClientInfo | null {
   return client;
 }
 
-export const EMPTY_CLIENT: ClientInfo = { firstName: "", lastName: "", phone: "", email: "", birthday: "" };
+export const EMPTY_CLIENT: ClientInfo = { firstName: "", lastName: "", phone: "", email: "", birthday: "", telegram: "" };
+
+const REQUEST_ACTIONS = ["new", "working", "rejected", "delete"] as const;
 
 export class LicenseService {
   constructor(
@@ -210,6 +215,57 @@ export class LicenseService {
     const req: ClientRequest = { serial, hwid: typeof hwid === "string" ? hwid.replace(/\s+/g, "") : hwid, pluginVersion: "site", corelVersion: "" };
     const result = transfer ? await this.transfer(req) : await this.activate(req);
     return result.ok ? { ok: true, code: toActivationCode(result.license) } : result;
+  }
+
+  // ---------- Сайт: заявка на покупку ----------
+
+  /**
+   * Форма «Купить» (/buy): имя, фамилия и телефон обязательны; почта, день рождения, Telegram и
+   * комментарий — по желанию. Заявка попадает в админку (вкладка «Заявки»).
+   */
+  async submitRequest(clientValue: unknown, messageValue: unknown): Promise<{ ok: true } | { ok: false; error: "bad_client" | "missing" }> {
+    const client = parseClient(clientValue);
+    if (!client) return { ok: false, error: "bad_client" };
+    if (!client.firstName || !client.lastName || client.phone.replace(/\D/g, "").length < 5) return { ok: false, error: "missing" };
+    const message = typeof messageValue === "string" ? messageValue.trim().slice(0, 1000) : "";
+    const row = await this.store.insertRequest({ createdAt: this.clock(), client, message, status: "new", serial: "" });
+    await this.log("site", "request", "", `#${row.id} ${client.firstName} ${client.lastName}, ${client.phone}`);
+    return { ok: true };
+  }
+
+  listRequests(): Promise<RequestRow[]> {
+    return this.store.listRequests(200);
+  }
+
+  /** Заявка: new / working (в работе) / rejected (отказ) / delete (удалить). */
+  async adminRequest(id: unknown, action: unknown): Promise<boolean> {
+    const request = await this.store.findRequest(Number(id));
+    if (!request || !REQUEST_ACTIONS.includes(action as (typeof REQUEST_ACTIONS)[number])) return false;
+    if (action === "delete") {
+      await this.store.deleteRequest(request.id);
+    } else {
+      request.status = action as RequestRow["status"];
+      await this.store.updateRequest(request);
+    }
+
+    await this.log("admin", "request_" + action, request.serial, `#${request.id}`);
+    return true;
+  }
+
+  /** Создать ключ по заявке: данные клиента переходят в ключ, заявка — «выполнена» и привязана к ключу. */
+  async requestKey(id: unknown, days: unknown): Promise<{ serial: string; recoveryCode: string } | null> {
+    const request = await this.store.findRequest(Number(id));
+    if (!request || request.serial) return null;
+    const [key] = await this.createKeys({
+      count: 1,
+      days: Number(days) || null,
+      client: request.client,
+      note: ("Заявка #" + request.id + (request.message ? ": " + request.message : "")).slice(0, 500),
+    });
+    request.status = "done";
+    request.serial = key.serial;
+    await this.store.updateRequest(request);
+    return key;
   }
 
   // ---------- Админка ----------

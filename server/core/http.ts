@@ -83,6 +83,7 @@ export class App {
     private readonly clientLimiter = new RateLimiter(30, 60_000),
     private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
     private readonly recoveryFailures = new FailureLimiter(10, 15 * 60_000),
+    private readonly requestLimiter = new RateLimiter(5, 60 * 60_000),
   ) {
     // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
     this.adminPassword = adminPassword?.trim();
@@ -141,6 +142,16 @@ export class App {
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
+    // Сайт: заявка на покупку (страница /buy). Не больше 5 заявок в час с одного адреса;
+    // поле-ловушка «website» заполняют только боты — им отвечаем «готово», но ничего не сохраняем.
+    if (path === "/api/site/request") {
+      if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
+      if (!this.requestLimiter.allow(req.ip)) return tooMany();
+      if (typeof body.website === "string" && body.website.trim()) return { status: 200, json: { ok: true } };
+      const result = await this.service.submitRequest(body.client, body.message);
+      return { status: result.ok ? 200 : 400, json: result };
+    }
+
     // Сайт: активация по коду компьютера (страница /activate).
     if (path === "/api/site/activate") {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
@@ -183,6 +194,14 @@ export class App {
       }
       case "GET licenses":
         return ok({ licenses: await s.search(req.query.get("q") ?? "") });
+      case "GET requests":
+        return ok({ requests: await s.listRequests() });
+      case "POST request":
+        return (await s.adminRequest(body.id, body.action)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
+      case "POST request_key": {
+        const key = await s.requestKey(body.id, body.days);
+        return key ? ok({ key }) : { status: 404, json: { ok: false, error: "not_found" } };
+      }
       case "POST license": {
         if (body.action === "delete") {
           return (await s.deleteLicense(body.serial)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };

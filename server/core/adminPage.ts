@@ -53,6 +53,7 @@ export const ADMIN_PAGE = `<!doctype html>
   <div id="app" hidden>
     <div class="tabs" style="margin-bottom:12px">
       <button data-tab="keys" class="on">Ключи</button>
+      <button data-tab="requests">Заявки <b id="reqCount"></b></button>
       <button data-tab="offline">Офлайн-активация</button>
       <button data-tab="updates">Обновления</button>
       <button data-tab="audit">Журнал</button>
@@ -73,6 +74,7 @@ export const ADMIN_PAGE = `<!doctype html>
           <label>Телефон<input id="kPhone" type="tel" placeholder="+998 ..."></label>
           <label>Почта<input id="kEmail" type="email"></label>
           <label>День рождения<input id="kBirthday" type="date"></label>
+          <label>Telegram<input id="kTelegram" placeholder="@username"></label>
           <button class="primary" onclick="createKeys()">Создать</button>
         </div>
         <textarea id="kOut" readonly hidden class="mono"></textarea>
@@ -97,11 +99,32 @@ export const ADMIN_PAGE = `<!doctype html>
         <label>Телефон<input id="cPhone" type="tel"></label>
         <label>Почта<input id="cEmail" type="email"></label>
         <label>День рождения<input id="cBirthday" type="date"></label>
+        <label>Telegram<input id="cTelegram" placeholder="@username"></label>
       </div>
       <div class="row" style="justify-content:flex-end">
         <button onclick="$('clientDlg').close()">Отмена</button>
         <button class="primary" onclick="saveClient()">Сохранить</button>
       </div>
+    </dialog>
+
+    <section data-page="requests" hidden>
+      <h2>Заявки на покупку</h2>
+      <p class="muted">Приходят с сайта (страница «Купить»). Напишите клиенту, договоритесь — и нажмите «создать ключ»:
+        данные клиента перейдут в ключ, а заявка будет отмечена выполненной.</p>
+      <div id="requests" class="scroll"></div>
+    </section>
+
+    <dialog id="sendDlg" style="width:min(640px, 95vw)">
+      <h2>Отправить ключ клиенту</h2>
+      <textarea id="sendText" style="min-height:220px"></textarea>
+      <div class="row" style="margin-top:8px">
+        <a id="sendMail" target="_blank"><button>Письмо</button></a>
+        <a id="sendTg" target="_blank"><button>Telegram</button></a>
+        <a id="sendSms"><button>SMS</button></a>
+        <button onclick="copySend()">Копировать текст</button>
+        <button onclick="$('sendDlg').close()" style="margin-left:auto">Закрыть</button>
+      </div>
+      <p class="muted" id="sendHint">Telegram откроет чат с клиентом — текст уже скопирован, вставьте его (Ctrl+V).</p>
     </dialog>
 
     <section data-page="offline" hidden>
@@ -149,7 +172,7 @@ async function api(method, path, body) {
   });
   const data = await res.json().catch(() => ({ ok: false, error: "bad_response" }));
   if (res.status === 401) { logout(); }
-  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля", bad_client: "Проверьте почту и день рождения" }[data.error] || data.error);
+  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля", bad_client: "Проверьте почту, день рождения и Telegram (4–32 латинских букв, цифр или _)" }[data.error] || data.error);
   return data;
 }
 
@@ -162,19 +185,20 @@ async function login() {
   await run(async () => { await api("POST", "login"); sessionStorage.setItem("strassio-admin", password); show(); });
 }
 function logout() { password = ""; sessionStorage.removeItem("strassio-admin"); $("app").hidden = true; $("login").hidden = false; }
-function show() { $("login").hidden = true; $("app").hidden = false; search(); }
+function show() { $("login").hidden = true; $("app").hidden = false; search(); loadRequests(); }
 
 document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
   document.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("on", x === b));
   document.querySelectorAll("[data-page]").forEach((p) => p.hidden = p.dataset.page !== b.dataset.tab);
   if (b.dataset.tab === "audit") loadAudit();
+  if (b.dataset.tab === "requests") loadRequests();
 });
 
 async function createKeys() {
   await run(async () => {
-    const client = { firstName: $("kFirst").value, lastName: $("kLast").value, phone: $("kPhone").value, email: $("kEmail").value, birthday: $("kBirthday").value };
+    const client = { firstName: $("kFirst").value, lastName: $("kLast").value, phone: $("kPhone").value, email: $("kEmail").value, birthday: $("kBirthday").value, telegram: $("kTelegram").value };
     const data = await api("POST", "keys", { count: +$("kCount").value, days: +$("kDays").value || null, note: $("kNote").value, client });
-    ["kFirst", "kLast", "kPhone", "kEmail", "kBirthday", "kNote"].forEach((id) => $(id).value = "");
+    ["kFirst", "kLast", "kPhone", "kEmail", "kBirthday", "kTelegram", "kNote"].forEach((id) => $(id).value = "");
     // Клиенту отдаются оба: ключ (вводит в плагине) и ключ восстановления (для сайта /license).
     $("kOut").hidden = false; $("kOut").value = data.keys.map((k) => k.serial + "   " + k.recoveryCode).join("\\n");
     say("Создано ключей: " + data.keys.length + ". Рядом с каждым — ключ восстановления, отдайте клиенту оба."); search();
@@ -195,9 +219,7 @@ async function search() {
           (a.status === "active" ? "" : "(отозвана) ") + '<span class="muted">' + date(a.lastCheckAt) + " · " + esc(a.pluginVersion) + " · Corel " + esc(a.corelVersion) + "</span> " +
           (a.status === "active" ? button("отозвать", JSON.stringify(["revoke", a.id])) : "") + "</div>").join("") || '<span class="muted">нет</span>';
         const s = l.serial;
-        const c = l.client || {};
-        const client = [esc([c.firstName, c.lastName].filter(Boolean).join(" ")), esc(c.phone), esc(c.email), c.birthday ? "ДР " + esc(c.birthday.split("-").reverse().join(".")) : ""]
-          .filter(Boolean).join("<br>") || '<span class="muted">—</span>';
+        const client = clientCell(l.client);
         return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + "</span></td><td>" + client + '</td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
           "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
@@ -205,6 +227,7 @@ async function search() {
           button("разрешить перенос сейчас", JSON.stringify(["act", s, "reset_transfers"])) +
           button("заметка", JSON.stringify(["note", s])) +
           button("клиент", JSON.stringify(["client", s])) +
+          button("отправить ключ", JSON.stringify(["send", s])) +
           button("новый ключ восстановления", JSON.stringify(["recovery", s])) +
           '<button class="small danger" data-h="' + esc(JSON.stringify(["delete", s])) + '">удалить</button>' + "</td></tr>";
       }).join("") + "</table>";
@@ -215,7 +238,7 @@ async function search() {
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b) return;
   const [kind, x, y] = JSON.parse(b.dataset.h);
-  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x), client: () => editClient(x), delete: () => removeLicense(x) })[kind]();
+  ({ act: () => act(x, y), extend: () => extend(x), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x), client: () => editClient(x), delete: () => removeLicense(x), send: () => sendLicense(x) })[kind]();
 });
 
 async function act(serial, action, value) { await run(async () => { await api("POST", "license", { serial, action, value }); say("Готово: " + serial); search(); }); }
@@ -227,11 +250,11 @@ function editClient(serial) {
   const c = (licenses[serial] && licenses[serial].client) || {};
   clientSerial = serial; $("cSerial").textContent = serial;
   $("cFirst").value = c.firstName || ""; $("cLast").value = c.lastName || ""; $("cPhone").value = c.phone || "";
-  $("cEmail").value = c.email || ""; $("cBirthday").value = c.birthday || "";
+  $("cEmail").value = c.email || ""; $("cBirthday").value = c.birthday || ""; $("cTelegram").value = c.telegram ? "@" + c.telegram : "";
   $("clientDlg").showModal();
 }
 async function saveClient() {
-  const value = { firstName: $("cFirst").value, lastName: $("cLast").value, phone: $("cPhone").value, email: $("cEmail").value, birthday: $("cBirthday").value };
+  const value = { firstName: $("cFirst").value, lastName: $("cLast").value, phone: $("cPhone").value, email: $("cEmail").value, birthday: $("cBirthday").value, telegram: $("cTelegram").value };
   await run(async () => { await api("POST", "license", { serial: clientSerial, action: "client", value }); $("clientDlg").close(); say("Сохранено: " + clientSerial); search(); });
 }
 async function removeLicense(serial) {
@@ -240,6 +263,107 @@ async function removeLicense(serial) {
   if (typed.trim().toUpperCase() !== serial.slice(-4)) { say("Не совпало — ключ не удалён.", true); return; }
   await run(async () => { await api("POST", "license", { serial, action: "delete" }); say("Ключ удалён: " + serial); search(); });
 }
+// Клиент в таблицах: имя, телефон, почта, Telegram — ссылками (позвонить, написать).
+function clientCell(c) {
+  c = c || {};
+  const phone = (c.phone || "").replace(/[^\\d+]/g, "");
+  return [
+    esc([c.firstName, c.lastName].filter(Boolean).join(" ")),
+    c.phone ? '<a href="tel:' + esc(phone) + '">' + esc(c.phone) + "</a>" : "",
+    c.email ? '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + "</a>" : "",
+    c.telegram ? '<a href="https://t.me/' + esc(c.telegram) + '" target="_blank">@' + esc(c.telegram) + "</a>" : "",
+    c.birthday ? "ДР " + esc(c.birthday.split("-").reverse().join(".")) : "",
+  ].filter(Boolean).join("<br>") || '<span class="muted">—</span>';
+}
+
+// ---------- Заявки ----------
+let requests = {};
+const REQ_STATUS = { new: '<b class="bad">новая</b>', working: "в работе", done: '<span class="ok">ключ создан</span>', rejected: '<span class="muted">отказ</span>' };
+
+async function loadRequests() {
+  await run(async () => {
+    const data = await api("GET", "requests");
+    requests = {};
+    data.requests.forEach((r) => requests[r.id] = r);
+    const fresh = data.requests.filter((r) => r.status === "new").length;
+    $("reqCount").textContent = fresh ? "(" + fresh + ")" : "";
+    if (!data.requests.length) { $("requests").innerHTML = '<p class="muted">Заявок пока нет</p>'; return; }
+    $("requests").innerHTML = "<table><tr><th>№</th><th>Когда</th><th>Клиент</th><th>Комментарий</th><th>Состояние</th><th></th></tr>" +
+      data.requests.map((r) => "<tr><td>" + r.id + "</td><td>" + date(r.createdAt) + "</td><td>" + clientCell(r.client) + "</td><td>" + esc(r.message) +
+        "</td><td>" + (REQ_STATUS[r.status] || esc(r.status)) + (r.serial ? '<br><span class="mono">' + esc(r.serial) + "</span>" : "") + "</td><td>" +
+        (r.serial
+          ? button("отправить ключ", JSON.stringify(["send", r.serial]))
+          : button("создать ключ", JSON.stringify(["key", r.id])) +
+            (r.status === "working" ? "" : button("в работе", JSON.stringify(["status", r.id, "working"]))) +
+            (r.status === "rejected" ? button("вернуть", JSON.stringify(["status", r.id, "new"])) : button("отказ", JSON.stringify(["status", r.id, "rejected"])))) +
+        '<button class="small danger" data-h="' + esc(JSON.stringify(["status", r.id, "delete"])) + '">удалить</button>' +
+        "</td></tr>").join("") + "</table>";
+  });
+}
+
+$("requests").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-h]"); if (!b) return;
+  const [kind, x, y] = JSON.parse(b.dataset.h);
+  ({ key: () => keyFromRequest(x), status: () => requestStatus(x, y), send: () => sendLicense(x) })[kind]();
+});
+
+async function requestStatus(id, action) {
+  if (action === "delete" && !confirm("Удалить заявку №" + id + "?")) return;
+  await run(async () => { await api("POST", "request", { id, action }); loadRequests(); });
+}
+
+async function keyFromRequest(id) {
+  const r = requests[id];
+  const days = prompt("Создать ключ для " + [r.client.firstName, r.client.lastName].join(" ") + ".\\nСрок в днях (пусто — бессрочно):", "");
+  if (days === null) return;
+  await run(async () => {
+    const data = await api("POST", "request_key", { id, days: +days || null });
+    say("Ключ создан: " + data.key.serial);
+    openSend(r.client, data.key.serial, data.key.recoveryCode);
+    loadRequests(); search();
+  });
+}
+
+// ---------- Отправка ключа клиенту ----------
+async function sendLicense(serial) {
+  await run(async () => {
+    const data = await api("GET", "licenses?q=" + encodeURIComponent(serial));
+    const l = data.licenses.find((x) => x.serial === serial);
+    if (!l) throw new Error("Ключ не найден");
+    openSend(l.client, l.serial, l.recoveryCode);
+  });
+}
+
+function keyText(c, serial, recovery) {
+  return "Здравствуйте" + (c.firstName ? ", " + c.firstName : "") + "!\\n\\n" +
+    "Ваш ключ Strassio: " + serial + "\\n" +
+    (recovery ? "Ключ восстановления (для страницы «Моя лицензия», никому не показывайте): " + recovery + "\\n" : "") + "\\n" +
+    "1. Скачайте и установите плагин: https://github.com/little-7o7/strassio/releases\\n" +
+    "2. В CorelDRAW: панель Strassio → Настройки (шестерёнка) → «Лицензия…» → «Открыть сайт активации».\\n" +
+    "3. На сайте введите ключ, скопируйте код активации и вставьте его в окно «Лицензия» → «Активировать».\\n\\n" +
+    "Сайт: https://strassio.vercel.app";
+}
+
+function openSend(c, serial, recovery) {
+  c = c || {};
+  const text = keyText(c, serial, recovery);
+  $("sendText").value = text;
+  const mail = $("sendMail"), tg = $("sendTg"), sms = $("sendSms");
+  mail.hidden = !c.email; tg.hidden = !c.telegram; sms.hidden = !c.phone;
+  mail.href = "mailto:" + (c.email || "") + "?subject=" + encodeURIComponent("Ваш ключ Strassio") + "&body=" + encodeURIComponent(text);
+  tg.href = "https://t.me/" + (c.telegram || "");
+  tg.onclick = () => copySend();
+  sms.href = "sms:" + (c.phone || "").replace(/[^\\d+]/g, "") + "?body=" + encodeURIComponent(text);
+  $("sendHint").hidden = !c.telegram;
+  $("sendDlg").showModal();
+}
+
+async function copySend() {
+  const text = $("sendText").value;
+  try { await navigator.clipboard.writeText(text); } catch (e) { $("sendText").select(); document.execCommand("copy"); }
+  say("Текст скопирован");
+}
+
 function note(serial) { const t = prompt("Заметка"); if (t !== null) act(serial, "note", t); }
 async function revoke(id) { if (confirm("Отозвать активацию? Плагин на этом компьютере отключится при следующей проверке.")) await run(async () => { await api("POST", "revoke", { id }); search(); }); }
 

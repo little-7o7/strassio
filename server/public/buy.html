@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Купить — Strassio</title>
+<meta name="description" content="Заявка на покупку плагина Strassio для CorelDRAW.">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/img/logo.svg" alt="">Strassio</a>
+    <nav>
+      <a href="/">Главная</a>
+      <a href="/buy" class="on">Купить</a>
+      <a href="/activate">Активация</a>
+      <a href="/license">Моя лицензия</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="block">
+  <div class="wrap" style="max-width: 760px">
+    <h2>Купить Strassio</h2>
+    <p class="sub">Оставьте заявку — мы свяжемся с вами, обсудим условия и пришлём ключ удобным способом:
+      на почту, в Telegram или по SMS.</p>
+
+    <form class="panel" id="form">
+      <div class="row2">
+        <label class="field">Имя *
+          <input id="firstName" autocomplete="given-name" required maxlength="100"></label>
+        <label class="field">Фамилия *
+          <input id="lastName" autocomplete="family-name" required maxlength="100"></label>
+      </div>
+      <div class="row2">
+        <label class="field">Телефон *
+          <input id="phone" type="tel" autocomplete="tel" required maxlength="40" placeholder="+998 90 123 45 67"></label>
+        <label class="field">Почта
+          <input id="email" type="email" autocomplete="email" maxlength="200" placeholder="name@example.com"></label>
+      </div>
+      <div class="row2">
+        <label class="field">Telegram
+          <input id="telegram" autocomplete="off" maxlength="100" placeholder="@username"></label>
+        <label class="field">День рождения
+          <input id="birthday" type="date" min="1900-01-01"></label>
+      </div>
+      <label class="field">Комментарий
+        <textarea id="message" maxlength="1000" placeholder="Например: сколько ключей нужно, удобное время для связи"></textarea></label>
+      <!-- Ловушка для ботов: человек это поле не видит и не заполняет. -->
+      <input id="website" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
+             style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0">
+      <button class="btn primary" id="send">Отправить заявку</button>
+      <p class="msg" id="msg"></p>
+      <p class="note">* — обязательные поля. Данные нужны только чтобы связаться с вами по заявке и выдать ключ.</p>
+    </form>
+
+    <div class="panel" id="done" hidden>
+      <h3 style="margin-top: 0">Спасибо! Заявка отправлена.</h3>
+      <p class="muted" style="margin-bottom: 0">Мы свяжемся с вами в ближайшее время. А пока можно
+        <a href="https://github.com/little-7o7/strassio/releases">скачать плагин</a> и попробовать его 14 дней бесплатно.</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Strassio</span>
+    <span><a href="/">Главная</a></span>
+  </div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ERRORS = {
+  missing: "Заполните имя, фамилию и телефон.",
+  bad_client: "Проверьте почту, день рождения и Telegram (например, @username).",
+  too_many: "Слишком много заявок с этого адреса. Попробуйте через час.",
+};
+
+$("form").onsubmit = async (e) => {
+  e.preventDefault();
+  $("send").disabled = true; $("msg").textContent = "";
+  const client = {
+    firstName: $("firstName").value, lastName: $("lastName").value, phone: $("phone").value,
+    email: $("email").value, telegram: $("telegram").value, birthday: $("birthday").value,
+  };
+  try {
+    const res = await fetch("/api/site/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client, message: $("message").value, website: $("website").value }),
+    });
+    const data = await res.json().catch(() => ({ ok: false }));
+    if (res.status === 429) data.error = "too_many";
+    if (data.ok) {
+      $("form").hidden = true; $("done").hidden = false;
+    } else {
+      $("msg").textContent = ERRORS[data.error] || "Ошибка сервера. Попробуйте позже.";
+      $("msg").className = "msg bad";
+    }
+  } catch (err) {
+    $("msg").textContent = "Нет связи с сервером. Проверьте интернет.";
+    $("msg").className = "msg bad";
+  } finally {
+    $("send").disabled = false;
+  }
+};
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 // Хранилище в памяти — для тестов и локального запуска без базы.
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, Store, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, Store, TrialRow, UpdateRow } from "./store.js";
 
 export class MemoryStore implements Store {
   licenses: LicenseRow[] = [];
@@ -8,6 +8,7 @@ export class MemoryStore implements Store {
   trials: TrialRow[] = [];
   log: AuditRow[] = [];
   updates: UpdateRow[] = [];
+  requests: RequestRow[] = [];
   private nextId = 1;
 
   async findLicense(serial: string) {
@@ -27,7 +28,7 @@ export class MemoryStore implements Store {
   async searchLicenses(query: string, limit: number) {
     const q = query.trim().toLowerCase();
     return this.licenses
-      .filter((l) => !q || [l.serial, l.note, l.client.firstName, l.client.lastName, l.client.phone, l.client.email].some((t) => t.toLowerCase().includes(q)))
+      .filter((l) => !q || [l.serial, l.note, l.client.firstName, l.client.lastName, l.client.phone, l.client.email, l.client.telegram].some((t) => t.toLowerCase().includes(q)))
       .slice()
       .reverse()
       .slice(0, limit)
@@ -37,6 +38,29 @@ export class MemoryStore implements Store {
   async deleteLicense(id: number) {
     this.activationRows = this.activationRows.filter((a) => a.licenseId !== id);
     this.licenses = this.licenses.filter((l) => l.id !== id);
+  }
+
+  async insertRequest(row: NewRequest) {
+    const created = { ...row, client: { ...row.client }, id: this.nextId++ };
+    this.requests.push(created);
+    return { ...created, client: { ...created.client } };
+  }
+
+  async listRequests(limit: number) {
+    return this.requests.slice().reverse().slice(0, limit).map((r) => ({ ...r, client: { ...r.client } }));
+  }
+
+  async findRequest(id: number) {
+    const r = this.requests.find((x) => x.id === id);
+    return r ? { ...r, client: { ...r.client } } : null;
+  }
+
+  async updateRequest(row: RequestRow) {
+    this.requests = this.requests.map((r) => (r.id === row.id ? { ...row, client: { ...row.client } } : r));
+  }
+
+  async deleteRequest(id: number) {
+    this.requests = this.requests.filter((r) => r.id !== id);
   }
 
   async activations(licenseId: number) {

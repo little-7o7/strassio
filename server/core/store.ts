@@ -29,7 +29,23 @@ export interface ClientInfo {
   email: string;
   /** ГГГГ-ММ-ДД или "". */
   birthday: string;
+  /** Имя пользователя Telegram без @ или "". */
+  telegram: string;
 }
+
+export type RequestStatus = "new" | "working" | "done" | "rejected";
+
+/** Заявка на покупку с сайта (страница /buy). Когда по ней создан ключ — status "done", serial — этот ключ. */
+export interface RequestRow {
+  id: number;
+  createdAt: Date;
+  client: ClientInfo;
+  message: string;
+  status: RequestStatus;
+  serial: string;
+}
+
+export type NewRequest = Omit<RequestRow, "id">;
 
 export interface ActivationRow {
   id: number;
@@ -79,6 +95,13 @@ export interface Store {
   searchLicenses(query: string, limit: number): Promise<LicenseRow[]>;
   /** Удалить ключ полностью — вместе со всеми его активациями (журнал остаётся). */
   deleteLicense(id: number): Promise<void>;
+
+  insertRequest(row: NewRequest): Promise<RequestRow>;
+  /** Заявки, новые сверху. */
+  listRequests(limit: number): Promise<RequestRow[]>;
+  findRequest(id: number): Promise<RequestRow | null>;
+  updateRequest(row: RequestRow): Promise<void>;
+  deleteRequest(id: number): Promise<void>;
 
   activations(licenseId: number): Promise<ActivationRow[]>;
   insertActivation(row: NewActivation): Promise<ActivationRow>;

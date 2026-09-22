@@ -307,11 +307,11 @@ test("сайт: активация по коду компьютера — код
 
 test("админка: данные клиента (имя, фамилия, телефон, почта, день рождения), поиск по ним и проверка", async () => {
   const { service } = setup();
-  const client = { firstName: "Мадина", lastName: "Каримова", phone: "+998 90 123 45 67", email: "madina@example.com", birthday: "1995-03-08" };
+  const client = { firstName: "Мадина", lastName: "Каримова", phone: "+998 90 123 45 67", email: "madina@example.com", birthday: "1995-03-08", telegram: "madina_k" };
   const [{ serial }] = await service.createKeys({ client });
   const [{ serial: other }] = await service.createKeys({});
 
-  for (const q of ["мадина", "Каримова", "123 45", "example.com"]) {
+  for (const q of ["мадина", "Каримова", "123 45", "example.com", "madina_k"]) {
     const found = await service.search(q);
     assert.deepEqual(found.map((l) => l.serial), [serial], q);
     assert.deepEqual(found[0].client, client);
@@ -322,6 +322,10 @@ test("админка: данные клиента (имя, фамилия, те�
   assert.equal(await service.adminLicense(other, "client", { email: "не почта" }), null);
   assert.equal(await service.adminLicense(other, "client", { birthday: "1995-02-30" }), null);
   assert.equal(await service.adminLicense(other, "client", { birthday: "08.03.1995" }), null);
+  const tg = await service.adminLicense(other, "client", { telegram: "https://t.me/Aziz_2000" });
+  assert.equal(tg?.client.telegram, "Aziz_2000", "ссылка t.me превращается в имя");
+  assert.equal((await service.adminLicense(other, "client", { telegram: "@aziz" }))?.client.telegram, "aziz");
+  assert.equal(await service.adminLicense(other, "client", { telegram: "не телеграм" }), null);
 });
 
 test("админка: удалить ключ полностью — вместе с активациями; плагин с ним отключается", async () => {
@@ -335,4 +339,35 @@ test("админка: удалить ключ полностью — вмест�
   assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "not_found" });
   assert.equal(await service.deleteLicense(serial), false, "второй раз — нечего удалять");
   assert.ok((await service.auditLog(10)).some((r) => r.action === "delete" && r.serial === serial), "в журнале остаётся запись");
+});
+
+test("сайт: заявка на покупку → админка → ключ по заявке (данные клиента переходят в ключ)", async () => {
+  const { service } = setup();
+  assert.deepEqual(await service.submitRequest({ firstName: "Мадина" }, ""), { ok: false, error: "missing" }, "нужны имя, фамилия и телефон");
+  assert.deepEqual(await service.submitRequest({ firstName: "А", lastName: "Б", phone: "+998901234567", email: "плохо" }, ""), { ok: false, error: "bad_client" });
+
+  const client = { firstName: "Мадина", lastName: "Каримова", phone: "+998 90 123 45 67", email: "m@example.com", birthday: "1995-03-08", telegram: "@madina_k" };
+  assert.deepEqual(await service.submitRequest(client, "  Хочу купить на 1 год  "), { ok: true });
+  const [request] = await service.listRequests();
+  assert.equal(request.status, "new");
+  assert.equal(request.client.telegram, "madina_k");
+  assert.equal(request.message, "Хочу купить на 1 год");
+
+  assert.ok(await service.adminRequest(request.id, "working"));
+  assert.equal((await service.listRequests())[0].status, "working");
+  assert.equal(await service.adminRequest(request.id, "взломать"), false);
+
+  const key = await service.requestKey(request.id, 365);
+  assert.ok(key);
+  const [license] = await service.search(key!.serial);
+  assert.deepEqual(license.client, { ...client, telegram: "madina_k" });
+  assert.ok(license.expiresAt);
+  assert.match(license.note, /^Заявка #\d+: Хочу купить/);
+  const done = (await service.listRequests())[0];
+  assert.equal(done.status, "done");
+  assert.equal(done.serial, key!.serial);
+  assert.equal(await service.requestKey(request.id, null), null, "второй ключ по той же заявке не создаётся");
+
+  assert.ok(await service.adminRequest(request.id, "delete"));
+  assert.equal((await service.listRequests()).length, 0);
 });

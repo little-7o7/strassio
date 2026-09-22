@@ -119,7 +119,7 @@ test("админка: скрипт страницы без синтаксиче�
 
 test("сайт: скрипты страниц «Моя лицензия» и «Активация» без синтаксических ошибок", async () => {
   const { readFileSync } = await import("node:fs");
-  for (const name of ["license.html", "activate.html"]) {
+  for (const name of ["license.html", "activate.html", "buy.html"]) {
     const page = readFileSync(new URL("../../public/" + name, import.meta.url), "utf8");
     const script = page.substring(page.indexOf("<script>") + 8, page.lastIndexOf("</script>"));
     assert.doesNotThrow(() => new Function(script), name);
@@ -135,4 +135,25 @@ test("админка: неверная почта клиента — 400; уда
   assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }))).status, 401, "без пароля нельзя");
   assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }, PASSWORD))).status, 200);
   assert.equal((await app.handle(req("POST", "/api/admin/license", { serial, action: "delete" }, PASSWORD))).status, 404);
+});
+
+test("сайт: заявка — не больше 5 в час с одного адреса; бот (поле website) ничего не сохраняет", async () => {
+  const app = makeApp();
+  const client = { firstName: "Иван", lastName: "Петров", phone: "+7 900 000 00 00" };
+  const bot = await app.handle(req("POST", "/api/site/request", { client, website: "http://spam" }, undefined, "9.9.9.9"));
+  assert.equal(bot.status, 200);
+  const list = await app.handle(req("GET", "/api/admin/requests", undefined, PASSWORD));
+  assert.equal((list.json as any).requests.length, 0);
+
+  const statuses = [];
+  for (let i = 0; i < 6; i++) statuses.push((await app.handle(req("POST", "/api/site/request", { client }, undefined, "8.8.8.8"))).status);
+  assert.deepEqual(statuses, [200, 200, 200, 200, 200, 429]);
+  assert.equal((await app.handle(req("POST", "/api/site/request", { client: { firstName: "x" } }, undefined, "7.7.7.7"))).status, 400);
+
+  const listed = (await app.handle(req("GET", "/api/admin/requests", undefined, PASSWORD))).json as any;
+  const id = listed.requests[0].id;
+  const made = await app.handle(req("POST", "/api/admin/request_key", { id, days: null }, PASSWORD));
+  assert.equal(made.status, 200);
+  assert.match((made.json as any).key.serial, /^STRS-/);
+  assert.equal((await app.handle(req("GET", "/api/admin/requests"))).status, 401, "заявки видит только админ");
 });
