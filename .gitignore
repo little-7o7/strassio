@@ -25,3 +25,5 @@ strassio-stone-256.png
 
 # Interop CorelDRAW — файл Corel, публиковать нельзя. Лежит только локально (см. README).
 src/Strassio.Corel/interop/*.dll
+
+.vercel
