@@ -44,7 +44,7 @@
         <table class="pcs" id="pcs"></table>
         <p class="msg" id="pcsMsg"></p>
         <p class="note">Код компьютера показан в плагине в окне «Лицензия». «Освободить» считается переносом:
-          самостоятельно — 3 раза в год.</p>
+          переносить можно раз в 7 дней.</p>
       </div>
 
       <form class="panel" id="offlineForm">
@@ -73,7 +73,7 @@ const $ = (id) => document.getElementById(id);
 const ERRORS = {
   bad_recovery: "Ключ или ключ восстановления неверный.",
   not_found: "Этот компьютер уже освобождён. Обновите страницу.",
-  transfer_limit: "Переносы на этот год закончились. Напишите автору — он поможет.",
+  transfer_limit: "Переносить можно раз в 7 дней. Если нужно раньше — напишите автору в Telegram.",
   occupied: "Все места ключа заняты. Сначала освободите старый компьютер выше.",
   blocked: "Ключ заблокирован. Напишите автору.",
   expired: "Срок ключа закончился.",
@@ -110,7 +110,7 @@ function show(l) {
     "<div><b>Статус</b>" + status + "</div>" +
     "<div><b>Действует до</b>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</div>" +
     "<div><b>Компьютеров</b>" + l.computers.filter((c) => c.active).length + " из " + l.maxPcs + "</div>" +
-    "<div><b>Переносов осталось</b>" + l.transfersLeft + "</div>";
+    "<div><b>Следующий перенос</b>" + (l.nextTransferAt ? "с " + date(l.nextTransferAt) : "можно сейчас") + "</div>";
   const rows = l.computers.map((c) =>
     "<tr><td class=mono>" + esc(c.code) + "</td><td>" + date(c.firstAt) + "</td><td>" + date(c.lastCheckAt) + "</td><td>" +
     (c.active ? '<span class="ok">работает</span>' : '<span class="muted">освобождён</span>') + "</td><td>" +

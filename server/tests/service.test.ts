@@ -73,27 +73,38 @@ test("новый компьютер: место занято → перенос;
   await service.activate({ serial, hwid: PC1 });
 
   const busy = await service.activate({ serial, hwid: PC2 });
-  assert.deepEqual(busy, { ok: false, error: "occupied", transfersLeft: 3 });
+  assert.deepEqual(busy, { ok: false, error: "occupied", transfersLeft: 1, nextTransferAt: null });
 
   payload(await service.transfer({ serial, hwid: PC2 }));
   assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
   payload(await service.check({ serial, hwid: PC2 }));
 });
 
-test("переносов не больше 3 за 365 дней; через год счётчик обнуляется; админ может сбросить", async () => {
+test("переносов сколько угодно, но не чаще раза в 7 дней; админ может снять ожидание", async () => {
   const { service, advance } = setup();
   const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
-  for (const pc of [PC2, PC3, PC1]) payload(await service.transfer({ serial, hwid: pc }));
-  assert.deepEqual(await service.transfer({ serial, hwid: PC2 }), { ok: false, error: "transfer_limit", transfersLeft: 0 });
+  payload(await service.transfer({ serial, hwid: PC2 }));
 
+  advance(6);
+  const early = await service.transfer({ serial, hwid: PC3 });
+  assert.equal(early.ok, false);
+  if (!early.ok) {
+    assert.equal(early.error, "transfer_limit");
+    assert.equal(early.transfersLeft, 0);
+    assert.ok(early.nextTransferAt, "сообщается, с какого дня можно снова");
+  }
+
+  advance(1);
+  payload(await service.transfer({ serial, hwid: PC3 }));
+  for (let week = 0; week < 10; week++) {
+    advance(7);
+    payload(await service.transfer({ serial, hwid: week % 2 ? PC1 : PC2 }));
+  }
+
+  assert.equal((await service.transfer({ serial, hwid: PC3 })).ok, false);
   await service.adminLicense(serial, "reset_transfers", undefined);
-  payload(await service.transfer({ serial, hwid: PC2 }));
-
-  for (const pc of [PC3, PC1]) payload(await service.transfer({ serial, hwid: pc }));
-  assert.equal((await service.transfer({ serial, hwid: PC2 })).ok, false);
-  advance(366);
-  payload(await service.transfer({ serial, hwid: PC2 }));
+  payload(await service.transfer({ serial, hwid: PC3 }));
 });
 
 test("ключ на 2 компьютера: второй активируется без переноса", async () => {
@@ -190,12 +201,13 @@ test("восстановление: без верного ключа восст�
   if (view.ok) {
     assert.equal(view.license.computers.length, 1);
     assert.equal(view.license.computers[0].code, hwidDisplay(parseHwid(PC1)!));
-    assert.equal(view.license.transfersLeft, 3);
+    assert.equal(view.license.transfersLeft, 1);
+    assert.equal(view.license.nextTransferAt, null);
     assert.ok(!JSON.stringify(view).includes(PC1), "полный код компьютера наружу не отдаётся");
   }
 });
 
-test("восстановление: освободить старый компьютер с сайта — это перенос (3 в год), потом ключ встаёт на новый", async () => {
+test("восстановление: освободить старый компьютер с сайта — это перенос (раз в 7 дней), потом ключ встаёт на новый", async () => {
   const { service } = setup();
   const [{ serial, recoveryCode }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
@@ -205,7 +217,10 @@ test("восстановление: освободить старый компь
   const id = view.ok ? view.license.computers[0].id : -1;
   const released = await service.recoveryRelease(serial, recoveryCode, id);
   assert.ok(released.ok);
-  if (released.ok) assert.equal(released.license.transfersLeft, 2);
+  if (released.ok) {
+    assert.equal(released.license.transfersLeft, 0);
+    assert.ok(released.license.nextTransferAt);
+  }
   assert.deepEqual(await service.recoveryRelease(serial, recoveryCode, id), { ok: false, error: "not_found" }, "дважды не освобождается");
 
   payload(await service.activate({ serial, hwid: PC2 }));
@@ -216,8 +231,8 @@ test("восстановление: освободить старый компь
   assert.deepEqual(await service.recoveryRelease(other, otherCode, id), { ok: false, error: "not_found" });
 });
 
-test("восстановление: лимит переносов действует и на сайте", async () => {
-  const { service } = setup();
+test("восстановление: ожидание 7 дней действует и на сайте", async () => {
+  const { service, advance } = setup();
   const [{ serial, recoveryCode }] = await service.createKeys({});
   const releaseActive = async () => {
     const v = await service.recoveryLookup(serial, recoveryCode);
@@ -225,13 +240,12 @@ test("восстановление: лимит переносов действу
     return service.recoveryRelease(serial, recoveryCode, active!.id);
   };
 
-  for (const pc of [PC1, PC2, PC3]) {
-    payload(await service.activate({ serial, hwid: pc }));
-    assert.ok((await releaseActive()).ok);
-  }
-
   payload(await service.activate({ serial, hwid: PC1 }));
+  assert.ok((await releaseActive()).ok);
+  payload(await service.activate({ serial, hwid: PC2 }));
   assert.deepEqual(await releaseActive(), { ok: false, error: "transfer_limit" });
+  advance(7);
+  assert.ok((await releaseActive()).ok);
 });
 
 test("восстановление: файл лицензии для компьютера без интернета — только если есть свободное место", async () => {

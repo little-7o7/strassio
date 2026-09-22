@@ -7,7 +7,8 @@ import type { ActivationRow, LicenseRow, Store, UpdateRow } from "./store.js";
 
 export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
-export const TRANSFERS_PER_YEAR = 3;
+/** Переносов сколько угодно, но не чаще раза в 7 дней (решение автора, 22.09.2026). Раньше — через админа. */
+export const TRANSFER_COOLDOWN_DAYS = 7;
 const DAY = 24 * 60 * 60 * 1000;
 
 export type ErrorCode =
@@ -22,7 +23,7 @@ export type ErrorCode =
 
 export type ClientResult =
   | { ok: true; license: SignedDocument }
-  | { ok: false; error: ErrorCode; transfersLeft?: number };
+  | { ok: false; error: ErrorCode; transfersLeft?: number; nextTransferAt?: string | null };
 
 export interface ClientRequest {
   serial?: unknown;
@@ -38,7 +39,9 @@ export interface RecoveryView {
   status: string;
   expiresAt: string | null;
   maxPcs: number;
+  /** 1 — перенос можно сделать сейчас, 0 — только после nextTransferAt (или через админа). */
   transfersLeft: number;
+  nextTransferAt: string | null;
   computers: Array<{ id: number; code: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
 }
 
@@ -76,7 +79,7 @@ export class LicenseService {
     }
 
     if (active.length >= license!.maxPcs) {
-      return { ok: false, error: "occupied", transfersLeft: this.transfersLeft(license!) };
+      return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     }
 
     const created = await this.store.insertActivation(this.newActivation(license!.id, input));
@@ -84,7 +87,7 @@ export class LicenseService {
     return this.issue(license!, created.hwid);
   }
 
-  /** «Перенести лицензию на этот компьютер»: самая давняя активация отзывается (не больше 3 раз за 365 дней). */
+  /** «Перенести лицензию на этот компьютер»: самая давняя активация отзывается (не чаще раза в 7 дней). */
   async transfer(req: ClientRequest): Promise<ClientResult> {
     const input = this.parse(req);
     if (!input) return fail("bad_request");
@@ -98,16 +101,12 @@ export class LicenseService {
     }
 
     if (active.length >= license!.maxPcs) {
-      this.resetTransfersIfYearPassed(license!);
-      if (license!.transfersCount >= TRANSFERS_PER_YEAR) {
-        await this.store.updateLicense(license!);
-        return { ok: false, error: "transfer_limit", transfersLeft: 0 };
-      }
+      if (!this.canTransfer(license!)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
 
       const oldest = active.slice().sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
       oldest.status = "revoked";
       await this.store.updateActivation(oldest);
-      license!.transfersCount++;
+      this.countTransfer(license!);
       await this.store.updateLicense(license!);
       await this.log("client", "transfer", license!.serial, `${oldest.hwid} → ${input.hwid}`);
     }
@@ -299,7 +298,7 @@ export class LicenseService {
 
   /**
    * «Освободить» компьютер с сайта (например, старый сломался или Windows переустановили на другом
-   * железе). Считается переносом (3 за 365 дней): иначе ключ можно было бы бесконечно передавать.
+   * железе). Считается переносом (раз в 7 дней): иначе ключ можно было бы передавать по кругу.
    */
   async recoveryRelease(serialText: unknown, codeText: unknown, activationId: unknown): Promise<RecoveryResult<{ license: RecoveryView }>> {
     const license = await this.recoveryLicense(serialText, codeText);
@@ -307,15 +306,11 @@ export class LicenseService {
     const activation = await this.store.findActivation(Number(activationId));
     if (!activation || activation.licenseId !== license.id || activation.status !== "active") return { ok: false, error: "not_found" };
 
-    this.resetTransfersIfYearPassed(license);
-    if (license.transfersCount >= TRANSFERS_PER_YEAR) {
-      await this.store.updateLicense(license);
-      return { ok: false, error: "transfer_limit" };
-    }
+    if (!this.canTransfer(license)) return { ok: false, error: "transfer_limit" };
 
     activation.status = "revoked";
     await this.store.updateActivation(activation);
-    license.transfersCount++;
+    this.countTransfer(license);
     await this.store.updateLicense(license);
     await this.log("site", "release", license.serial, `активация ${activation.id}, ${activation.hwid}`);
     return { ok: true, license: await this.recoveryView(license) };
@@ -363,7 +358,7 @@ export class LicenseService {
       status: license.status,
       expiresAt: license.expiresAt ? iso(license.expiresAt) : null,
       maxPcs: license.maxPcs,
-      transfersLeft: this.transfersLeft(license),
+      ...this.transferInfo(license),
       computers: activations.map((a) => ({
         id: a.id,
         code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
@@ -398,16 +393,25 @@ export class LicenseService {
     return null;
   }
 
-  private transfersLeft(license: LicenseRow): number {
-    const yearPassed = this.clock().getTime() - license.transfersSince.getTime() >= 365 * DAY;
-    return Math.max(0, TRANSFERS_PER_YEAR - (yearPassed ? 0 : license.transfersCount));
+  // transfersSince — время последнего переноса; transfersCount = 0 — переносов не было (или админ сбросил).
+  private nextTransferAt(license: LicenseRow): Date | null {
+    if (license.transfersCount === 0) return null;
+    const next = new Date(license.transfersSince.getTime() + TRANSFER_COOLDOWN_DAYS * DAY);
+    return next > this.clock() ? next : null;
   }
 
-  private resetTransfersIfYearPassed(license: LicenseRow) {
-    if (this.clock().getTime() - license.transfersSince.getTime() >= 365 * DAY) {
-      license.transfersCount = 0;
-      license.transfersSince = this.clock();
-    }
+  private canTransfer(license: LicenseRow): boolean {
+    return this.nextTransferAt(license) === null;
+  }
+
+  private countTransfer(license: LicenseRow) {
+    license.transfersCount++;
+    license.transfersSince = this.clock();
+  }
+
+  private transferInfo(license: LicenseRow): { transfersLeft: number; nextTransferAt: string | null } {
+    const next = this.nextTransferAt(license);
+    return { transfersLeft: next ? 0 : 1, nextTransferAt: next ? iso(next) : null };
   }
 
   private newActivation(licenseId: number, input: { hwid: string; pluginVersion: string; corelVersion: string }) {

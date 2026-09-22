@@ -169,7 +169,7 @@ async function search() {
           "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.maxPcs + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
           button("продлить", JSON.stringify(["extend", s])) +
-          button("сбросить переносы", JSON.stringify(["act", s, "reset_transfers"])) +
+          button("разрешить перенос сейчас", JSON.stringify(["act", s, "reset_transfers"])) +
           button("число ПК", JSON.stringify(["pcs", s, l.maxPcs])) +
           button("заметка", JSON.stringify(["note", s])) +
           button("новый ключ восстановления", JSON.stringify(["recovery", s])) + "</td></tr>";
