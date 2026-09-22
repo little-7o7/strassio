@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="body" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7CC0FF"/>
+      <stop offset="0.55" stop-color="#2F74E0"/>
+      <stop offset="1" stop-color="#143F9E"/>
+    </linearGradient>
+    <linearGradient id="table" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#D6ECFF"/>
+      <stop offset="1" stop-color="#4F95F0"/>
+    </linearGradient>
+    <clipPath id="c"><circle cx="32" cy="32" r="29"/></clipPath>
+  </defs>
+  <circle cx="32" cy="32" r="29" fill="url(#body)"/>
+  <g clip-path="url(#c)">
+    <polygon points="44.01,36.97 65.26,45.78 45.78,65.26 36.97,44.01" fill="#FFFFFF" fill-opacity="0.28"/><polygon points="36.97,44.01 45.78,65.26 18.22,65.26 27.03,44.01" fill="#001A4D" fill-opacity="0.22"/><polygon points="27.03,44.01 18.22,65.26 -1.26,45.78 19.99,36.97" fill="#FFFFFF" fill-opacity="0.28"/><polygon points="19.99,36.97 -1.26,45.78 -1.26,18.22 19.99,27.03" fill="#001A4D" fill-opacity="0.22"/><polygon points="19.99,27.03 -1.26,18.22 18.22,-1.26 27.03,19.99" fill="#FFFFFF" fill-opacity="0.28"/><polygon points="27.03,19.99 18.22,-1.26 45.78,-1.26 36.97,19.99" fill="#001A4D" fill-opacity="0.22"/><polygon points="36.97,19.99 45.78,-1.26 65.26,18.22 44.01,27.03" fill="#FFFFFF" fill-opacity="0.28"/><polygon points="44.01,27.03 65.26,18.22 65.26,45.78 44.01,36.97" fill="#001A4D" fill-opacity="0.22"/>
+    <line x1="44.01" y1="36.97" x2="65.26" y2="45.78" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="36.97" y1="44.01" x2="45.78" y2="65.26" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="27.03" y1="44.01" x2="18.22" y2="65.26" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="19.99" y1="36.97" x2="-1.26" y2="45.78" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="19.99" y1="27.03" x2="-1.26" y2="18.22" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="27.03" y1="19.99" x2="18.22" y2="-1.26" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="36.97" y1="19.99" x2="45.78" y2="-1.26" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/><line x1="44.01" y1="27.03" x2="65.26" y2="18.22" stroke="#0F3A8A" stroke-width="0.9" stroke-opacity="0.6"/>
+  </g>
+  <polygon points="44.01,36.97 36.97,44.01 27.03,44.01 19.99,36.97 19.99,27.03 27.03,19.99 36.97,19.99 44.01,27.03" fill="url(#table)" stroke="#0F3A8A" stroke-width="1" stroke-opacity="0.7"/>
+  <circle cx="32" cy="32" r="29" fill="none" stroke="#0F3A8A" stroke-width="2.2"/>
+  <path d="M21 13 L22.6 18.4 L28 20 L22.6 21.6 L21 27 L19.4 21.6 L14 20 L19.4 18.4 Z" fill="#FFFFFF"/>
+</svg>

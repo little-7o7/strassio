@@ -17,6 +17,7 @@ const SCHEMA = [
      transfers_since TIMESTAMPTZ NOT NULL DEFAULT now(),
      note TEXT NOT NULL DEFAULT '',
      created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `ALTER TABLE licenses ADD COLUMN IF NOT EXISTS recovery_code TEXT NOT NULL DEFAULT ''`,
   `CREATE TABLE IF NOT EXISTS activations (
      id SERIAL PRIMARY KEY,
      license_id INT NOT NULL REFERENCES licenses(id),
@@ -78,17 +79,17 @@ export class PgStore implements Store {
 
   async insertLicense(r: NewLicense) {
     const rows = await this.q(
-      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt],
+      `INSERT INTO licenses (serial, plan, status, expires_at, max_pcs, transfers_count, transfers_since, note, created_at, recovery_code)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [r.serial, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.createdAt, r.recoveryCode],
     );
     return license(rows[0]);
   }
 
   async updateLicense(r: LicenseRow) {
     await this.q(
-      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8 WHERE id=$1`,
-      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note],
+      `UPDATE licenses SET plan=$2, status=$3, expires_at=$4, max_pcs=$5, transfers_count=$6, transfers_since=$7, note=$8, recovery_code=$9 WHERE id=$1`,
+      [r.id, r.plan, r.status, r.expiresAt, r.maxPcs, r.transfersCount, r.transfersSince, r.note, r.recoveryCode],
     );
   }
 
@@ -182,6 +183,7 @@ function license(r: Record<string, any>): LicenseRow {
     transfersSince: new Date(r.transfers_since),
     note: r.note,
     createdAt: new Date(r.created_at),
+    recoveryCode: r.recovery_code ?? "",
   };
 }
 

@@ -1,8 +1,8 @@
 // Правила лицензий из SPEC 13 — по пунктам.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generateKeys, normalizeSerial, newSerial, Signer, verifyDocument } from "../core/crypto.js";
-import { hwidMatches, parseHwid } from "../core/hwid.js";
+import { generateKeys, normalizeRecoveryCode, normalizeSerial, newSerial, Signer, verifyDocument } from "../core/crypto.js";
+import { hwidDisplay, hwidMatches, parseHwid } from "../core/hwid.js";
 import { MemoryStore } from "../core/memoryStore.js";
 import { LicenseService } from "../core/service.js";
 
@@ -49,7 +49,7 @@ test("код компьютера: меняется один признак — 
 
 test("активация выдаёт подписанную лицензию с полями из SPEC 13.2", async () => {
   const { service } = setup();
-  const [serial] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   const p = payload(await service.activate({ serial, hwid: PC1, pluginVersion: "0.6.0", corelVersion: "27" }));
   assert.deepEqual(Object.keys(p), ["serial", "hwid", "plan", "issuedAt", "nextCheckAt"]);
   assert.equal(p.serial, serial);
@@ -60,7 +60,7 @@ test("активация выдаёт подписанную лицензию с
 
 test("переустановка Windows / сменили диск — тот же ключ восстанавливается, место не занимается", async () => {
   const { service, store } = setup();
-  const [serial] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
   const p = payload(await service.activate({ serial, hwid: PC1_NEW_DISK }));
   assert.equal(p.hwid, PC1_NEW_DISK);
@@ -69,7 +69,7 @@ test("переустановка Windows / сменили диск — тот ж
 
 test("новый компьютер: место занято → перенос; старый отключается при проверке", async () => {
   const { service } = setup();
-  const [serial] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
 
   const busy = await service.activate({ serial, hwid: PC2 });
@@ -82,7 +82,7 @@ test("новый компьютер: место занято → перенос;
 
 test("переносов не больше 3 за 365 дней; через год счётчик обнуляется; админ может сбросить", async () => {
   const { service, advance } = setup();
-  const [serial] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
   for (const pc of [PC2, PC3, PC1]) payload(await service.transfer({ serial, hwid: pc }));
   assert.deepEqual(await service.transfer({ serial, hwid: PC2 }), { ok: false, error: "transfer_limit", transfersLeft: 0 });
@@ -98,7 +98,7 @@ test("переносов не больше 3 за 365 дней; через го�
 
 test("ключ на 2 компьютера: второй активируется без переноса", async () => {
   const { service } = setup();
-  const [serial] = await service.createKeys({ maxPcs: 2 });
+  const [{ serial }] = await service.createKeys({ maxPcs: 2 });
   payload(await service.activate({ serial, hwid: PC1 }));
   payload(await service.activate({ serial, hwid: PC2 }));
   assert.equal((await service.activate({ serial, hwid: PC3 })).ok, false);
@@ -106,7 +106,7 @@ test("ключ на 2 компьютера: второй активируетс�
 
 test("освободить компьютер — место свободно, не считается переносом", async () => {
   const { service, store } = setup();
-  const [serial] = await service.createKeys({});
+  const [{ serial }] = await service.createKeys({});
   await service.activate({ serial, hwid: PC1 });
   assert.deepEqual(await service.deactivate({ serial, hwid: PC1 }), { ok: true });
   payload(await service.activate({ serial, hwid: PC2 }));
@@ -118,12 +118,12 @@ test("неизвестный, заблокированный и просроче
   assert.deepEqual(await service.activate({ serial: "STRS-AAAA-BBBB-CCCC", hwid: PC1 }), { ok: false, error: "not_found" });
   assert.deepEqual(await service.activate({ serial: "мусор", hwid: PC1 }), { ok: false, error: "bad_request" });
 
-  const [blocked] = await service.createKeys({});
+  const [{ serial: blocked }] = await service.createKeys({});
   await service.activate({ serial: blocked, hwid: PC1 });
   await service.adminLicense(blocked, "block", undefined);
   assert.deepEqual(await service.check({ serial: blocked, hwid: PC1 }), { ok: false, error: "blocked" });
 
-  const [timed] = await service.createKeys({ days: 30 });
+  const [{ serial: timed }] = await service.createKeys({ days: 30 });
   const p = payload(await service.activate({ serial: timed, hwid: PC1 }));
   assert.ok(p.expiresAt);
   advance(31);
@@ -148,7 +148,7 @@ test("пробный период: 14 дней, переустановка не 
 
 test("офлайн-активация и журнал", async () => {
   const { service } = setup();
-  const [serial] = await service.createKeys({ note: "Мастер Аня" });
+  const [{ serial }] = await service.createKeys({ note: "Мастер Аня" });
   const doc = await service.offline(serial, PC1);
   assert.ok(doc && verifyDocument(doc, keys.publicKey));
   // Клиент без интернета не может сверяться каждый день — офлайн-лицензия помечена.
@@ -167,4 +167,93 @@ test("обновление: подписанные сведения, канал 
   assert.ok(doc && verifyDocument(doc, keys.publicKey));
   assert.equal(JSON.parse(doc!.payload).version, "0.6.0");
   assert.equal(await service.latestUpdate("beta"), null);
+});
+
+test("короткий код компьютера на сайте — тот же, что в окне «Лицензия» плагина (HardwareCode.Display)", () => {
+  // То же значение проверяет C#-тест HardwareCode_Display_MatchesServer.
+  assert.equal(hwidDisplay(parseHwid(PC1)!), "7289-FDB0-F904-5FFC");
+});
+
+test("восстановление: без верного ключа восстановления — ничего не видно и не меняется", async () => {
+  const { service } = setup();
+  const [{ serial, recoveryCode }] = await service.createKeys({});
+  assert.match(recoveryCode, /^RCV-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.equal(normalizeRecoveryCode(" rcv " + recoveryCode.slice(4).toLowerCase().replace(/-/g, " ")), recoveryCode);
+  await service.activate({ serial, hwid: PC1 });
+
+  assert.deepEqual(await service.recoveryLookup(serial, "RCV-AAAA-BBBB-CCCC-DDDD"), { ok: false, error: "bad_recovery" });
+  assert.deepEqual(await service.recoveryLookup("STRS-AAAA-BBBB-CCCC", recoveryCode), { ok: false, error: "bad_recovery" });
+  assert.deepEqual(await service.recoveryRelease(serial, "мусор", 1), { ok: false, error: "bad_recovery" });
+
+  const view = await service.recoveryLookup(serial, recoveryCode);
+  assert.ok(view.ok);
+  if (view.ok) {
+    assert.equal(view.license.computers.length, 1);
+    assert.equal(view.license.computers[0].code, hwidDisplay(parseHwid(PC1)!));
+    assert.equal(view.license.transfersLeft, 3);
+    assert.ok(!JSON.stringify(view).includes(PC1), "полный код компьютера наружу не отдаётся");
+  }
+});
+
+test("восстановление: освободить старый компьютер с сайта — это перенос (3 в год), потом ключ встаёт на новый", async () => {
+  const { service } = setup();
+  const [{ serial, recoveryCode }] = await service.createKeys({});
+  await service.activate({ serial, hwid: PC1 });
+  assert.equal((await service.activate({ serial, hwid: PC2 })).ok, false);
+
+  const view = await service.recoveryLookup(serial, recoveryCode);
+  const id = view.ok ? view.license.computers[0].id : -1;
+  const released = await service.recoveryRelease(serial, recoveryCode, id);
+  assert.ok(released.ok);
+  if (released.ok) assert.equal(released.license.transfersLeft, 2);
+  assert.deepEqual(await service.recoveryRelease(serial, recoveryCode, id), { ok: false, error: "not_found" }, "дважды не освобождается");
+
+  payload(await service.activate({ serial, hwid: PC2 }));
+  assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
+
+  // Чужую активацию (другого ключа) освободить нельзя.
+  const [{ serial: other, recoveryCode: otherCode }] = await service.createKeys({});
+  assert.deepEqual(await service.recoveryRelease(other, otherCode, id), { ok: false, error: "not_found" });
+});
+
+test("восстановление: лимит переносов действует и на сайте", async () => {
+  const { service } = setup();
+  const [{ serial, recoveryCode }] = await service.createKeys({});
+  const releaseActive = async () => {
+    const v = await service.recoveryLookup(serial, recoveryCode);
+    const active = v.ok ? v.license.computers.find((c) => c.active) : undefined;
+    return service.recoveryRelease(serial, recoveryCode, active!.id);
+  };
+
+  for (const pc of [PC1, PC2, PC3]) {
+    payload(await service.activate({ serial, hwid: pc }));
+    assert.ok((await releaseActive()).ok);
+  }
+
+  payload(await service.activate({ serial, hwid: PC1 }));
+  assert.deepEqual(await releaseActive(), { ok: false, error: "transfer_limit" });
+});
+
+test("восстановление: файл лицензии для компьютера без интернета — только если есть свободное место", async () => {
+  const { service } = setup();
+  const [{ serial, recoveryCode }] = await service.createKeys({});
+  const file = await service.recoveryOffline(serial, recoveryCode, PC1);
+  assert.ok(file.ok);
+  if (file.ok) {
+    assert.ok(verifyDocument(file.file, keys.publicKey));
+    assert.equal(JSON.parse(file.file.payload).offline, true);
+  }
+
+  assert.ok((await service.recoveryOffline(serial, recoveryCode, PC1_NEW_DISK)).ok, "тот же компьютер — можно ещё раз");
+  assert.deepEqual(await service.recoveryOffline(serial, recoveryCode, PC2), { ok: false, error: "occupied" });
+  assert.deepEqual(await service.recoveryOffline(serial, recoveryCode, "zz"), { ok: false, error: "bad_request" });
+});
+
+test("админка: новый ключ восстановления — старый перестаёт работать", async () => {
+  const { service } = setup();
+  const [{ serial, recoveryCode }] = await service.createKeys({});
+  const updated = await service.adminLicense(serial, "new_recovery", undefined);
+  assert.ok(updated && updated.recoveryCode !== recoveryCode);
+  assert.deepEqual(await service.recoveryLookup(serial, recoveryCode), { ok: false, error: "bad_recovery" });
+  assert.ok((await service.recoveryLookup(serial, updated!.recoveryCode)).ok);
 });

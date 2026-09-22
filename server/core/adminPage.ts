@@ -147,8 +147,9 @@ document.querySelectorAll("[data-tab]").forEach((b) => b.onclick = () => {
 async function createKeys() {
   await run(async () => {
     const data = await api("POST", "keys", { count: +$("kCount").value, days: +$("kDays").value || null, maxPcs: +$("kPcs").value, note: $("kNote").value });
-    $("kOut").hidden = false; $("kOut").value = data.serials.join("\\n");
-    say("Создано ключей: " + data.serials.length); search();
+    // Клиенту отдаются оба: ключ (вводит в плагине) и ключ восстановления (для сайта /license).
+    $("kOut").hidden = false; $("kOut").value = data.keys.map((k) => k.serial + "   " + k.recoveryCode).join("\\n");
+    say("Создано ключей: " + data.keys.length + ". Рядом с каждым — ключ восстановления, отдайте клиенту оба."); search();
   });
 }
 
@@ -164,13 +165,14 @@ async function search() {
           (a.status === "active" ? "" : "(отозвана) ") + '<span class="muted">' + date(a.lastCheckAt) + " · " + esc(a.pluginVersion) + " · Corel " + esc(a.corelVersion) + "</span> " +
           (a.status === "active" ? button("отозвать", JSON.stringify(["revoke", a.id])) : "") + "</div>").join("") || '<span class="muted">нет</span>';
         const s = l.serial;
-        return "<tr><td class=mono>" + esc(s) + '</td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
+        return "<tr><td class=mono>" + esc(s) + '<br><span class="muted">' + esc(l.recoveryCode || "нет ключа восстановления") + "</span></td><td class="' + (l.status === "active" ? "ok" : "bad") + '">' + (l.status === "active" ? "активен" : "заблокирован") +
           "</td><td>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</td><td>" + l.maxPcs + "</td><td>" + l.transfersCount + "</td><td>" + esc(l.note) + "</td><td>" + acts + "</td><td>" +
           button(l.status === "active" ? "заблокировать" : "разблокировать", JSON.stringify(["act", s, l.status === "active" ? "block" : "unblock"])) +
           button("продлить", JSON.stringify(["extend", s])) +
           button("сбросить переносы", JSON.stringify(["act", s, "reset_transfers"])) +
           button("число ПК", JSON.stringify(["pcs", s, l.maxPcs])) +
-          button("заметка", JSON.stringify(["note", s])) + "</td></tr>";
+          button("заметка", JSON.stringify(["note", s])) +
+          button("новый ключ восстановления", JSON.stringify(["recovery", s])) + "</td></tr>";
       }).join("") + "</table>";
   });
 }
@@ -179,12 +181,13 @@ async function search() {
 $("results").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-h]"); if (!b) return;
   const [kind, x, y] = JSON.parse(b.dataset.h);
-  ({ act: () => act(x, y), extend: () => extend(x), pcs: () => pcs(x, y), note: () => note(x), revoke: () => revoke(x) })[kind]();
+  ({ act: () => act(x, y), extend: () => extend(x), pcs: () => pcs(x, y), note: () => note(x), revoke: () => revoke(x), recovery: () => newRecovery(x) })[kind]();
 });
 
 async function act(serial, action, value) { await run(async () => { await api("POST", "license", { serial, action, value }); say("Готово: " + serial); search(); }); }
 function extend(serial) { const d = prompt("На сколько дней продлить? (0 — сделать бессрочным)", "365"); if (d !== null) act(serial, "extend", +d); }
 function pcs(serial, current) { const n = prompt("Сколько компьютеров на ключ?", current); if (n !== null) act(serial, "max_pcs", +n); }
+function newRecovery(serial) { if (confirm("Сделать новый ключ восстановления? Старый перестанет работать на сайте.")) act(serial, "new_recovery"); }
 function note(serial) { const t = prompt("Заметка"); if (t !== null) act(serial, "note", t); }
 async function revoke(id) { if (confirm("Отозвать активацию? Плагин на этом компьютере отключится при следующей проверке.")) await run(async () => { await api("POST", "revoke", { id }); search(); }); }
 

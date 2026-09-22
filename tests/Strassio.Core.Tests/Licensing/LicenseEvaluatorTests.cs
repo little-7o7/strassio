@@ -135,6 +135,17 @@ public class LicenseEvaluatorTests
         Assert.Equal(30, s.DaysLeft);
     }
 
+    /// <summary>
+    /// Короткий код компьютера на сайте (страница восстановления) должен совпадать с окном «Лицензия»:
+    /// то же значение проверяет серверный тест (server/tests/service.test.ts, hwidDisplay).
+    /// </summary>
+    [Fact]
+    public void HardwareCode_Display_MatchesServer()
+    {
+        Assert.True(HardwareCode.TryParse("a100000000000000.b100000000000000.c100000000000000.d100000000000000", out HardwareCode? code));
+        Assert.Equal("7289-FDB0-F904-5FFC", code!.Display);
+    }
+
     [Fact]
     public void HardwareCode_JunkValues_AreUnknown_AndStorageRoundTrips()
     {

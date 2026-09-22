@@ -80,3 +80,24 @@ test("админка: пробелы и перенос строки по кра�
   assert.equal((await app.handle(req("POST", "/api/admin/login", {}, " " + PASSWORD + " "))).status, 200);
   assert.equal((await app.handle(req("POST", "/api/admin/login", {}, "wrong-password"))).status, 401);
 });
+
+test("сайт: восстановление — маршруты работают, после 10 неверных ключей восстановления адрес ждёт", async () => {
+  const app = makeApp();
+  const created = await app.handle(req("POST", "/api/admin/keys", { count: 1 }, PASSWORD));
+  const key = (created.json as { keys: Array<{ serial: string; recoveryCode: string }> }).keys[0];
+  const good = await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: key.recoveryCode }, undefined, "7.7.7.7"));
+  assert.equal(good.status, 200);
+
+  for (let i = 0; i < 10; i++) {
+    assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: "RCV-AAAA-BBBB-CCCC-DDDD" }, undefined, "8.8.8.8"))).status, 403);
+  }
+  // Даже с верным кодом — подождать (перебор бессмысленен).
+  assert.equal((await app.handle(req("POST", "/api/recovery/lookup", { serial: key.serial, recovery: key.recoveryCode }, undefined, "8.8.8.8"))).status, 429);
+  assert.equal((await app.handle(req("GET", "/api/recovery/lookup"))).status, 405);
+});
+
+test("админка открывается по /adminpanel", async () => {
+  const res = await makeApp().handle(req("GET", "/adminpanel"));
+  assert.equal(res.status, 200);
+  assert.ok(res.html?.includes("Strassio"));
+});

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Моя лицензия — Strassio</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/"><img src="/img/logo.svg" alt="">Strassio</a>
+    <nav>
+      <a href="/">Главная</a>
+      <a href="/license" class="on">Моя лицензия</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="block">
+  <div class="wrap" style="max-width: 760px">
+    <h2>Моя лицензия</h2>
+    <p class="sub">Здесь можно посмотреть, на каких компьютерах работает ваш ключ, освободить старый компьютер
+      и получить файл лицензии для компьютера без интернета.</p>
+
+    <form class="panel" id="loginForm">
+      <div class="row2">
+        <label class="field">Ключ
+          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+        <label class="field">Ключ восстановления
+          <input id="recovery" type="password" autocomplete="off" spellcheck="false" placeholder="RCV-XXXX-XXXX-XXXX-XXXX" required></label>
+      </div>
+      <button class="btn primary" id="loginBtn">Открыть</button>
+      <p class="msg" id="loginMsg"></p>
+      <p class="note">Ключ восстановления выдаётся вместе с ключом. Если потеряли — напишите автору, он выдаст новый.</p>
+    </form>
+
+    <div id="info" hidden>
+      <div class="panel">
+        <div class="facts" id="facts"></div>
+        <table class="pcs" id="pcs"></table>
+        <p class="msg" id="pcsMsg"></p>
+        <p class="note">Код компьютера показан в плагине в окне «Лицензия». «Освободить» считается переносом:
+          самостоятельно — 3 раза в год.</p>
+      </div>
+
+      <form class="panel" id="offlineForm">
+        <h3 style="margin-top: 0">Файл лицензии для компьютера без интернета</h3>
+        <p class="muted" style="margin-top: 0">В плагине откройте окно «Лицензия», нажмите «Копировать» рядом с кодом
+          компьютера и вставьте сюда. Скачанный файл загрузите кнопкой «Файл лицензии…» в том же окне.</p>
+        <label class="field">Полный код компьютера
+          <textarea id="hwid" spellcheck="false" required placeholder="четыре части через точку"></textarea></label>
+        <button class="btn primary" id="offlineBtn">Скачать файл лицензии</button>
+        <p class="msg" id="offlineMsg"></p>
+      </form>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© Strassio</span>
+    <span><a href="/">Главная</a></span>
+  </div>
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const ERRORS = {
+  bad_recovery: "Ключ или ключ восстановления неверный.",
+  not_found: "Этот компьютер уже освобождён. Обновите страницу.",
+  transfer_limit: "Переносы на этот год закончились. Напишите автору — он поможет.",
+  occupied: "Все места ключа заняты. Сначала освободите старый компьютер выше.",
+  blocked: "Ключ заблокирован. Напишите автору.",
+  expired: "Срок ключа закончился.",
+  bad_request: "Код компьютера не похож на настоящий. Скопируйте его кнопкой «Копировать» в плагине.",
+  too_many: "Слишком много попыток. Подождите 15 минут.",
+};
+let creds = null;
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]); }
+function date(s) { return s ? new Date(s).toLocaleDateString("ru-RU") : "—"; }
+function say(id, text, good) { $(id).textContent = text; $(id).className = "msg " + (good ? "ok" : "bad"); }
+
+async function call(action, extra) {
+  const res = await fetch("/api/recovery/" + action, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Object.assign({}, creds, extra)),
+  });
+  const data = await res.json().catch(() => ({ ok: false, error: "server" }));
+  if (res.status === 429) data.error = "too_many";
+  if (!data.ok) throw new Error(ERRORS[data.error] || "Ошибка сервера. Попробуйте позже.");
+  return data;
+}
+
+async function busy(btn, msgId, work) {
+  btn.disabled = true; $(msgId).textContent = "";
+  try { await work(); } catch (e) { say(msgId, e.message); } finally { btn.disabled = false; }
+}
+
+function show(l) {
+  const status = l.status === "active" ? '<span class="ok">активен</span>' : '<span class="bad">заблокирован</span>';
+  $("facts").innerHTML =
+    "<div><b>Ключ</b><span class=mono>" + esc(l.serial) + "</span></div>" +
+    "<div><b>Статус</b>" + status + "</div>" +
+    "<div><b>Действует до</b>" + (l.expiresAt ? date(l.expiresAt) : "бессрочно") + "</div>" +
+    "<div><b>Компьютеров</b>" + l.computers.filter((c) => c.active).length + " из " + l.maxPcs + "</div>" +
+    "<div><b>Переносов осталось</b>" + l.transfersLeft + "</div>";
+  const rows = l.computers.map((c) =>
+    "<tr><td class=mono>" + esc(c.code) + "</td><td>" + date(c.firstAt) + "</td><td>" + date(c.lastCheckAt) + "</td><td>" +
+    (c.active ? '<span class="ok">работает</span>' : '<span class="muted">освобождён</span>') + "</td><td>" +
+    (c.active ? '<button class="btn small" data-id="' + c.id + '">Освободить</button>' : "") + "</td></tr>").join("");
+  $("pcs").innerHTML = "<tr><th>Код компьютера</th><th>Первый запуск</th><th>Последняя проверка</th><th>Состояние</th><th></th></tr>" +
+    (rows || '<tr><td colspan="5" class="muted">Ключ ещё ни разу не вводили в плагине.</td></tr>');
+  $("info").hidden = false;
+}
+
+$("loginForm").onsubmit = (e) => {
+  e.preventDefault();
+  busy($("loginBtn"), "loginMsg", async () => {
+    creds = { serial: $("serial").value, recovery: $("recovery").value };
+    try { show((await call("lookup")).license); } catch (err) { creds = null; $("info").hidden = true; throw err; }
+  });
+};
+
+$("pcs").onclick = (e) => {
+  const b = e.target.closest("button[data-id]"); if (!b) return;
+  if (!confirm("Освободить этот компьютер? Плагин на нём отключится при следующей проверке. Это считается переносом.")) return;
+  busy(b, "pcsMsg", async () => {
+    show((await call("release", { activationId: +b.dataset.id })).license);
+    say("pcsMsg", "Компьютер освобождён. Теперь введите ключ на новом компьютере.", true);
+  });
+};
+
+$("offlineForm").onsubmit = (e) => {
+  e.preventDefault();
+  busy($("offlineBtn"), "offlineMsg", async () => {
+    const data = await call("offline", { hwid: $("hwid").value.trim() });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data.file)], { type: "application/json" }));
+    a.download = "strassio-license.json"; a.click();
+    say("offlineMsg", "Файл скачан. Загрузите его в плагине: окно «Лицензия» → «Файл лицензии…».", true);
+    show((await call("lookup")).license);
+  });
+};
+</script>
+</body>
+</html>

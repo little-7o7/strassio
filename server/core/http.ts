@@ -48,6 +48,32 @@ export class RateLimiter {
 }
 
 const CLIENT_ACTIONS = ["activate", "transfer", "check", "deactivate", "trial"] as const;
+const RECOVERY_ACTIONS = ["lookup", "release", "offline"] as const;
+
+/** Считает только неудачи: после limit неверных ключей восстановления за windowMs адрес ждёт. */
+export class FailureLimiter {
+  private readonly fails = new Map<string, number[]>();
+
+  constructor(
+    private readonly limit: number,
+    private readonly windowMs: number,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  blocked(key: string): boolean {
+    const t = this.now();
+    const recent = (this.fails.get(key) ?? []).filter((x) => t - x < this.windowMs);
+    this.fails.set(key, recent);
+    return recent.length >= this.limit;
+  }
+
+  fail(key: string): void {
+    const list = this.fails.get(key) ?? [];
+    list.push(this.now());
+    this.fails.set(key, list);
+    if (this.fails.size > 10000) this.fails.clear();
+  }
+}
 
 export class App {
   constructor(
@@ -55,6 +81,7 @@ export class App {
     adminPassword: string | undefined,
     private readonly clientLimiter = new RateLimiter(30, 60_000),
     private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
+    private readonly recoveryFailures = new FailureLimiter(10, 15 * 60_000),
   ) {
     // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
     this.adminPassword = adminPassword?.trim();
@@ -75,7 +102,8 @@ export class App {
     const path = req.path.replace(/\/+$/, "") || "/";
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
 
-    if (req.method === "GET" && (path === "/admin" || path === "/")) {
+    // Админка — /adminpanel (vercel.json переписывает его сюда как /admin). Главная «/» — статический сайт.
+    if (req.method === "GET" && (path === "/admin" || path === "/adminpanel")) {
       return { status: 200, html: ADMIN_PAGE };
     }
 
@@ -94,6 +122,21 @@ export class App {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
       const result = await this.service[clientAction](body);
+      return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
+    }
+
+    // Сайт: восстановление лицензии по ключу восстановления. Неудачные попытки ограничены строго —
+    // перебирать ключ восстановления бессмысленно.
+    const recoveryAction = RECOVERY_ACTIONS.find((a) => path === "/api/recovery/" + a);
+    if (recoveryAction) {
+      if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
+      if (!this.clientLimiter.allow(req.ip)) return tooMany();
+      if (this.recoveryFailures.blocked(req.ip)) return tooMany();
+      const result =
+        recoveryAction === "lookup" ? await this.service.recoveryLookup(body.serial, body.recovery) :
+        recoveryAction === "release" ? await this.service.recoveryRelease(body.serial, body.recovery, body.activationId) :
+        await this.service.recoveryOffline(body.serial, body.recovery, body.hwid);
+      if (!result.ok && result.error === "bad_recovery") this.recoveryFailures.fail(req.ip);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
@@ -119,15 +162,15 @@ export class App {
     switch (req.method + " " + action) {
       case "POST login":
         return ok({});
-      case "POST keys":
-        return ok({
-          serials: await s.createKeys({
-            count: Number(body.count) || 1,
-            days: Number(body.days) || null,
-            maxPcs: Number(body.maxPcs) || 1,
-            note: typeof body.note === "string" ? body.note : "",
-          }),
+      case "POST keys": {
+        const keys = await s.createKeys({
+          count: Number(body.count) || 1,
+          days: Number(body.days) || null,
+          maxPcs: Number(body.maxPcs) || 1,
+          note: typeof body.note === "string" ? body.note : "",
         });
+        return ok({ keys, serials: keys.map((k) => k.serial) });
+      }
       case "GET licenses":
         return ok({ licenses: await s.search(req.query.get("q") ?? "") });
       case "POST license": {

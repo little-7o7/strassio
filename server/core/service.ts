@@ -1,7 +1,8 @@
 // Правила лицензий (SPEC 13.2–13.6) без привязки к платформе: всё время — через clock, данные —
 // через Store, подпись — через Signer. Ответы клиенту: { ok: true, license } или { ok: false, error }.
-import { Signer, SignedDocument, newSerial, normalizeSerial } from "./crypto.js";
-import { hwidMatches, parseHwid } from "./hwid.js";
+import { timingSafeEqual } from "node:crypto";
+import { Signer, SignedDocument, newRecoveryCode, newSerial, normalizeRecoveryCode, normalizeSerial } from "./crypto.js";
+import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
 import type { ActivationRow, LicenseRow, Store, UpdateRow } from "./store.js";
 
 export const CHECK_EVERY_DAYS = 1;
@@ -29,6 +30,19 @@ export interface ClientRequest {
   pluginVersion?: unknown;
   corelVersion?: unknown;
 }
+
+/** Что видит владелец ключа на сайте (страница восстановления). Коды компьютеров — только короткие. */
+export interface RecoveryView {
+  serial: string;
+  plan: string;
+  status: string;
+  expiresAt: string | null;
+  maxPcs: number;
+  transfersLeft: number;
+  computers: Array<{ id: number; code: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
+}
+
+export type RecoveryResult<T> = { ok: true } & T | { ok: false; error: ErrorCode | "bad_recovery" };
 
 export interface KeyOptions {
   count?: number;
@@ -163,15 +177,16 @@ export class LicenseService {
 
   // ---------- Админка ----------
 
-  async createKeys(options: KeyOptions): Promise<string[]> {
+  async createKeys(options: KeyOptions): Promise<Array<{ serial: string; recoveryCode: string }>> {
     const count = clamp(Math.floor(options.count ?? 1), 1, 500);
     const maxPcs = clamp(Math.floor(options.maxPcs ?? 1), 1, 100);
     const now = this.clock();
     const expiresAt = options.days && options.days > 0 ? new Date(now.getTime() + options.days * DAY) : null;
-    const serials: string[] = [];
+    const keys: Array<{ serial: string; recoveryCode: string }> = [];
     for (let i = 0; i < count; i++) {
       let serial = newSerial();
       while (await this.store.findLicense(serial)) serial = newSerial();
+      const recoveryCode = newRecoveryCode();
       await this.store.insertLicense({
         serial,
         plan: "full",
@@ -182,12 +197,13 @@ export class LicenseService {
         transfersSince: now,
         note: (options.note ?? "").slice(0, 500),
         createdAt: now,
+        recoveryCode,
       });
-      serials.push(serial);
+      keys.push({ serial, recoveryCode });
     }
 
-    await this.log("admin", "create_keys", serials.length === 1 ? serials[0] : "", `${count} шт., ПК: ${maxPcs}, срок: ${options.days || "бессрочно"}`);
-    return serials;
+    await this.log("admin", "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., ПК: ${maxPcs}, срок: ${options.days || "бессрочно"}`);
+    return keys;
   }
 
   async search(query: string): Promise<Array<LicenseRow & { activations: ActivationRow[] }>> {
@@ -196,7 +212,7 @@ export class LicenseService {
     return Promise.all(rows.map(async (l) => ({ ...l, activations: await this.store.activations(l.id) })));
   }
 
-  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, max_pcs, note. */
+  /** Действие над ключом: block, unblock, extend (days; 0 — бессрочно), reset_transfers, max_pcs, note, new_recovery. */
   async adminLicense(serialText: unknown, action: string, value: unknown): Promise<LicenseRow | null> {
     const serial = normalizeSerial(serialText);
     const license = serial ? await this.store.findLicense(serial) : null;
@@ -225,12 +241,16 @@ export class LicenseService {
       case "note":
         license.note = String(value ?? "").slice(0, 500);
         break;
+      case "new_recovery":
+        // Старый код перестаёт работать (клиент его потерял или показал кому-то).
+        license.recoveryCode = newRecoveryCode();
+        break;
       default:
         return null;
     }
 
     await this.store.updateLicense(license);
-    await this.log("admin", action, license.serial, value === undefined ? "" : String(value));
+    await this.log("admin", action, license.serial, value === undefined || action === "new_recovery" ? "" : String(value));
     return license;
   }
 
@@ -266,6 +286,94 @@ export class LicenseService {
 
   auditLog(limit = 200) {
     return this.store.auditLog(limit);
+  }
+
+  // ---------- Сайт: восстановление лицензии по ключу восстановления ----------
+
+  /** Ключ + ключ восстановления → сведения о лицензии и её компьютерах. */
+  async recoveryLookup(serialText: unknown, codeText: unknown): Promise<RecoveryResult<{ license: RecoveryView }>> {
+    const license = await this.recoveryLicense(serialText, codeText);
+    if (!license) return { ok: false, error: "bad_recovery" };
+    return { ok: true, license: await this.recoveryView(license) };
+  }
+
+  /**
+   * «Освободить» компьютер с сайта (например, старый сломался или Windows переустановили на другом
+   * железе). Считается переносом (3 за 365 дней): иначе ключ можно было бы бесконечно передавать.
+   */
+  async recoveryRelease(serialText: unknown, codeText: unknown, activationId: unknown): Promise<RecoveryResult<{ license: RecoveryView }>> {
+    const license = await this.recoveryLicense(serialText, codeText);
+    if (!license) return { ok: false, error: "bad_recovery" };
+    const activation = await this.store.findActivation(Number(activationId));
+    if (!activation || activation.licenseId !== license.id || activation.status !== "active") return { ok: false, error: "not_found" };
+
+    this.resetTransfersIfYearPassed(license);
+    if (license.transfersCount >= TRANSFERS_PER_YEAR) {
+      await this.store.updateLicense(license);
+      return { ok: false, error: "transfer_limit" };
+    }
+
+    activation.status = "revoked";
+    await this.store.updateActivation(activation);
+    license.transfersCount++;
+    await this.store.updateLicense(license);
+    await this.log("site", "release", license.serial, `активация ${activation.id}, ${activation.hwid}`);
+    return { ok: true, license: await this.recoveryView(license) };
+  }
+
+  /**
+   * Файл лицензии для компьютера без интернета (сам клиент, без автора): код компьютера из окна
+   * «Лицензия» → подписанный файл. Число компьютеров ключа соблюдается — место должно быть свободно.
+   */
+  async recoveryOffline(serialText: unknown, codeText: unknown, hwidText: unknown): Promise<RecoveryResult<{ file: SignedDocument }>> {
+    const license = await this.recoveryLicense(serialText, codeText);
+    if (!license) return { ok: false, error: "bad_recovery" };
+    const problem = this.licenseProblem(license);
+    if (problem) return { ok: false, error: problem };
+    const parts = parseHwid(hwidText);
+    if (!parts) return { ok: false, error: "bad_request" };
+
+    const hwid = parts.join(".");
+    const active = (await this.store.activations(license.id)).filter((a) => a.status === "active");
+    if (!active.some((a) => hwidMatches(parseHwid(a.hwid)!, parts))) {
+      if (active.length >= license.maxPcs) return { ok: false, error: "occupied" };
+      await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }));
+    }
+
+    await this.log("site", "offline", license.serial, hwid);
+    return { ok: true, file: this.sign(license.serial, hwid, license.plan, license.expiresAt, true) };
+  }
+
+  private async recoveryLicense(serialText: unknown, codeText: unknown): Promise<LicenseRow | null> {
+    const serial = normalizeSerial(serialText);
+    const code = normalizeRecoveryCode(codeText);
+    if (!serial || !code) return null;
+    const license = await this.store.findLicense(serial);
+    if (!license || !license.recoveryCode) return null;
+    const a = Buffer.from(license.recoveryCode);
+    const b = Buffer.from(code);
+    return a.length === b.length && timingSafeEqual(a, b) ? license : null;
+  }
+
+  private async recoveryView(license: LicenseRow): Promise<RecoveryView> {
+    const activations = await this.store.activations(license.id);
+    return {
+      serial: license.serial,
+      plan: license.plan,
+      status: license.status,
+      expiresAt: license.expiresAt ? iso(license.expiresAt) : null,
+      maxPcs: license.maxPcs,
+      transfersLeft: this.transfersLeft(license),
+      computers: activations.map((a) => ({
+        id: a.id,
+        code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
+        active: a.status === "active",
+        firstAt: iso(a.firstAt),
+        lastCheckAt: iso(a.lastCheckAt),
+        pluginVersion: a.pluginVersion,
+        corelVersion: a.corelVersion,
+      })),
+    };
   }
 
   // ---------- Внутреннее ----------

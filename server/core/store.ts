@@ -16,6 +16,8 @@ export interface LicenseRow {
   transfersSince: Date;
   note: string;
   createdAt: Date;
+  /** Ключ восстановления RCV-… для сайта (освободить компьютер, файл лицензии); "" — ещё не выдан. */
+  recoveryCode: string;
 }
 
 export interface ActivationRow {
