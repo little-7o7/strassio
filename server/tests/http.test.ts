@@ -50,7 +50,7 @@ test("полный путь: ключ из админки → активация
 
 test("страница админки и неизвестные пути", async () => {
   const app = makeApp();
-  const page = await app.handle(req("GET", "/admin"));
+  const page = await app.handle(req("GET", "/adminpanel"));
   assert.equal(page.status, 200);
   assert.match(page.html!, /Strassio/);
   assert.equal((await app.handle(req("GET", "/api/nope"))).status, 404);

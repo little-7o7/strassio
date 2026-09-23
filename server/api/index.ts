@@ -1,4 +1,4 @@
-// Адаптер Vercel: единственная функция, все пути (/api/*, /admin) приходят сюда через vercel.json.
+// Адаптер Vercel: единственная функция, все пути (/api/*, /adminpanel) приходят сюда через vercel.json.
 // Вся логика — в server/core (SPEC 15: при переезде на Cloudflare меняется только этот файл).
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { neon } from "@neondatabase/serverless";

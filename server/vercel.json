@@ -5,12 +5,8 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/admin",
-      "destination": "/api?__path=admin"
-    },
-    {
       "source": "/adminpanel",
-      "destination": "/api?__path=admin"
+      "destination": "/api?__path=adminpanel"
     },
     {
       "source": "/api/:path*",
@@ -44,7 +40,7 @@
       ]
     },
     {
-      "source": "/(admin|adminpanel|api/.*)",
+      "source": "/(adminpanel|api/.*)",
       "headers": [
         {
           "key": "Cache-Control",

@@ -104,8 +104,8 @@ export class App {
     const path = req.path.replace(/\/+$/, "") || "/";
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
 
-    // Админка — /adminpanel (vercel.json переписывает его сюда как /admin). Главная «/» — статический сайт.
-    if (req.method === "GET" && (path === "/admin" || path === "/adminpanel")) {
+    // Админка — только /adminpanel. Главная «/» — статический сайт.
+    if (req.method === "GET" && path === "/adminpanel") {
       return { status: 200, html: ADMIN_PAGE };
     }
 

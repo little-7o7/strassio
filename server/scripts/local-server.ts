@@ -65,6 +65,6 @@ createServer(async (req, res) => {
     res.end(JSON.stringify(response.json ?? {}));
   }
 }).listen(port, "127.0.0.1", () => {
-  console.log(`Strassio: локальный сервер http://localhost:${port} (сайт: /, админка: /admin, пароль: ${password})`);
+  console.log(`Strassio: локальный сервер http://localhost:${port} (сайт: /, админка: /adminpanel, пароль: ${password})`);
   console.log(`PUBLIC_KEY=${signer.publicKeyXY()}`);
 });
