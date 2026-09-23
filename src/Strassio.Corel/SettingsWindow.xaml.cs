@@ -12,6 +12,7 @@ using Microsoft.Win32;
 using Strassio.Core.Localization;
 using Strassio.Core.Settings;
 using Strassio.Corel.Themes;
+using Strassio.Licensing;
 using CorelApplication = Corel.Interop.VGCore.Application;
 
 namespace Strassio.Corel
@@ -58,6 +59,7 @@ namespace Strassio.Corel
         private void Fill()
         {
             PluginSettings s = context.Settings;
+            FillAbout();
 
             IReadOnlyList<LanguageInfo> languages = Loc.AvailableLanguages;
             LanguageCombo.ItemsSource = languages;
@@ -197,7 +199,88 @@ namespace Strassio.Corel
         }
 
         /// <summary>Окно «Лицензия» (активация через сайт) — живёт в настройках, а не в шапке докера.</summary>
-        private void License_Click(object sender, RoutedEventArgs e) => new LicenseWindow(app) { Owner = this }.ShowDialog();
+        private void License_Click(object sender, RoutedEventArgs e)
+        {
+            new LicenseWindow(app) { Owner = this }.ShowDialog();
+            FillAbout();
+        }
+
+        /// <summary>
+        /// «О программе»: версии Strassio, CorelDRAW, Windows и .NET, папки, лицензия и клиент (имя,
+        /// телефон, почта, день рождения, Telegram — приходят с сервера при сверке, см. LicenseClient).
+        /// </summary>
+        private void FillAbout()
+        {
+            var lines = new List<string>();
+            void Line(string key, string? value)
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    lines.Add(Loc.Format(key, value!.Trim()));
+                }
+            }
+
+            string addonDir = Path.GetDirectoryName(typeof(SettingsWindow).Assembly.Location) ?? string.Empty;
+            Line("about.version", typeof(SettingsWindow).Assembly.GetName().Version?.ToString(3));
+            Line("about.corel", (context.License.CorelVersion ?? "—") + " (" + (Environment.Is64BitProcess ? "64" : "32") + " bit)");
+            Line("about.windows", Environment.OSVersion.VersionString + (Environment.Is64BitOperatingSystem ? ", 64 bit" : ", 32 bit"));
+            Line("about.net", System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription);
+            Line("about.addonDir", addonDir);
+            Line("about.dataDir", context.Store.Directory);
+            Line("about.site", LicenseKeys.Server);
+
+            lines.Add(string.Empty);
+            LicenseStatus status = context.License.Status;
+            Line("about.license", LicenseWindow.DescribeState(Loc, status, context.License.LastProblem));
+            LicenseData? license = status.License;
+            if (license != null && !license.IsTrial)
+            {
+                Line("about.serial", license.Serial);
+                Line("about.until", license.ExpiresUtc.HasValue ? license.ExpiresUtc.Value.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) : Loc["license.forever"]);
+            }
+
+            if (license?.IssuedUtc != null)
+            {
+                Line("about.lastCheck", license.IssuedUtc.Value.ToLocalTime().ToString("g", CultureInfo.CurrentCulture));
+            }
+
+            Line("about.computer", context.License.IsComputerKnown ? context.License.Computer.Display : "…");
+
+            lines.Add(string.Empty);
+            lines.Add(Loc["about.client"]);
+            LicenseClient? client = license != null && !license.IsTrial ? context.License.Client : null;
+            if (client == null)
+            {
+                lines.Add(Loc["about.noClient"]);
+            }
+            else
+            {
+                Line("about.firstName", client.FirstName);
+                Line("about.lastName", client.LastName);
+                Line("about.phone", client.Phone);
+                Line("about.email", client.Email);
+                Line("about.birthday", DateTime.TryParseExact(client.Birthday, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime birthday)
+                    ? birthday.ToString("d", CultureInfo.CurrentCulture) : client.Birthday);
+                Line("about.telegram", string.IsNullOrWhiteSpace(client.Telegram) ? null : "@" + client.Telegram);
+            }
+
+            AboutBox.Text = string.Join(Environment.NewLine, lines);
+        }
+
+        private void CopyAbout_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Clipboard.SetText(AboutBox.Text);
+                ErrorText.Text = Loc["about.copied"];
+                ErrorText.Foreground = System.Windows.Media.Brushes.SeaGreen;
+                ErrorText.Visibility = Visibility.Visible;
+            }
+            catch (Exception)
+            {
+                // Буфер обмена занят другой программой — можно нажать ещё раз.
+            }
+        }
 
         private void OpenFolder_Click(object sender, RoutedEventArgs e)
         {

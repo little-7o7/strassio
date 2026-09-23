@@ -51,6 +51,9 @@ namespace Strassio.Licensing
     {
         public const string FileName = "license.json";
 
+        /// <summary>Данные клиента (<see cref="LicenseClient"/>) — рядом с лицензией.</summary>
+        public const string ClientFileName = "client.json";
+
         /// <summary>Ошибки сервера, после которых лицензия на этом компьютере больше не действует.</summary>
         private static readonly string[] FatalErrors = { "revoked", "not_activated", "not_found", "blocked", "expired" };
 
@@ -78,6 +81,7 @@ namespace Strassio.Licensing
             this.key = key;
             this.clock = clock ?? (() => DateTime.UtcNow);
             FilePath = Path.Combine(directory, FileName);
+            ClientPath = Path.Combine(directory, ClientFileName);
             guard = new TimeGuard(markStores ?? new IMarkStore[] { new FileMarkStore(Path.Combine(directory, "license.state")) }, () => Computer.ToStorage());
         }
 
@@ -85,6 +89,27 @@ namespace Strassio.Licensing
         public event EventHandler? Changed;
 
         public string FilePath { get; }
+
+        public string ClientPath { get; }
+
+        /// <summary>
+        /// Клиент, на которого выдан ключ (последнее, что прислал сервер при сверке); null — ещё не
+        /// приходило или лицензии нет.
+        /// </summary>
+        public LicenseClient? Client
+        {
+            get
+            {
+                try
+                {
+                    return File.Exists(ClientPath) ? Json.TryRead<LicenseClient>(File.ReadAllText(ClientPath)) : null;
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            }
+        }
 
         /// <summary>Версии для сервера (видны автору в админке).</summary>
         public string? PluginVersion { get; set; }
@@ -344,6 +369,10 @@ namespace Strassio.Licensing
             LastProblem = null;
             guard.AcceptServerTime(issued.Value);
             Save(reply.License);
+            if (reply.Client != null)
+            {
+                SaveClient(reply.Client);
+            }
 
             LicenseStatus status = Status;
             if (status.State == LicenseState.ClockTampered)
@@ -372,6 +401,30 @@ namespace Strassio.Licensing
         {
             guard.Forbid(license.IssuedUtc ?? clock());
             Save(null);
+            SaveClient(null);
+        }
+
+        private void SaveClient(LicenseClient? client)
+        {
+            try
+            {
+                if (client == null)
+                {
+                    if (File.Exists(ClientPath))
+                    {
+                        File.Delete(ClientPath);
+                    }
+                }
+                else
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(ClientPath)!);
+                    File.WriteAllText(ClientPath, Json.Write(client));
+                }
+            }
+            catch (Exception)
+            {
+                // Только сведения для «О программе» — лицензия от этого не зависит.
+            }
         }
 
         private ApiRequest NewRequest(string? serial) => new ApiRequest

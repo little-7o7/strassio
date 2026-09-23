@@ -3,7 +3,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding [settings.title]}"
-        Width="380" SizeToContent="Height" ResizeMode="NoResize"
+        Width="440" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         Background="{DynamicResource Strassio.Background}"
         Foreground="{DynamicResource Strassio.Foreground}">
@@ -70,6 +70,12 @@
             <Button Content="{Binding [settings.license]}" Click="License_Click" Margin="0,0,6,6"
                     ToolTip="{Binding [settings.license.tooltip]}"/>
         </WrapPanel>
+
+        <!-- О программе: версии, лицензия, клиент — одним текстом, который можно скопировать для поддержки. -->
+        <TextBlock Text="{Binding [about.title]}" FontWeight="SemiBold" Margin="0,10,0,4"/>
+        <TextBox x:Name="AboutBox" IsReadOnly="True" TextWrapping="Wrap" MaxHeight="300"
+                 VerticalScrollBarVisibility="Auto" Padding="6,4" Margin="0,0,0,6"/>
+        <Button Content="{Binding [about.copy]}" Click="CopyAbout_Click" HorizontalAlignment="Left" Margin="0,0,0,6"/>
 
         <DockPanel Margin="0,6,0,0" LastChildFill="False">
             <Button DockPanel.Dock="Right" Content="{Binding [settings.cancel]}" IsCancel="True" Margin="6,0,0,0" MinWidth="80"/>

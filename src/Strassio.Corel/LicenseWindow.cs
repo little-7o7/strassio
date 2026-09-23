@@ -210,7 +210,10 @@ namespace Strassio.Corel
             releaseButton.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private string StateText(LicenseStatus status)
+        private string StateText(LicenseStatus status) => DescribeState(Loc, status, context.License.LastProblem);
+
+        /// <summary>Состояние лицензии одной фразой (окно «Лицензия» и «О программе» в настройках).</summary>
+        internal static string DescribeState(Localizer Loc, LicenseStatus status, string? lastProblem)
         {
             switch (status.State)
             {
@@ -229,7 +232,7 @@ namespace Strassio.Corel
                 case LicenseState.ClockTampered:
                     return Loc["license.state.clock"];
                 default:
-                    return context.License.LastProblem != null ? Loc["license.error." + context.License.LastProblem] : Loc["license.state.none"];
+                    return lastProblem != null ? Loc["license.error." + lastProblem] : Loc["license.state.none"];
             }
         }
 
@@ -298,6 +301,9 @@ namespace Strassio.Corel
             if (result.Ok)
             {
                 codeBox.Text = string.Empty;
+
+                // Сразу сверка в фоне: придут данные клиента для «О программе» (имя, телефон, почта…).
+                _ = System.Threading.Tasks.Task.Run(() => context.License.CheckAsync(force: true));
             }
 
             ShowMessage(result.Ok ? "license.done.activated" : "license.error." + result.Error);

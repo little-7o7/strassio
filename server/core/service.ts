@@ -25,7 +25,7 @@ export type ErrorCode =
   | "wrong_email";
 
 export type ClientResult =
-  | { ok: true; license: SignedDocument }
+  | { ok: true; license: SignedDocument; client?: ClientInfo }
   | { ok: false; error: ErrorCode; transfersLeft?: number; nextTransferAt?: string | null };
 
 export interface ClientRequest {
@@ -608,7 +608,9 @@ export class LicenseService {
     if (input.corelVersion) activation.corelVersion = input.corelVersion;
     await this.store.updateActivation(activation);
     if (action) await this.log("client", action, license.serial, input.hwid);
-    return this.issue(license, activation.hwid);
+    // Данные клиента — для блока «О программе» в настройках плагина. Получает их только компьютер,
+    // на котором этот ключ сейчас активирован (сверка по коду компьютера).
+    return { ...this.issue(license, activation.hwid), client: { ...license.client } };
   }
 
   private issue(license: LicenseRow, hwid: string): { ok: true; license: SignedDocument } {

@@ -283,6 +283,30 @@ public class LicenseManagerTests : IDisposable
         Assert.Equal(LicenseState.None, m.Status.State);
     }
 
+    /// <summary>Данные клиента для «О программе»: приходят при сверке, лежат в client.json, снимаются вместе с лицензией.</summary>
+    [Fact]
+    public async Task Client_SavedFromCheck_AndRemovedWithLicense()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(License(Pc))).Ok);
+        Assert.Null(m.Client);
+
+        api.Reply = _ => new ApiReply
+        {
+            Ok = true,
+            License = License(Pc),
+            Client = new LicenseClient { FirstName = "Мадина", LastName = "Каримова", Phone = "+998 90 123 45 67", Email = "m@example.com", Birthday = "1995-03-08", Telegram = "madina_k" },
+        };
+        await m.CheckAsync(force: true);
+        Assert.Equal("Мадина", NewManager().Client?.FirstName);
+        Assert.Equal("madina_k", NewManager().Client?.Telegram);
+
+        api.Reply = _ => Error("revoked");
+        await m.CheckAsync(force: true);
+        Assert.Null(m.Client);
+        Assert.False(File.Exists(m.ClientPath));
+    }
+
     /// <summary>Код, сделанный настоящим сервером (toActivationCode), читается плагином и подпись сходится.</summary>
     [Fact]
     public void ActivationCode_FromServer_DecodesAndVerifies()

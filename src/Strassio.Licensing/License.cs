@@ -149,6 +149,35 @@ namespace Strassio.Licensing
     }
 
     /// <summary>JSON через встроенный DataContractJsonSerializer (CLAUDE.md, правило 7).</summary>
+    /// <summary>
+    /// Клиент, на которого выдан ключ (имя, телефон, почта…): заполняет автор в админке или приходит
+    /// из заявки. Показывается в настройках → «О программе». Не подписан и ни на что не влияет —
+    /// только для сведения; хранится рядом с лицензией (client.json), чтобы был виден и без интернета.
+    /// </summary>
+    [DataContract]
+    internal sealed class LicenseClient
+    {
+        [DataMember(Name = "firstName", Order = 0, EmitDefaultValue = false)]
+        public string? FirstName { get; set; }
+
+        [DataMember(Name = "lastName", Order = 1, EmitDefaultValue = false)]
+        public string? LastName { get; set; }
+
+        [DataMember(Name = "phone", Order = 2, EmitDefaultValue = false)]
+        public string? Phone { get; set; }
+
+        [DataMember(Name = "email", Order = 3, EmitDefaultValue = false)]
+        public string? Email { get; set; }
+
+        /// <summary>ГГГГ-ММ-ДД или пусто.</summary>
+        [DataMember(Name = "birthday", Order = 4, EmitDefaultValue = false)]
+        public string? Birthday { get; set; }
+
+        /// <summary>Имя пользователя Telegram без @.</summary>
+        [DataMember(Name = "telegram", Order = 5, EmitDefaultValue = false)]
+        public string? Telegram { get; set; }
+    }
+
     internal static class Json
     {
         public static string Write<T>(T value)

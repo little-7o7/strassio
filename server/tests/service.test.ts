@@ -417,3 +417,14 @@ test("почта — второй секрет к ключу: без неё и �
   // Несуществующий ключ — обычное not_found (почту не проверяем, раз ключа нет).
   assert.deepEqual(await service.siteLookup("STRS-AAAA-BBBB-CCCC", "a@b.cd"), { ok: false, error: "not_found" });
 });
+
+test("сверка отдаёт плагину данные клиента (для «О программе»), только активированному компьютеру", async () => {
+  const { service } = setup();
+  const client = { firstName: "Мадина", lastName: "Каримова", phone: "+998 90 123 45 67", email: "m@example.com", birthday: "1995-03-08", telegram: "madina_k" };
+  const [{ serial }] = await service.createKeys({ client });
+  payload(await service.activate({ serial, hwid: PC1 }));
+  const checked = await service.check({ serial, hwid: PC1 });
+  assert.ok(checked.ok);
+  if (checked.ok) assert.deepEqual(checked.client, client);
+  assert.deepEqual(await service.check({ serial, hwid: PC2 }), { ok: false, error: "not_activated" }, "чужой компьютер ничего не получает");
+});

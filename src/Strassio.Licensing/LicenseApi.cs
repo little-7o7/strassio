@@ -49,6 +49,10 @@ namespace Strassio.Licensing
         [DataMember(Name = "update", Order = 4, EmitDefaultValue = false)]
         public SignedDocument? Update { get; set; }
 
+        /// <summary>Данные клиента из админки — приходят при сверке (только активированному компьютеру).</summary>
+        [DataMember(Name = "client", Order = 5, EmitDefaultValue = false)]
+        public LicenseClient? Client { get; set; }
+
         public static ApiReply Offline() => new ApiReply { Ok = false, Error = NoConnection };
     }
 
