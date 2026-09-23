@@ -27,3 +27,8 @@ strassio-stone-256.png
 src/Strassio.Corel/interop/*.dll
 
 .vercel
+
+# Образцы работ автора (его дизайны) — репозиторий публичный, чужие работы в него не кладём.
+/vector.svg
+/1.svg
+/samples/
