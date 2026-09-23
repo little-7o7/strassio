@@ -8,55 +8,176 @@ export const ADMIN_PAGE = `<!doctype html>
 <meta name="robots" content="noindex">
 <title>Strassio — админка</title>
 <style>
-  :root { --bg:#f6f7f9; --card:#fff; --text:#1d2330; --muted:#6b7280; --line:#e3e6eb; --accent:#2f6fde; --bad:#c62828; --ok:#2e7d32; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#15181e; --card:#1e232b; --text:#e6e9ef; --muted:#9aa3b2; --line:#2e3440; --accent:#6ea0ff; --bad:#ef6c6c; --ok:#6fcf73; } }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); }
-  main { max-width:1800px; margin:0 auto; padding:16px 24px; }
-  a { color:var(--accent); }
+  /* Внешний вид админки — тот же язык, что и у сайта (подход Apple): один синий акцент,
+     системный шрифт, волосяные линии, мягкие тени, мгновенный отклик на нажатие.
+     Тема: «как в системе» плюс ручной выбор — общий с сайтом (/theme.js, <html data-theme>). */
+  :root {
+    color-scheme: light dark;
+    --bg:#f5f5f7; --bg-sunken:#ececed; --card:#fff; --card-2:#fbfbfd;
+    --text:#1d1d1f; --muted:#6e6e73; --faint:#8e8e93;
+    --line:rgba(0,0,0,.10); --line-strong:rgba(0,0,0,.18);
+    --accent:#0a68e0; --accent-hover:#0a5cc6; --accent-soft:rgba(10,104,224,.10); --on-accent:#fff;
+    --bad:#c9342c; --ok:#1d7a33;
+    --shadow-s:0 1px 2px rgba(0,0,0,.05); --shadow-m:0 2px 8px rgba(0,0,0,.07), 0 12px 28px rgba(0,0,0,.07);
+    --chrome:rgba(255,255,255,.78);
+    --t-fast:120ms cubic-bezier(.32,.72,0,1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg:#000; --bg-sunken:#0d0d0f; --card:#1c1c1e; --card-2:#232326;
+      --text:#f5f5f7; --muted:#a1a1a6; --faint:#8a8a8e;
+      --line:rgba(255,255,255,.12); --line-strong:rgba(255,255,255,.22);
+      --accent:#4c9dff; --accent-hover:#6aaeff; --accent-soft:rgba(76,157,255,.16); --on-accent:#06121f;
+      --bad:#ff6b60; --ok:#4ad06a;
+      --shadow-s:0 1px 2px rgba(0,0,0,.5); --shadow-m:0 2px 8px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.45);
+      --chrome:rgba(22,22,24,.78);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:#000; --bg-sunken:#0d0d0f; --card:#1c1c1e; --card-2:#232326;
+    --text:#f5f5f7; --muted:#a1a1a6; --faint:#8a8a8e;
+    --line:rgba(255,255,255,.12); --line-strong:rgba(255,255,255,.22);
+    --accent:#4c9dff; --accent-hover:#6aaeff; --accent-soft:rgba(76,157,255,.16); --on-accent:#06121f;
+    --bad:#ff6b60; --ok:#4ad06a;
+    --shadow-s:0 1px 2px rgba(0,0,0,.5); --shadow-m:0 2px 8px rgba(0,0,0,.5), 0 12px 32px rgba(0,0,0,.45);
+    --chrome:rgba(22,22,24,.78);
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif;
+    font-size:14px; line-height:1.45; letter-spacing:-.006em;
+    -webkit-font-smoothing:antialiased;
+  }
+  main { max-width:1800px; margin:0 auto; padding:0 24px 40px; }
+  a { color:var(--accent); text-decoration:none; }
+  a:hover { text-decoration:underline; text-underline-offset:2px; }
   a:visited { color:var(--accent); }
-  h1 { font-size:20px; margin:8px 0 16px; }
-  h2 { font-size:15px; margin:0 0 10px; }
-  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
-  label { display:inline-flex; flex-direction:column; gap:3px; margin:0 10px 8px 0; color:var(--muted); font-size:12px; }
-  input, textarea, select { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
-  textarea { width:100%; min-height:70px; }
-  button { font:inherit; border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:6px; padding:6px 12px; cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
-  button.small { padding:2px 8px; font-size:12px; }
-  .row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:0 6px; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
+
+  /* Шапка: плавающий стеклянный слой, таблицы проезжают под ним. */
+  .bar {
+    position:sticky; top:0; z-index:6; margin:0 -24px 16px; padding:10px 24px;
+    display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+    background:var(--chrome); backdrop-filter:saturate(180%) blur(20px);
+    -webkit-backdrop-filter:saturate(180%) blur(20px); box-shadow:0 1px 0 var(--line);
+  }
+  h1 { font-size:19px; font-weight:600; letter-spacing:-.02em; margin:0; }
+  h2 { font-size:15px; font-weight:600; letter-spacing:-.015em; margin:0 0 12px; }
+  .grow { margin-left:auto; }
+
+  section {
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:18px; margin-bottom:14px; box-shadow:var(--shadow-s);
+  }
+
+  label { display:inline-flex; flex-direction:column; gap:4px; margin:0 10px 10px 0; color:var(--muted); font-size:12px; }
+  input, textarea, select {
+    font-family:inherit; font-size:14px; color:var(--text);
+    background:var(--bg-sunken); border:1px solid transparent; border-radius:9px; padding:8px 10px;
+    transition:background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
+  }
+  input:hover, textarea:hover, select:hover { background:var(--bg); }
+  input:focus, textarea:focus, select:focus {
+    outline:none; background:var(--card); border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft);
+  }
+  textarea { width:100%; min-height:80px; resize:vertical; }
+
+  button {
+    font-family:inherit; font-size:14px; font-weight:500;
+    border:1px solid var(--line-strong); background:var(--card); color:var(--text);
+    border-radius:999px; padding:7px 14px; cursor:pointer; box-shadow:var(--shadow-s);
+    transition:transform var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+  }
+  button:hover { background:var(--card-2); box-shadow:var(--shadow-m); }
+  button:active { transform:scale(.97); box-shadow:var(--shadow-s); }
+  button.primary { background:var(--accent); border-color:transparent; color:var(--on-accent); font-weight:600; }
+  button.primary:hover { background:var(--accent-hover); }
+  button.small { padding:3px 10px; font-size:12px; }
+  button.danger { color:var(--bad); border-color:var(--bad); }
+  button:disabled { opacity:.5; transform:none; cursor:default; }
+
+  .row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:0 8px; }
   .muted { color:var(--muted); }
   .bad { color:var(--bad); } .ok { color:var(--ok); }
+
+  /* Вкладки — одна «таблетка» с сегментами, как в системных настройках. */
+  .tabs { display:flex; flex-wrap:wrap; gap:2px; padding:3px; border-radius:999px; background:var(--bg-sunken); border:1px solid var(--line); }
+  .tabs button {
+    border:0; background:transparent; box-shadow:none; color:var(--muted);
+    border-radius:999px; padding:6px 14px; font-weight:500;
+  }
+  .tabs button:hover { color:var(--text); background:transparent; box-shadow:none; }
+  .tabs button.on { background:var(--card); color:var(--text); box-shadow:var(--shadow-s); }
+
+  /* Переключатель темы — те же три кнопки, что и на сайте. */
+  .theme-switch { display:inline-flex; gap:2px; padding:2px; border-radius:999px; background:var(--bg-sunken); border:1px solid var(--line); }
+  .theme-switch button {
+    display:grid; place-items:center; width:30px; height:26px; padding:0;
+    border:0; background:transparent; box-shadow:none; color:var(--muted); border-radius:999px;
+  }
+  .theme-switch button svg { width:15px; height:15px; display:block; }
+  .theme-switch button:hover { color:var(--text); background:transparent; box-shadow:none; }
+  .theme-switch button[aria-pressed="true"] { background:var(--card); color:var(--text); box-shadow:var(--shadow-s); }
+
   table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:6px; border-top:1px solid var(--line); vertical-align:top; }
-  code, .mono { font-family:Consolas, monospace; }
-  .tabs button { margin-right:4px; } .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
-  .scroll { overflow-x:auto; }
-  .key { white-space:nowrap; font-family:Consolas, monospace; font-size:14px; font-weight:600; }
-  .acts { display:flex; flex-wrap:wrap; gap:4px; min-width:260px; }
+  th, td { text-align:left; padding:8px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  th { color:var(--faint); font-weight:500; font-size:12px; }
+  tr:hover td { background:var(--accent-soft); }
+  code, .mono { font-family:ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; }
+  .scroll { overflow-x:auto; border-radius:12px; }
+  .key { white-space:nowrap; font-family:ui-monospace, "Cascadia Mono", Consolas, monospace; font-size:14px; font-weight:600; }
+  .acts { display:flex; flex-wrap:wrap; gap:5px; min-width:260px; }
   .acts button { margin:0; }
   td.client { min-width:200px; line-height:1.6; }
   td.client a { word-break:break-all; }
+  #msg { min-height:20px; margin-bottom:10px; }
+
+  dialog {
+    background:var(--card); color:var(--text); border:1px solid var(--line);
+    border-radius:18px; padding:20px; box-shadow:var(--shadow-m);
+  }
+  dialog::backdrop { background:rgba(0,0,0,.45); backdrop-filter:blur(3px); }
+
   @media (max-width: 800px) {
-    main { padding:10px; }
+    main { padding:0 12px 32px; }
+    .bar { margin:0 -12px 12px; padding:10px 12px; }
     label { display:flex; width:100%; margin-right:0; }
     label input, label select { width:100%; }
-    .tabs button { margin-bottom:4px; }
+    .tabs { width:100%; }
     table, thead, tbody, tr, th, td { display:block; width:100%; }
     tr:first-child { display:none; }
     tr { border-top:2px solid var(--line); padding:6px 0; }
     td { border:0; padding:3px 0; }
+    tr:hover td { background:transparent; }
     .acts { min-width:0; }
   }
-  #msg { min-height:20px; margin-bottom:8px; }
-  dialog { background:var(--card); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:16px; }
-  dialog::backdrop { background:rgba(0,0,0,.4); }
-  button.danger { color:var(--bad); border-color:var(--bad); }
+
+  /* «Уменьшить движение» — без вдавливания и разгона. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition-duration:.01ms !important; animation-duration:.01ms !important; }
+    button:active { transform:none; }
+  }
+  /* «Уменьшить прозрачность» — плотная шапка без размытия. */
+  @media (prefers-reduced-transparency: reduce) {
+    .bar { background:var(--card); backdrop-filter:none; -webkit-backdrop-filter:none; }
+    dialog::backdrop { backdrop-filter:none; }
+  }
 </style>
+<script src="/theme.js"></script>
 </head>
 <body>
 <main>
-  <h1>Strassio — лицензии</h1>
+  <div class="bar">
+    <h1>Strassio — лицензии</h1>
+    <div class="grow"></div>
+    <div data-theme-switch></div>
+  </div>
   <!-- Сообщения — вне блока app: ошибка входа («Неверный пароль») должна быть видна и до входа. -->
   <div id="msg"></div>
 
@@ -69,14 +190,16 @@ export const ADMIN_PAGE = `<!doctype html>
   </section>
 
   <div id="app" hidden>
-    <div class="tabs" style="margin-bottom:12px">
-      <button data-tab="keys" class="on">Ключи</button>
-      <button data-tab="requests">Заявки <b id="reqCount"></b></button>
-      <button data-tab="trials">Пробные</button>
-      <button data-tab="offline">Офлайн-активация</button>
-      <button data-tab="updates">Обновления</button>
-      <button data-tab="audit">Журнал</button>
-      <button onclick="logout()" style="float:right">Выйти</button>
+    <div class="row" style="margin-bottom:14px; gap:10px; align-items:center">
+      <div class="tabs">
+        <button data-tab="keys" class="on">Ключи</button>
+        <button data-tab="requests">Заявки <b id="reqCount"></b></button>
+        <button data-tab="trials">Пробные</button>
+        <button data-tab="offline">Офлайн-активация</button>
+        <button data-tab="updates">Обновления</button>
+        <button data-tab="audit">Журнал</button>
+      </div>
+      <button class="grow" onclick="logout()">Выйти</button>
     </div>
 
     <div data-page="keys">

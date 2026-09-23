@@ -43,7 +43,8 @@
   var TITLES = { auto: "Как в системе", light: "Светлая тема", dark: "Тёмная тема" };
 
   function build() {
-    var nav = document.querySelector("header.top nav");
+    // Сайт — в меню шапки; админка — в место, помеченное data-theme-switch.
+    var nav = document.querySelector("[data-theme-switch]") || document.querySelector("header.top nav");
     if (!nav || nav.querySelector(".theme-switch")) {
       return;
     }
