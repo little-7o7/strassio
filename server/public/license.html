@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png">
 <link rel="stylesheet" href="/style.css">
+<script src="/theme.js"></script>
 </head>
 <body>
 <header class="top">
@@ -31,7 +32,7 @@
     <form class="panel" id="loginForm">
       <div class="row2">
         <label class="field">Ключ
-          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+          <input id="serial" class="mono" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
         <label class="field">Почта
           <input id="email" type="email" autocomplete="email" placeholder="почта, указанная при покупке" required></label>
       </div>
@@ -54,7 +55,7 @@
         <p class="muted" style="margin-top: 0">В плагине откройте окно «Лицензия», нажмите «Копировать» рядом с кодом
           компьютера и вставьте сюда. Скачанный файл загрузите кнопкой «Файл лицензии…» в том же окне.</p>
         <label class="field">Полный код компьютера
-          <textarea id="hwid" spellcheck="false" required placeholder="четыре части через точку"></textarea></label>
+          <textarea id="hwid" class="mono" spellcheck="false" required placeholder="четыре части через точку"></textarea></label>
         <button class="btn primary" id="offlineBtn">Скачать файл лицензии</button>
         <p class="msg" id="offlineMsg"></p>
       </form>

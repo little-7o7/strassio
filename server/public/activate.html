@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="icon" href="/favicon.png">
 <link rel="stylesheet" href="/style.css">
+<script src="/theme.js"></script>
 </head>
 <body>
 <header class="top">
@@ -31,12 +32,12 @@
     <form class="panel" id="form">
       <div class="row2">
         <label class="field">Ключ
-          <input id="serial" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
+          <input id="serial" class="mono" autocomplete="off" spellcheck="false" placeholder="STRS-XXXX-XXXX-XXXX" required></label>
         <label class="field">Почта
           <input id="email" type="email" autocomplete="email" placeholder="почта, указанная при покупке" required></label>
       </div>
       <label class="field">Код компьютера
-        <textarea id="hwid" spellcheck="false" required placeholder="из окна «Лицензия» — кнопка «Копировать»"></textarea></label>
+        <textarea id="hwid" class="mono" spellcheck="false" required placeholder="из окна «Лицензия» — кнопка «Копировать»"></textarea></label>
       <button class="btn primary" id="go">Получить код активации</button>
       <button class="btn" id="move" type="button" hidden>Перенести на этот компьютер</button>
       <p class="msg" id="msg"></p>
@@ -46,7 +47,7 @@
       <h3 style="margin-top: 0">Код активации</h3>
       <p class="muted" style="margin-top: 0">Скопируйте его и вставьте в окне «Лицензия» в поле «Код активации»,
         затем нажмите «Активировать». Код подходит только для этого компьютера.</p>
-      <label class="field"><textarea id="code" readonly spellcheck="false" style="min-height: 110px"></textarea></label>
+      <label class="field"><textarea id="code" class="mono" readonly spellcheck="false" style="min-height: 110px"></textarea></label>
       <button class="btn primary" id="copy" type="button">Копировать код</button>
       <p class="msg" id="copyMsg"></p>
     </div>
