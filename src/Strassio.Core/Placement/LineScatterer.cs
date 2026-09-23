@@ -12,6 +12,14 @@ namespace Strassio.Core.Placement
     /// </summary>
     public static class LineScatterer
     {
+        /// <summary>
+        /// Насколько далеко от вершины разрешено срезать угол при скруглении — в шагах ряда.
+        /// Два шага примерно соответствуют углу 29°: тупее — скругляем, острее — оставляем острым,
+        /// иначе кончик фигуры (клюв сердца, тонкий шип) срезается почти целиком.
+        /// </summary>
+        private const double MaxRoundCutInSteps = 2.0;
+
+
         public static IReadOnlyList<PlacedStone> Scatter(Curve curve, LineScatterOptions options)
         {
             FlattenedCurve flat = CurveFlattener.Flatten(curve, options.FlattenToleranceMm);
@@ -69,6 +77,10 @@ namespace Strassio.Core.Placement
                 gapsPerSegment = DistributeGaps(lengths, targetGaps);
             }
 
+            // Скруглённые углы: вместо стразы в вершине обе стороны укорачиваются на cut, и две
+            // крайние стразы обходят вершину вплотную друг к другу (см. CornerPlacement).
+            double[] cornerCut = PlanCornerRounding(flat, breakpoints, segCount, loopCloses, total, options, stoneStep);
+
             var result = new List<PlacedStone>();
             var perSegmentStones = new List<(int ResultIndex, double LocalDist)>[segCount];
 
@@ -92,19 +104,26 @@ namespace Strassio.Core.Placement
                     bIsCorner = breakpoints[i + 1].IsCorner;
                 }
 
-                double subLength = bDist - aDist;
+                // У скруглённого угла отрезок начинается (и заканчивается) не в вершине, а на срезе.
+                int nextIndex = loopCloses && i == segCount - 1 ? 0 : i + 1;
+                double startTrim = cornerCut[i];
+                double endTrim = cornerCut[nextIndex];
+
+                double subLength = bDist - aDist - startTrim - endTrim;
                 bool endForced = bIsCorner || options.Mode != StepMode.ExactStep;
                 int? gapsForSegment = gapsPerSegment?[i];
 
                 List<double> positions = FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsForSegment);
 
                 bool isLastSegment = i == segCount - 1;
-                bool skipEndPoint = loopCloses && isLastSegment;
+                // Конец последнего отрезка совпадает с началом первого только у острого угла: у
+                // скруглённого это две разные стразы по разные стороны среза.
+                bool skipEndPoint = loopCloses && isLastSegment && cornerCut[0] <= 0;
                 var segmentStones = new List<(int ResultIndex, double LocalDist)>();
 
                 foreach (double pos in positions)
                 {
-                    if (i > 0 && pos <= 1e-9)
+                    if (i > 0 && pos <= 1e-9 && startTrim <= 0)
                     {
                         continue; // уже добавлено как конец предыдущего отрезка
                     }
@@ -114,7 +133,7 @@ namespace Strassio.Core.Placement
                         continue; // это та же точка, что начало первого отрезка (замкнутый контур)
                     }
 
-                    double distance = aDist + pos;
+                    double distance = aDist + startTrim + pos;
                     if (loopCloses)
                     {
                         distance = Mod(distance, total);
@@ -133,10 +152,154 @@ namespace Strassio.Core.Placement
             }
 
             NudgeStonesNearSharpCorners(
-                flat, result, perSegmentStones, breakpoints, segCount,
+                flat, result, perSegmentStones, breakpoints, segCount, cornerCut,
                 options.StoneDiameterMm, options.CornerMinGapMm, options.MaxCornerNudgeMm, options.CornerTaperCount);
 
             return result;
+        }
+
+        /// <summary>
+        /// Решает по каждому углу: оставить острым (страза точно в вершине) или скруглить, и если
+        /// скруглять — насколько срезать вершину.
+        ///
+        /// Скругление устроено просто: обе стороны угла укорачиваются на одно и то же расстояние
+        /// cut, и крайние стразы этих сторон встают ровно на срезе. Расстояние между ними тогда
+        /// равно обычному шагу ряда — они касаются друг друга так же, как все остальные, а камня
+        /// в самой вершине нет. Центры этих двух страз лежат на дуге, вписанной в угол, поэтому
+        /// ряд обходит вершину плавно: cut = шаг / (2·sin(половина угла)).
+        ///
+        /// Если срезать столько некуда (сторона слишком короткая), угол остаётся острым — лучше
+        /// небольшой просвет у вершины, чем съеденная половина стороны.
+        /// </summary>
+        private static double[] PlanCornerRounding(
+            FlattenedCurve flat, List<(double Distance, bool IsCorner)> breakpoints, int segCount,
+            bool loopCloses, double total, LineScatterOptions options, double stoneStep)
+        {
+            var cuts = new double[breakpoints.Count];
+            if (options.CornerPlacement == CornerPlacement.Sharp || segCount <= 0)
+            {
+                return cuts;
+            }
+
+            for (int i = 0; i < breakpoints.Count; i++)
+            {
+                if (!breakpoints[i].IsCorner)
+                {
+                    continue;
+                }
+
+                double angleDeg = InteriorAngleDeg(flat, breakpoints[i].Distance);
+                if (double.IsNaN(angleDeg))
+                {
+                    continue;
+                }
+
+                // Допуск: угол, построенный через синусы, может получиться 59,9999999 вместо 60 —
+                // ровно пороговый угол должен уверенно считаться тупым.
+                if (options.CornerPlacement == CornerPlacement.Mixed && angleDeg >= options.RoundCornerBelowDeg - 1e-6)
+                {
+                    continue; // тупее порога — обычный острый угол со стразой в вершине
+                }
+
+                double sinHalf = Math.Sin(angleDeg * Math.PI / 360.0);
+                if (sinHalf <= 1e-6)
+                {
+                    continue; // сложенная вдвое линия — скруглять нечего
+                }
+
+                double cut = stoneStep / (2 * sinHalf);
+
+                // Место для среза: не больше 45% каждой из двух сторон, иначе сторона «съедается».
+                int incoming = i == 0 ? (loopCloses ? segCount - 1 : -1) : i - 1;
+                int outgoing = i < segCount ? i : -1;
+                if (incoming < 0 || outgoing < 0)
+                {
+                    continue;
+                }
+
+                double room = 0.45 * Math.Min(
+                    SegmentLength(breakpoints, incoming, segCount, loopCloses, total),
+                    SegmentLength(breakpoints, outgoing, segCount, loopCloses, total));
+
+                // И не больше двух шагов ряда. Чем острее угол, тем дальше приходится отступать:
+                // при 36° это ещё полтора шага (кончик почти на месте), а при 15° — уже шесть,
+                // и от клюва сердца ничего не остаётся. Такой угол лучше оставить острым: страза
+                // встаёт в самую вершину, а соседние разводит плавный сдвиг (NudgeStonesNearSharpCorners).
+                room = Math.Min(room, MaxRoundCutInSteps * stoneStep);
+
+                if (cut > room)
+                {
+                    continue;
+                }
+
+                cuts[i] = cut;
+            }
+
+            return cuts;
+        }
+
+        /// <summary>
+        /// Угол между сторонами в вершине (градусы): 180 — линия идёт прямо, 90 — прямой угол,
+        /// 36 — кончик звезды. Направления берутся по соседним точкам полилинии, поэтому считаются
+        /// точно, без приближений по длине дуги. NaN — вершину не нашли.
+        /// </summary>
+        private static double InteriorAngleDeg(FlattenedCurve flat, double distance)
+        {
+            IReadOnlyList<FlattenedPoint> pts = flat.Points;
+            IReadOnlyList<double> arcs = flat.ArcLengths;
+            int n = pts.Count;
+            if (n < 3)
+            {
+                return double.NaN;
+            }
+
+            int index = -1;
+            double best = double.MaxValue;
+            for (int i = 0; i < n; i++)
+            {
+                double d = Math.Abs(arcs[i] - distance);
+                if (d < best)
+                {
+                    best = d;
+                    index = i;
+                }
+            }
+
+            if (index < 0 || best > 1e-6)
+            {
+                return double.NaN;
+            }
+
+            Point2D prev, next;
+            Point2D cur = pts[index].Position;
+
+            if (index == 0 || index == n - 1)
+            {
+                if (!flat.IsClosed)
+                {
+                    return double.NaN; // конец разомкнутой кривой — не угол
+                }
+
+                prev = pts[n - 2].Position; // точка перед дублирующей точкой замыкания
+                next = pts[1].Position;
+                cur = pts[0].Position;
+            }
+            else
+            {
+                prev = pts[index - 1].Position;
+                next = pts[index + 1].Position;
+            }
+
+            Point2D u1 = (prev - cur).Normalized();
+            Point2D u2 = (next - cur).Normalized();
+            if (u1 == Point2D.Zero || u2 == Point2D.Zero)
+            {
+                return double.NaN;
+            }
+
+            double cos = u1.X * u2.X + u1.Y * u2.Y;
+            cos = cos < -1 ? -1 : cos > 1 ? 1 : cos;
+            return Math.Acos(cos) * 180.0 / Math.PI;
         }
 
         /// <summary>
@@ -156,7 +319,7 @@ namespace Strassio.Core.Placement
         /// </summary>
         private static void NudgeStonesNearSharpCorners(
             FlattenedCurve flat, List<PlacedStone> result, List<(int ResultIndex, double LocalDist)>[] perSegmentStones,
-            List<(double Distance, bool IsCorner)> breakpoints, int segCount,
+            List<(double Distance, bool IsCorner)> breakpoints, int segCount, double[] cornerCut,
             double stoneDiameterMm, double cornerMinGapMm, double maxNudgeMm, int cornerTaperCount)
         {
             double targetMinDistance = stoneDiameterMm + cornerMinGapMm;
@@ -165,7 +328,8 @@ namespace Strassio.Core.Placement
 
             for (int i = 0; i < segCount; i++)
             {
-                if (!breakpoints[i].IsCorner)
+                // Скруглённый угол разведён самой геометрией среза — сдвигать там нечего.
+                if (!breakpoints[i].IsCorner || cornerCut[i] > 0)
                 {
                     continue;
                 }

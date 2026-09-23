@@ -143,6 +143,9 @@ public class LineScattererTests
             GapMm = 0.2,
             Mode = StepMode.FitEven,
             CornerAngleThresholdDeg = 20,
+            // Тест про сдвиг страз у острого угла — значит угол должен остаться острым
+            // (по умолчанию такой шип скругляется, см. CornerPlacementTests).
+            CornerPlacement = CornerPlacement.Sharp,
         };
 
         var stones = LineScatterer.Scatter(spike, options);
@@ -198,6 +201,9 @@ public class LineScattererTests
             GapMm = 0.2,
             Mode = StepMode.FitEven,
             CornerAngleThresholdDeg = 20,
+            // Тест про сдвиг страз у острого угла — значит угол должен остаться острым
+            // (по умолчанию такой шип скругляется, см. CornerPlacementTests).
+            CornerPlacement = CornerPlacement.Sharp,
         };
 
         var stones = new List<PlacedStone>(LineScatterer.Scatter(spike, options));
@@ -262,6 +268,9 @@ public class LineScattererTests
             GapMm = 0.2,
             Mode = StepMode.FitEven,
             CornerAngleThresholdDeg = 20,
+            // Тест про сдвиг страз у острого угла — значит угол должен остаться острым
+            // (по умолчанию такой шип скругляется, см. CornerPlacementTests).
+            CornerPlacement = CornerPlacement.Sharp,
         };
 
         var stones = LineScatterer.Scatter(star, options);

@@ -29,6 +29,16 @@ namespace Strassio.Core.Placement
         /// <summary>Порог угла (градусы): кривая поворачивает на столько или больше — считаем угол острым и ставим стразу точно в вершину.</summary>
         public double CornerAngleThresholdDeg { get; set; } = 30;
 
+        /// <summary>Как ряд проходит угол: страза в вершине, скругление или смешанно (по умолчанию).</summary>
+        public CornerPlacement CornerPlacement { get; set; } = CornerPlacement.Mixed;
+
+        /// <summary>
+        /// Только для CornerPlacement.Mixed: угол между сторонами меньше этого (градусы) — скругляем,
+        /// больше или равен — ставим стразу точно в вершину. 60° — кончик звезды скругляется,
+        /// прямой и тупой угол остаются острыми.
+        /// </summary>
+        public double RoundCornerBelowDeg { get; set; } = 60;
+
         /// <summary>Точность разбивки кривых Безье в полилинию, мм.</summary>
         public double FlattenToleranceMm { get; set; } = 0.02;
 

@@ -149,9 +149,9 @@ public class IntersectionActionTests
     {
         var rows = new[]
         {
-            new RowSpec { OffsetMm = -3.4, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, CornerAngleThresholdDeg = 20 } },
-            new RowSpec { OffsetMm = 0, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 3.2, GapMm = 0.2, CornerAngleThresholdDeg = 20 } },
-            new RowSpec { OffsetMm = 3.4, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, CornerAngleThresholdDeg = 20 } },
+            new RowSpec { OffsetMm = -3.4, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, CornerAngleThresholdDeg = 20, CornerPlacement = CornerPlacement.Sharp } },
+            new RowSpec { OffsetMm = 0, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 3.2, GapMm = 0.2, CornerAngleThresholdDeg = 20, CornerPlacement = CornerPlacement.Sharp } },
+            new RowSpec { OffsetMm = 3.4, ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2, CornerAngleThresholdDeg = 20, CornerPlacement = CornerPlacement.Sharp } },
         };
         var stones = RingScatterer.Scatter(StarCurve(), rows);
 
