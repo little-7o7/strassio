@@ -23,6 +23,12 @@ if (scenario == "icons")
     return;
 }
 
+if (scenario == "corners")
+{
+    CornerLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "vector")
 {
     RenderVectorScenario();
