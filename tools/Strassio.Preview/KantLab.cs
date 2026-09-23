@@ -24,11 +24,11 @@ namespace Strassio.Preview
             string outDir = Path.Combine(repoRoot, "out", "preview");
             Directory.CreateDirectory(outDir);
 
-            var cases = new (string Title, Curve Shape, double Gap)[]
+            var cases = new (string Title, Curve Shape, double Gap, bool WholeShape)[]
             {
-                ("Квадрат 40 мм, зазор 0", Square(40), 0),
-                ("Квадрат 40 мм, зазор 0,2", Square(40), 0.2),
-                ("Звезда, зазор 0", Star(), 0),
+                ("Квадрат 40 мм, зазор 0", Square(40), 0, false),
+                ("Звезда, зазор 0", Star(), 0, false),
+                ("Лепесток целиком, зазор 0", Petal(), 0, true),
             };
 
             var sb = new StringBuilder();
@@ -40,13 +40,26 @@ namespace Strassio.Preview
             Console.WriteLine("Кант (3 ряда по краю):");
             for (int i = 0; i < cases.Length; i++)
             {
-                (string title, Curve shape, double gap) = cases[i];
-                List<PlacedStone> stones = Run(shape, gap);
+                (string title, Curve shape, double gap, bool whole) = cases[i];
+                List<PlacedStone> stones = Run(shape, gap, whole);
                 (int holes, double worst) = Holes(stones, Diameter + gap);
+
+                // Фигуру двигаем в начало клетки — рисуем её там, где она поместится.
+                double minX = double.MaxValue, minY = double.MaxValue;
+                foreach (PlacedStone s0 in stones)
+                {
+                    minX = Math.Min(minX, s0.Center.X - s0.DiameterMm / 2);
+                    minY = Math.Min(minY, s0.Center.Y - s0.DiameterMm / 2);
+                }
+
+                if (stones.Count == 0)
+                {
+                    minX = minY = 0;
+                }
 
                 double left = i * cellW;
                 sb.AppendLine($"<text x=\"{N(left + cellW / 2)}\" y=\"20\" text-anchor=\"middle\" font-size=\"15\" font-weight=\"600\" fill=\"#222\">{title}</text>");
-                sb.AppendLine($"<g transform=\"translate({N(left + PadMm * Scale)},{N(26 + PadMm * Scale)})\">");
+                sb.AppendLine($"<g transform=\"translate({N(left + PadMm * Scale - minX * Scale)},{N(26 + PadMm * Scale - minY * Scale)})\">");
 
                 foreach (PlacedStone s in stones)
                 {
@@ -59,8 +72,7 @@ namespace Strassio.Preview
                 Console.WriteLine($"  {title,-26} — {note}");
             }
 
-            Diagnose("квадрат", Square(40));
-            Diagnose("звезда", Star());
+            DiagnoseRings("лепесток", Petal());
 
             sb.AppendLine("</svg>");
             string outPath = Path.Combine(outDir, "kant.svg");
@@ -110,14 +122,84 @@ namespace Strassio.Preview
                 $"худшее отклонение глубины {worst:0.000} мм (допуск {field.CellSizeMm + Diameter * 0.1:0.000})");
         }
 
-        private static List<PlacedStone> Run(Curve shape, double gap) =>
+        /// <summary>Сколько колец даёт линия равного расстояния и что с ними происходит дальше.</summary>
+        private static void DiagnoseRings(string name, Curve shape)
+        {
+            FlattenedCurve flat = CurveFlattener.Flatten(shape, 0.02);
+            SignedDistanceField field = SignedDistanceField.Build(new[] { flat }, Diameter / 8.0);
+            Console.WriteLine($"  {name}: сетка {field.Width}×{field.Height}, клетка {field.CellSizeMm:0.###} мм");
+
+            for (int ring = 0; ring < 5; ring++)
+            {
+                double level = Diameter / 2 + ring * Diameter;
+                List<List<Point2D>> loops = IsoContour.Trace(field, level);
+                var sizes = new List<string>();
+                foreach (List<Point2D> loop in loops)
+                {
+                    string ok;
+                    try
+                    {
+                        Curve.FromPolyline(loop, isClosed: true);
+                        ok = "кривая ок";
+                    }
+                    catch (ArgumentException e)
+                    {
+                        ok = "НЕ СТРОИТСЯ: " + e.Message;
+                    }
+
+                    double len = 0;
+                    for (int i = 1; i < loop.Count; i++)
+                    {
+                        len += Point2D.Distance(loop[i - 1], loop[i]);
+                    }
+
+                    sizes.Add($"{loop.Count} точек, длина {len:0.0} мм, {ok}");
+                }
+
+                Console.WriteLine($"    глубина {level:0.0} мм: колец {loops.Count}" +
+                    (sizes.Count > 0 ? " — " + string.Join("; ", sizes) : string.Empty));
+            }
+        }
+
+        /// <summary>whole = true — контурная заливка целиком (метод «Контурная»), иначе кант в 3 ряда.</summary>
+        private static List<PlacedStone> Run(Curve shape, double gap, bool whole) =>
             ContourFiller.Fill(new[] { shape }, new ContourFillOptions
             {
                 StoneDiameterMm = Diameter,
                 GapMm = gap,
-                MaxRings = 3,
-                FillCenter = false,
+                MaxRings = whole ? (int?)null : 3,
+                FillCenter = whole,
             });
+
+        /// <summary>
+        /// Длинный сужающийся лепесток — как на сравнении автора (зелёный вручную, красный Strassio).
+        /// Две дуги от широкого основания к острому кончику.
+        /// </summary>
+        private static Curve Petal()
+        {
+            var pts = new List<Point2D>();
+            const int Steps = 90;
+
+            // Внешняя сторона: дуга большого радиуса.
+            for (int i = 0; i <= Steps; i++)
+            {
+                double t = i / (double)Steps;
+                double a = Math.PI * (0.62 - 0.30 * t);
+                double r = 52;
+                pts.Add(new Point2D(60 + r * Math.Cos(a), 58 - r * Math.Sin(a)));
+            }
+
+            // Внутренняя сторона обратно: радиус меньше, к концу сходится с внешней — получается остриё.
+            for (int i = Steps; i >= 0; i--)
+            {
+                double t = i / (double)Steps;
+                double a = Math.PI * (0.62 - 0.30 * t);
+                double r = 52 - 16 * (1 - t * t); // широкое основание, сужение к самому кончику
+                pts.Add(new Point2D(60 + r * Math.Cos(a), 58 - r * Math.Sin(a)));
+            }
+
+            return Curve.FromPolyline(pts, isClosed: true);
+        }
 
         /// <summary>Пропуск — страза, у которой ближайшая соседка дальше полутора шагов ряда.</summary>
         private static (int Holes, double Worst) Holes(IReadOnlyList<PlacedStone> stones, double step)
