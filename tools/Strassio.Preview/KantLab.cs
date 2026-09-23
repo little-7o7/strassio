@@ -28,7 +28,8 @@ namespace Strassio.Preview
             {
                 ("Квадрат 40 мм, зазор 0", Square(40), 0, false),
                 ("Звезда, зазор 0", Star(), 0, false),
-                ("Лепесток целиком, зазор 0", Petal(), 0, true),
+                ("Ваш вектор — как сейчас", Author(), 0, true),
+                ("Ваш вектор — внутренние подвинуты", Author(), 0, true),
             };
 
             var sb = new StringBuilder();
@@ -42,7 +43,13 @@ namespace Strassio.Preview
             {
                 (string title, Curve shape, double gap, bool whole) = cases[i];
                 List<PlacedStone> stones = Run(shape, gap, whole);
+                if (title.Contains("подвинуты"))
+                {
+                    stones = Relax(stones, shape, gap);
+                }
+
                 (int holes, double worst) = Holes(stones, Diameter + gap);
+                Console.WriteLine($"    оценка: {Score(stones, gap)}");
 
                 // Фигуру двигаем в начало клетки — рисуем её там, где она поместится.
                 double minX = double.MaxValue, minY = double.MaxValue;
@@ -73,6 +80,8 @@ namespace Strassio.Preview
             }
 
             DiagnoseRings("лепесток", Petal());
+
+            RenderAuthorShape(outDir);
 
             sb.AppendLine("</svg>");
             string outPath = Path.Combine(outDir, "kant.svg");
@@ -171,6 +180,63 @@ namespace Strassio.Preview
                 FillCenter = whole,
             });
 
+        /// <summary>Ваша форма целиком, крупно: слева как сейчас, справа после правки внутренних рядов.</summary>
+        private static void RenderAuthorShape(string outDir)
+        {
+            Curve shape = Author();
+            List<PlacedStone> now = Run(shape, 0, true);
+            List<PlacedStone> moved = Relax(now, shape, 0);
+
+            const double S = 8;             // пикселей на миллиметр
+            const double Pad = 5;           // поля, мм
+            double cellW = (39.8 + 2 * Pad) * S;
+            double cellH = (98.9 + 2 * Pad) * S + 30;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{N(cellW * 2)}\" height=\"{N(cellH)}\" font-family=\"Segoe UI, Arial, sans-serif\">");
+            sb.AppendLine("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
+
+            var variants = new (string Title, List<PlacedStone> Stones)[]
+            {
+                ("Как сейчас", now),
+                ("Внутренние подвинуты", moved),
+            };
+
+            for (int v = 0; v < variants.Length; v++)
+            {
+                (string title, List<PlacedStone> stones) = variants[v];
+
+                double minX = double.MaxValue, minY = double.MaxValue;
+                foreach (PlacedStone st in stones)
+                {
+                    minX = Math.Min(minX, st.Center.X - st.DiameterMm / 2);
+                    minY = Math.Min(minY, st.Center.Y - st.DiameterMm / 2);
+                }
+
+                double left = v * cellW;
+                sb.AppendLine($"<text x=\"{N(left + cellW / 2)}\" y=\"20\" text-anchor=\"middle\" font-size=\"15\" font-weight=\"600\" fill=\"#222\">{title} — {stones.Count} страз</text>");
+                sb.AppendLine($"<g transform=\"translate({N(left + Pad * S - minX * S)},{N(28 + Pad * S - minY * S)})\">");
+
+                foreach (PlacedStone st in stones)
+                {
+                    // Крайний ряд — синим: видно, что его не двигали.
+                    string fill = st.RowId == 0 ? "#2F74E0" : st.RowId < 0 ? "#F57C00" : "#43A047";
+                    sb.AppendLine($"<circle cx=\"{N(st.Center.X * S)}\" cy=\"{N(st.Center.Y * S)}\" r=\"{N(st.DiameterMm / 2 * S)}\" fill=\"{fill}\" fill-opacity=\"0.8\" stroke=\"#333\" stroke-width=\"0.6\"/>");
+                }
+
+                sb.AppendLine("</g>");
+            }
+
+            sb.AppendLine("</svg>");
+            string path = Path.Combine(outDir, "kant-author.svg");
+            File.WriteAllText(path, sb.ToString());
+            Console.WriteLine("Ваша форма крупно: " + path);
+        }
+
+        /// <summary>Настоящая работа автора: vector.svg из корня репозитория.</summary>
+        private static Curve Author() => SvgShape.Load(
+            Path.Combine(Path.GetDirectoryName(typeof(KantLab).Assembly.Location) ?? ".", "..", "..", "..", "..", "..", "vector.svg"));
+
         /// <summary>
         /// Длинный сужающийся лепесток — как на сравнении автора (зелёный вручную, красный Strassio).
         /// Две дуги от широкого основания к острому кончику.
@@ -199,6 +265,230 @@ namespace Strassio.Preview
             }
 
             return Curve.FromPolyline(pts, isClosed: true);
+        }
+
+        /// <summary>
+        /// По указанию автора: «наружные линии красивые, не надо трогать; надо поправить
+        /// внутренние, по немножку двигать, чтобы закрыть щели».
+        ///
+        /// Поэтому крайний ряд (RowId = 0) закреплён намертво, а внутренние камни могут сдвинуться
+        /// не больше чем на MaxShift. Двигаются они туда, где закрывают щель: если соседей с одной
+        /// стороны нет, а с другой тесно — камень отходит в пустую сторону. Наложений не допускаем.
+        /// </summary>
+        private static List<PlacedStone> Relax(List<PlacedStone> stones, Curve shape, double gap)
+        {
+            FlattenedCurve flat = CurveFlattener.Flatten(shape, 0.02);
+            SignedDistanceField field = SignedDistanceField.Build(new[] { flat }, Diameter / 10.0);
+            double step = Diameter + gap;
+            double radius = Diameter / 2;
+
+            var points = new List<Point2D>();
+            foreach (PlacedStone s0 in stones)
+            {
+                points.Add(s0.Center);
+            }
+
+            // Крайний ряд не трогаем совсем — он и так красивый.
+            var frozen = new bool[points.Count];
+            var origin = new Point2D[points.Count];
+            for (int i = 0; i < stones.Count; i++)
+            {
+                frozen[i] = stones[i].RowId == 0;
+                origin[i] = stones[i].Center;
+            }
+
+            const double MaxShift = 0.6; // «по немножку», мм
+
+            for (int pass = 0; pass < 40; pass++)
+            {
+                var shift = new Point2D[points.Count];
+
+                for (int i = 0; i < points.Count; i++)
+                {
+                    for (int j = i + 1; j < points.Count; j++)
+                    {
+                        Point2D d = points[i] - points[j];
+                        double dist = Math.Sqrt(d.X * d.X + d.Y * d.Y);
+                        if (dist < 1e-9 || dist > step * 1.4)
+                        {
+                            continue;
+                        }
+
+                        // Тесно — расталкиваем; просторно — слегка стягиваем, щель закрывается.
+                        double weight = dist < step ? 0.5 : 0.10;
+                        Point2D force = d * ((step - dist) / dist * weight);
+                        shift[i] = shift[i] + force;
+                        shift[j] = shift[j] - force;
+                    }
+                }
+
+                for (int i = 0; i < points.Count; i++)
+                {
+                    if (frozen[i])
+                    {
+                        continue;
+                    }
+
+                    Point2D moved = points[i] + shift[i];
+
+                    // Дальше MaxShift от исходного места камень не уходит.
+                    Point2D delta = moved - origin[i];
+                    double len = Math.Sqrt(delta.X * delta.X + delta.Y * delta.Y);
+                    if (len > MaxShift)
+                    {
+                        moved = origin[i] + delta * (MaxShift / len);
+                    }
+
+                    points[i] = Keep(field, moved, radius, points[i]);
+                }
+            }
+
+            // Жёсткое правило: камни не могут стоять ближе шага. Несколько проходов только
+            // на расталкивание — после них наложений не остаётся.
+            for (int pass = 0; pass < 40; pass++)
+            {
+                bool moved = false;
+                for (int i = 0; i < points.Count; i++)
+                {
+                    for (int j = i + 1; j < points.Count; j++)
+                    {
+                        Point2D d = points[i] - points[j];
+                        double dist = Math.Sqrt(d.X * d.X + d.Y * d.Y);
+                        if (dist >= step - 1e-4 || dist < 1e-9)
+                        {
+                            continue;
+                        }
+
+                        Point2D push = d * ((step - dist) / dist * 0.5);
+                        if (!frozen[i])
+                        {
+                            points[i] = Keep(field, points[i] + push, radius, points[i]);
+                        }
+
+                        if (!frozen[j])
+                        {
+                            points[j] = Keep(field, points[j] - push, radius, points[j]);
+                        }
+
+                        moved = true;
+                    }
+                }
+
+                if (!moved)
+                {
+                    break;
+                }
+            }
+
+            var result = new List<PlacedStone>();
+            for (int i = 0; i < points.Count; i++)
+            {
+                result.Add(new PlacedStone(points[i], Diameter, false, stones[i].RowId));
+            }
+
+            AddIntoHoles(result, field, step, radius);
+            return result;
+        }
+
+        /// <summary>Держит камень внутри фигуры: если новое место не годится, остаётся прежнее.</summary>
+        private static Point2D Keep(SignedDistanceField field, Point2D candidate, double radius, Point2D fallback)
+        {
+            double depth = field.ValueAt(candidate);
+            if (depth >= radius - 0.02)
+            {
+                return candidate;
+            }
+
+            Point2D inward = Gradient(field, candidate);
+            Point2D pulled = candidate + inward * (radius - depth);
+            return field.ValueAt(pulled) >= radius - 0.02 ? pulled : fallback;
+        }
+
+        /// <summary>Куда «вглубь» фигуры: направление роста расстояния до края.</summary>
+        private static Point2D Gradient(SignedDistanceField field, Point2D p)
+        {
+            double h = field.CellSizeMm;
+            double dx = field.ValueAt(new Point2D(p.X + h, p.Y)) - field.ValueAt(new Point2D(p.X - h, p.Y));
+            double dy = field.ValueAt(new Point2D(p.X, p.Y + h)) - field.ValueAt(new Point2D(p.X, p.Y - h));
+            var g = new Point2D(dx, dy);
+            double len = Math.Sqrt(g.X * g.X + g.Y * g.Y);
+            return len < 1e-9 ? new Point2D(0, 0) : g * (1 / len);
+        }
+
+        /// <summary>После расталкивания в пустоты добавляем камни — там, где помещается целый.</summary>
+        private static void AddIntoHoles(List<PlacedStone> stones, SignedDistanceField field, double step, double radius)
+        {
+            for (int iy = 0; iy < field.Height; iy++)
+            {
+                for (int ix = 0; ix < field.Width; ix++)
+                {
+                    if (field.ValueAt(ix, iy) < radius)
+                    {
+                        continue;
+                    }
+
+                    Point2D p = field.PositionOf(ix, iy);
+                    bool free = true;
+                    for (int k = 0; k < stones.Count; k++)
+                    {
+                        if (Point2D.Distance(stones[k].Center, p) < step - 0.02)
+                        {
+                            free = false;
+                            break;
+                        }
+                    }
+
+                    if (free)
+                    {
+                        stones.Add(new PlacedStone(p, Diameter, false, rowId: -1));
+                    }
+                }
+            }
+        }
+
+        /// <summary>Оценка раскладки числами: средний шаг между соседями и его разброс.</summary>
+        private static string Score(IReadOnlyList<PlacedStone> stones, double gap)
+        {
+            double step = Diameter + gap;
+            var nearest = new List<double>();
+            for (int i = 0; i < stones.Count; i++)
+            {
+                double best = double.MaxValue;
+                for (int j = 0; j < stones.Count; j++)
+                {
+                    if (i != j)
+                    {
+                        best = Math.Min(best, Point2D.Distance(stones[i].Center, stones[j].Center));
+                    }
+                }
+
+                if (best != double.MaxValue)
+                {
+                    nearest.Add(best);
+                }
+            }
+
+            if (nearest.Count == 0)
+            {
+                return "нет камней";
+            }
+
+            double mean = 0;
+            foreach (double v in nearest)
+            {
+                mean += v;
+            }
+
+            mean /= nearest.Count;
+
+            double variance = 0;
+            foreach (double v in nearest)
+            {
+                variance += (v - mean) * (v - mean);
+            }
+
+            double spread = Math.Sqrt(variance / nearest.Count);
+            return $"средний шаг {mean:0.00} мм (нужен {step:0.00}), разброс {spread:0.00} мм";
         }
 
         /// <summary>Пропуск — страза, у которой ближайшая соседка дальше полутора шагов ряда.</summary>
