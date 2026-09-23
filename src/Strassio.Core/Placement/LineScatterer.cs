@@ -17,7 +17,7 @@ namespace Strassio.Core.Placement
         /// Два шага примерно соответствуют углу 29°: тупее — скругляем, острее — оставляем острым,
         /// иначе кончик фигуры (клюв сердца, тонкий шип) срезается почти целиком.
         /// </summary>
-        private const double MaxRoundCutInSteps = 2.0;
+        internal const double MaxRoundCutInSteps = 2.0;
 
 
         public static IReadOnlyList<PlacedStone> Scatter(Curve curve, LineScatterOptions options)
@@ -243,7 +243,7 @@ namespace Strassio.Core.Placement
         /// 36 — кончик звезды. Направления берутся по соседним точкам полилинии, поэтому считаются
         /// точно, без приближений по длине дуги. NaN — вершину не нашли.
         /// </summary>
-        private static double InteriorAngleDeg(FlattenedCurve flat, double distance)
+        internal static double InteriorAngleDeg(FlattenedCurve flat, double distance)
         {
             IReadOnlyList<FlattenedPoint> pts = flat.Points;
             IReadOnlyList<double> arcs = flat.ArcLengths;

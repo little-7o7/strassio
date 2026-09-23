@@ -127,6 +127,31 @@ public class CornerPlacementTests
         Assert.True(closest >= Diameter - 1e-6, $"на звезде стразы налезают: {closest:0.000} мм");
     }
 
+    [Fact]
+    public void SizeTransition_PutsStoneExactlyOnTheCorner()
+    {
+        // Замечание автора: «переход размера тоже — углы не совпадают». Ряд с меняющимся размером
+        // шёл по линии подряд и в вершину не попадал; теперь линия режется в углу, как у L1.
+        var options = Options(CornerPlacement.Sharp);
+
+        var stones = VariableLineScatterer.Scatter(
+            Corner(90), (i, t) => 2.0 + t, options);
+
+        Assert.True(stones.Any(s => Point2D.Distance(s.Center, Point2D.Zero) < 1e-6),
+            "камень должен попасть точно в вершину угла");
+        Assert.Contains(stones, s => s.IsCorner);
+    }
+
+    [Fact]
+    public void SizeTransition_MixedRoundsVerySharpTip()
+    {
+        var stones = VariableLineScatterer.Scatter(
+            Corner(36), (i, t) => Diameter, Options(CornerPlacement.Mixed));
+
+        Assert.False(stones.Any(s => Point2D.Distance(s.Center, Point2D.Zero) < 1e-6),
+            "очень острый кончик должен скругляться и при переходе размера");
+    }
+
     /// <summary>Замкнутая звезда: острые кончики снаружи, тупые впадины внутри.</summary>
     private static Curve Star(int points, double outerR, double innerR)
     {

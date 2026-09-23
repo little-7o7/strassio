@@ -406,7 +406,7 @@ namespace Strassio.Core.Methods
             List<double> steps = SizeRange(Diameter(p.FromSize, d, sizes), Diameter(p.ToSize, d, sizes), sizes);
             int k = steps.Count;
             IReadOnlyList<PlacedStone> stones = VariableLineScatterer.Scatter(
-                curve, (i, t) => steps[Math.Min(k - 1, (int)Math.Floor(t * k))], p.GapMm);
+                curve, (i, t) => steps[Math.Min(k - 1, (int)Math.Floor(t * k))], LineOptions(d, p));
             return Plain(FixSingleRow(stones, p));
         }
 
@@ -419,7 +419,7 @@ namespace Strassio.Core.Methods
                 pattern.Add(d);
             }
 
-            IReadOnlyList<PlacedStone> stones = VariableLineScatterer.Scatter(curve, (i, t) => pattern[i % pattern.Count], p.GapMm);
+            IReadOnlyList<PlacedStone> stones = VariableLineScatterer.Scatter(curve, (i, t) => pattern[i % pattern.Count], LineOptions(d, p));
             return Plain(FixSingleRow(stones, p));
         }
 
