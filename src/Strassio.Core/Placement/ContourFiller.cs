@@ -69,7 +69,12 @@ namespace Strassio.Core.Placement
                 }
 
                 double level = firstLevel + ring * rowSpacing;
-                List<List<Point2D>> loops = IsoContour.Trace(field, level);
+
+                // Сначала пробуем построить кольцо смещением самого контура — тогда у квадрата
+                // и любой фигуры с углами ряды остаются с углами и идут параллельно друг другу.
+                // Не вышло (фигура тонкая, контур вывернулся) — работает прежний способ по линии
+                // равного расстояния, он не ломается никогда.
+                List<List<Point2D>> loops = OffsetRing(flats, level, field, options) ?? IsoContour.Trace(field, level);
                 if (loops.Count == 0)
                 {
                     break;
@@ -141,6 +146,181 @@ namespace Strassio.Core.Placement
         /// на нём не разойтись, ставим одну стразу в его середине — так центр формы аккуратно
         /// добивается сам собой, без дырки (F3, раздел 5 ТЗ).
         /// </summary>
+        /// <summary>
+        /// Кольцо ряда как смещённая копия контура с острым углом (митром).
+        ///
+        /// Линия равного расстояния (IsoContour) скругляет углы тем сильнее, чем дальше ряд от
+        /// края: у квадрата второй и третий ряд уже с круглыми углами, ряды перестают быть
+        /// параллельными и в углах разъезжаются — автор видел это как «пропускает стразы».
+        /// Смещение контура углы сохраняет, и ряды идут ровно друг за другом.
+        ///
+        /// Проверяем результат по тому же полю расстояний: каждая точка смещённой линии должна
+        /// лежать на нужной глубине. Если смещение вывернулось наизнанку (тонкая фигура, острый
+        /// шип), проверка не сойдётся — возвращаем null, и кольцо строится прежним способом.
+        /// Работает только для одиночного замкнутого контура: у формы с отверстиями кольца могут
+        /// пересечься, там линия равного расстояния надёжнее.
+        /// </summary>
+        private static List<List<Point2D>>? OffsetRing(
+            IReadOnlyList<FlattenedCurve> flats, double level, SignedDistanceField field, ContourFillOptions options)
+        {
+            if (flats.Count != 1 || !flats[0].IsClosed || level <= 0)
+            {
+                return null;
+            }
+
+            FlattenedCurve flat = flats[0];
+            double sign = InwardSign(flat, field, options.FlattenToleranceMm);
+            if (sign == 0)
+            {
+                return null;
+            }
+
+            List<Point2D> loop = CurveOffsetter.Offset(flat, sign * level, options.FlattenToleranceMm, roundOuterCorners: false);
+
+            // У квадрата смещённое кольцо — это всего пять точек (четыре угла и замыкание),
+            // поэтому нижняя граница здесь именно такая маленькая.
+            if (loop.Count < 4)
+            {
+                return null;
+            }
+
+            if (SelfIntersects(loop))
+            {
+                return null; // контур вывернулся — кольцо строит линия равного расстояния
+            }
+
+            // Тонкие шипы (кончик звезды) смещение делает ещё тоньше, и ряд там рвётся: камни
+            // не помещаются и вычищаются как наложения. На таких фигурах линия равного расстояния
+            // скругляет кончик и укладывает больше камней — оставляем её.
+            if (SharpestAngleDeg(loop) < 45)
+            {
+                return null;
+            }
+
+            // Допуск: клетка поля плюс десятая доля камня — ряд должен идти именно на своей глубине.
+            double tolerance = field.CellSizeMm + options.StoneDiameterMm * 0.1;
+            foreach (Point2D p in loop)
+            {
+                if (Math.Abs(field.ValueAt(p) - level) > tolerance)
+                {
+                    return null;
+                }
+            }
+
+            return new List<List<Point2D>> { loop };
+        }
+
+        /// <summary>
+        /// Пересекает ли ломаная сама себя. Смещение внутрь на тонком месте фигуры выворачивает
+        /// контур — такое кольцо брать нельзя. Проверка простым перебором пар отрезков; на очень
+        /// подробных контурах (гладкие кривые) она не запускается — там смещение и линия равного
+        /// расстояния всё равно совпадают, поэтому и проверять нечего.
+        /// </summary>
+        private static bool SelfIntersects(List<Point2D> loop)
+        {
+            int n = loop.Count;
+            if (n > 400)
+            {
+                return false;
+            }
+
+            for (int i = 0; i + 1 < n; i++)
+            {
+                for (int j = i + 2; j + 1 < n; j++)
+                {
+                    if (i == 0 && j + 2 == n)
+                    {
+                        continue; // первый и последний отрезки сходятся в точке замыкания
+                    }
+
+                    if (SegmentsCross(loop[i], loop[i + 1], loop[j], loop[j + 1]))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>Самый острый угол ломаной в градусах (180 — идеально гладкая линия).</summary>
+        private static double SharpestAngleDeg(List<Point2D> loop)
+        {
+            int n = loop.Count;
+            if (n < 4)
+            {
+                return 180;
+            }
+
+            // Последняя точка повторяет первую — вершины считаем по 0…n-2.
+            int count = n - 1;
+            double sharpest = 180;
+
+            for (int i = 0; i < count; i++)
+            {
+                Point2D prev = loop[(i - 1 + count) % count];
+                Point2D cur = loop[i];
+                Point2D next = loop[(i + 1) % count];
+
+                Point2D u1 = (prev - cur).Normalized();
+                Point2D u2 = (next - cur).Normalized();
+                if (u1 == Point2D.Zero || u2 == Point2D.Zero)
+                {
+                    continue;
+                }
+
+                double cos = u1.X * u2.X + u1.Y * u2.Y;
+                cos = cos < -1 ? -1 : cos > 1 ? 1 : cos;
+                sharpest = Math.Min(sharpest, Math.Acos(cos) * 180 / Math.PI);
+            }
+
+            return sharpest;
+        }
+
+        private static bool SegmentsCross(Point2D a1, Point2D a2, Point2D b1, Point2D b2)
+        {
+            double Side(Point2D p, Point2D q, Point2D r) => (q.X - p.X) * (r.Y - p.Y) - (q.Y - p.Y) * (r.X - p.X);
+
+            double d1 = Side(a1, a2, b1);
+            double d2 = Side(a1, a2, b2);
+            double d3 = Side(b1, b2, a1);
+            double d4 = Side(b1, b2, a2);
+
+            return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+        }
+
+        /// <summary>В какую сторону смещать, чтобы уйти внутрь фигуры: +1 или −1 (0 — не понятно).</summary>
+        private static double InwardSign(FlattenedCurve flat, SignedDistanceField field, double toleranceMm)
+        {
+            const double Probe = 0.2;
+
+            double Depth(double sign)
+            {
+                List<Point2D> probe = CurveOffsetter.Offset(flat, sign * Probe, toleranceMm, roundOuterCorners: false);
+                if (probe.Count == 0)
+                {
+                    return double.NegativeInfinity;
+                }
+
+                double sum = 0;
+                foreach (Point2D p in probe)
+                {
+                    sum += field.ValueAt(p);
+                }
+
+                return sum / probe.Count;
+            }
+
+            double plus = Depth(1);
+            double minus = Depth(-1);
+            if (Math.Abs(plus - minus) < 1e-9)
+            {
+                return 0;
+            }
+
+            return plus > minus ? 1 : -1;
+        }
+
         private static bool PlaceRing(
             List<PlacedStone> result, List<Point2D> loop, int ring, double stoneStep,
             ContourFillOptions options, LineScatterOptions scatterOptions)

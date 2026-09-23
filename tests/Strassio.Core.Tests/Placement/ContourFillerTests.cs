@@ -7,6 +7,43 @@ namespace Strassio.Core.Tests.Placement;
 
 public class ContourFillerTests
 {
+    [Fact]
+    public void Kant_OnSquare_RowsAreRectanglesNotRoundedCorners()
+    {
+        // Замечание автора «пропускает стразы»: ряды канта строились по линии равного расстояния,
+        // у которой углы тем круглее, чем дальше ряд от края. Ряды переставали быть параллельными
+        // и в углах разъезжались. Теперь кольцо — смещённая копия контура с острым углом, поэтому
+        // каждый камень стоит ровно на своей глубине: 1,2 / 3,6 / 6,0 мм от края.
+        const double D = 2.4;
+        var stones = ContourFiller.Fill(new[] { Square(40) }, new ContourFillOptions
+        {
+            StoneDiameterMm = D,
+            GapMm = 0,
+            MaxRings = 3,
+            FillCenter = false,
+        });
+
+        Assert.NotEmpty(stones);
+
+        double[] levels = { D / 2, D / 2 + D, D / 2 + 2 * D };
+        foreach (PlacedStone s in stones)
+        {
+            double depth = DepthInSquare(s.Center, 40);
+            double nearest = levels.Select(l => Math.Abs(depth - l)).Min();
+            Assert.True(nearest < 0.25, $"камень стоит на глубине {depth:0.00} мм — это не ряд канта");
+        }
+
+        // И все три ряда на месте.
+        foreach (double level in levels)
+        {
+            Assert.Contains(stones, s => Math.Abs(DepthInSquare(s.Center, 40) - level) < 0.25);
+        }
+    }
+
+    /// <summary>Насколько точка внутри квадрата удалена от ближайшей стороны.</summary>
+    private static double DepthInSquare(Point2D p, double side) =>
+        Math.Min(Math.Min(p.X, side - p.X), Math.Min(p.Y, side - p.Y));
+
     private static Curve Square(double side) => Curve.FromPolyline(
         new[] { new Point2D(0, 0), new Point2D(side, 0), new Point2D(side, side), new Point2D(0, side) },
         isClosed: true);

@@ -59,10 +59,55 @@ namespace Strassio.Preview
                 Console.WriteLine($"  {title,-26} — {note}");
             }
 
+            Diagnose("квадрат", Square(40));
+            Diagnose("звезда", Star());
+
             sb.AppendLine("</svg>");
             string outPath = Path.Combine(outDir, "kant.svg");
             File.WriteAllText(outPath, sb.ToString());
             Console.WriteLine("SVG: " + outPath);
+        }
+
+        /// <summary>
+        /// Почему кольцо строится тем или иным способом: куда уходит смещение контура и насколько
+        /// точно его точки ложатся на нужную глубину (по тому же полю расстояний, что и в ядре).
+        /// </summary>
+        private static void Diagnose(string name, Curve shape)
+        {
+            FlattenedCurve flat = CurveFlattener.Flatten(shape, 0.02);
+            SignedDistanceField field = SignedDistanceField.Build(new[] { flat }, Diameter / 8.0);
+
+            double MeanDepth(double sign)
+            {
+                List<Point2D> probe = CurveOffsetter.Offset(flat, sign * 0.2, 0.02, roundOuterCorners: false);
+                if (probe.Count == 0)
+                {
+                    return double.NaN;
+                }
+
+                double sum = 0;
+                foreach (Point2D p in probe)
+                {
+                    sum += field.ValueAt(p);
+                }
+
+                return sum / probe.Count;
+            }
+
+            double plus = MeanDepth(1);
+            double minus = MeanDepth(-1);
+            double inward = plus > minus ? 1 : -1;
+            double level = Diameter / 2;
+
+            List<Point2D> loop = CurveOffsetter.Offset(flat, inward * level, 0.02, roundOuterCorners: false);
+            double worst = 0;
+            foreach (Point2D p in loop)
+            {
+                worst = Math.Max(worst, Math.Abs(field.ValueAt(p) - level));
+            }
+
+            Console.WriteLine($"  {name}: проба внутрь {plus:0.000}, наружу {minus:0.000}; точек смещения {loop.Count}, " +
+                $"худшее отклонение глубины {worst:0.000} мм (допуск {field.CellSizeMm + Diameter * 0.1:0.000})");
         }
 
         private static List<PlacedStone> Run(Curve shape, double gap) =>
