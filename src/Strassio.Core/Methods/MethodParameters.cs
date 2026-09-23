@@ -77,7 +77,7 @@ namespace Strassio.Core.Methods
 
         /// <summary>L2 и L3: углы смещённого ряда — круглые или острые.</summary>
         [DataMember(Name = "corners")]
-        public string Corners { get; set; } = MethodChoices.CornersRound;
+        public string Corners { get; set; } = MethodChoices.CornersMixed;
 
         /// <summary>L2: что делать со стразами, которые накладываются друг на друга (раздел 6.4).</summary>
         [DataMember(Name = "intersections")]
@@ -180,7 +180,7 @@ namespace Strassio.Core.Methods
             Stagger = false;
             OffsetMm = 2;
             OffsetSide = MethodChoices.SideOutside;
-            Corners = MethodChoices.CornersRound;
+            Corners = MethodChoices.CornersMixed;
             Intersections = MethodChoices.IntersectRemove;
             AngleDeg = 0;
             EdgeMarginMm = 0;
@@ -214,6 +214,9 @@ namespace Strassio.Core.Methods
         public const string SideBoth = "both";
         public const string SideOutside = "outside";
         public const string SideInside = "inside";
+
+        /// <summary>Смешанно: тупые углы острые, очень острые скругляются сами (по умолчанию).</summary>
+        public const string CornersMixed = "mixed";
 
         public const string CornersRound = "round";
         public const string CornersSharp = "sharp";

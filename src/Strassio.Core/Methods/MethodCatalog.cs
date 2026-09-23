@@ -162,8 +162,12 @@ namespace Strassio.Core.Methods
             "offsetSide", new[] { MethodChoices.SideOutside, MethodChoices.SideInside },
             p => p.OffsetSide, (p, v) => p.OffsetSide = v);
 
+        /// <summary>
+        /// Углы: и как ряд проходит угол (страза в вершине или вершина скруглена), и какими
+        /// строятся углы смещённого ряда у методов L2/L3/L4.
+        /// </summary>
         public static readonly MethodField Corners = MethodField.Choice(
-            "corners", new[] { MethodChoices.CornersRound, MethodChoices.CornersSharp },
+            "corners", new[] { MethodChoices.CornersMixed, MethodChoices.CornersSharp, MethodChoices.CornersRound },
             p => p.Corners, (p, v) => p.Corners = v);
 
         public static readonly MethodField Intersections = MethodField.Choice(
@@ -236,18 +240,18 @@ namespace Strassio.Core.Methods
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
-                Gap, Step, ExactStep, ExactCount, StartOffset, EndMargin, Reverse, CornerAngle),
+                Gap, Step, ExactStep, ExactCount, StartOffset, EndMargin, Reverse, Corners, CornerAngle),
             new MethodInfo(MethodKind.L2, isFill: false, needsClosed: false,
                 Gap, RowCount, RowGap, RowSide, EdgeSize, Stagger, Corners, Intersections, CornerAngle),
             new MethodInfo(MethodKind.L3, isFill: false, needsClosed: false,
                 Gap, Offset, OffsetSide, Corners, CornerAngle),
             new MethodInfo(MethodKind.L4, isFill: false, needsClosed: false,
                 Gap, RowCount, RowGap, WidthProfile, Corners, CornerAngle),
-            new MethodInfo(MethodKind.L5, isFill: false, needsClosed: false, Gap, FromSize, ToSize),
-            new MethodInfo(MethodKind.L6, isFill: false, needsClosed: false, Gap, SizePattern),
-            new MethodInfo(MethodKind.L7, isFill: false, needsClosed: false, Gap, DashCount, SkipCount, CornerAngle),
-            new MethodInfo(MethodKind.L8, isFill: false, needsClosed: false, Gap, AccentSize, AccentWhere, CornerAngle),
-            new MethodInfo(MethodKind.Outline, isFill: false, needsClosed: true, Gap, EdgeMargin, CornerAngle).WithWholeSelection(),
+            new MethodInfo(MethodKind.L5, isFill: false, needsClosed: false, Gap, FromSize, ToSize, Corners, CornerAngle),
+            new MethodInfo(MethodKind.L6, isFill: false, needsClosed: false, Gap, SizePattern, Corners, CornerAngle),
+            new MethodInfo(MethodKind.L7, isFill: false, needsClosed: false, Gap, DashCount, SkipCount, Corners, CornerAngle),
+            new MethodInfo(MethodKind.L8, isFill: false, needsClosed: false, Gap, AccentSize, AccentWhere, Corners, CornerAngle),
+            new MethodInfo(MethodKind.Outline, isFill: false, needsClosed: true, Gap, EdgeMargin, Corners, CornerAngle).WithWholeSelection(),
             new MethodInfo(MethodKind.F1, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
             new MethodInfo(MethodKind.F2, isFill: true, needsClosed: true, Gap, Angle, EdgeMargin, AutoGrid),
             new MethodInfo(MethodKind.F3, isFill: true, needsClosed: true, Gap, EdgeMargin, CenterPattern),

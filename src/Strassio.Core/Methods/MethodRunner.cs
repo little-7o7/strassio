@@ -206,6 +206,7 @@ namespace Strassio.Core.Methods
                 EndMarginMm = p.EndMarginMm,
                 Reverse = p.Reverse,
                 CornerAngleThresholdDeg = p.CornerAngleDeg,
+                CornerPlacement = Placement(p),
                 MaxCornerNudgeMm = CornerNudge(p),
             };
 
@@ -236,6 +237,7 @@ namespace Strassio.Core.Methods
                 Mode = StepMode.FitEven,
                 StartOffsetMm = startOffsetMm,
                 CornerAngleThresholdDeg = p.CornerAngleDeg,
+                CornerPlacement = Placement(p),
                 MaxCornerNudgeMm = CornerNudge(p),
             };
 
@@ -249,6 +251,12 @@ namespace Strassio.Core.Methods
 
         private static CornerStyle Corners(MethodParameters p) =>
             p.Corners == MethodChoices.CornersSharp ? CornerStyle.Sharp : CornerStyle.Round;
+
+        /// <summary>Как ряд проходит угол — из того же выбора «Углы», что и форма смещённого ряда.</summary>
+        private static CornerPlacement Placement(MethodParameters p) =>
+            p.Corners == MethodChoices.CornersSharp ? CornerPlacement.Sharp
+            : p.Corners == MethodChoices.CornersRound ? CornerPlacement.Round
+            : CornerPlacement.Mixed;
 
         /// <summary>
         /// L2 «вокруг линии». Ряды идут через «зазор между рядами»; в обе стороны — симметрично
