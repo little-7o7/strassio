@@ -244,7 +244,7 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.L2, isFill: false, needsClosed: false,
                 Gap, RowCount, RowGap, RowSide, EdgeSize, Stagger, Corners, Intersections, CornerAngle),
             new MethodInfo(MethodKind.L3, isFill: false, needsClosed: false,
-                Gap, Offset, OffsetSide, Corners, CornerAngle),
+                Gap, Offset, OffsetSide, RowCount, RowGap, Corners, CornerAngle),
             new MethodInfo(MethodKind.L4, isFill: false, needsClosed: false,
                 Gap, RowCount, RowGap, WidthProfile, Corners, CornerAngle),
             new MethodInfo(MethodKind.L5, isFill: false, needsClosed: false, Gap, FromSize, ToSize, Corners, CornerAngle),

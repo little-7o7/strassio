@@ -721,13 +721,23 @@ namespace Strassio.Core.Methods
         private static MethodResult OffsetLine(Curve curve, double d, MethodParameters p)
         {
             double sign = OutwardSign(curve) * (p.OffsetSide == MethodChoices.SideInside ? -1 : 1);
-            var row = new RowSpec
+
+            // Рядов может быть несколько: первый — на заданном расстоянии, каждый следующий дальше
+            // в ту же сторону на шаг ряда (камень + зазор между рядами).
+            int rows = Math.Max(1, p.RowCount);
+            double rowStep = d + p.RowGapMm;
+            var specs = new List<RowSpec>();
+            for (int i = 0; i < rows; i++)
             {
-                OffsetMm = sign * p.OffsetMm,
-                CornerStyle = Corners(p),
-                ScatterOptions = RowOptions(d, p, 0),
-            };
-            IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, new[] { row });
+                specs.Add(new RowSpec
+                {
+                    OffsetMm = sign * (p.OffsetMm + i * rowStep),
+                    CornerStyle = Corners(p),
+                    ScatterOptions = RowOptions(d, p, 0),
+                });
+            }
+
+            IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(curve, specs);
 
             // У острых углов смещённая линия круто изгибается, и соседние стразы ряда могут налезть
             // друг на друга (звезда, сердце — см. Preview "methods"). Лишние убираем, соседей раздвигаем.

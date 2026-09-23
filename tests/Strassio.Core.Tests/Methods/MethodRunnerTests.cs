@@ -148,7 +148,7 @@ public class MethodRunnerTests : IDisposable
     [InlineData(false)]
     public void L3_Inside_RowIsInsideSquare_WhateverDirection(bool counterClockwise)
     {
-        var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideInside };
+        var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideInside, RowCount = 1 };
         IReadOnlyList<PlacedStone> stones = Run(MethodKind.L3, Square(40, counterClockwise), p).Stones;
         Assert.NotEmpty(stones);
         Assert.All(stones, s =>
@@ -161,7 +161,7 @@ public class MethodRunnerTests : IDisposable
     [Fact]
     public void L3_Outside_RowIsOutsideSquare()
     {
-        var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideOutside };
+        var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideOutside, RowCount = 1 };
         IReadOnlyList<PlacedStone> stones = Run(MethodKind.L3, Square(40), p).Stones;
         Assert.NotEmpty(stones);
 
@@ -171,6 +171,27 @@ public class MethodRunnerTests : IDisposable
         double miter = 5 * Math.Sqrt(2);
         Assert.All(stones, s => Assert.InRange(DistanceOutsideSquare(s.Center, 40), 4.9, miter + 0.1));
         Assert.Contains(stones, s => DistanceOutsideSquare(s.Center, 40) > miter - 0.2);
+    }
+
+    [Fact]
+    public void L3_ManyRows_EachRowIsOneStepFurtherFromTheShape()
+    {
+        // Замечание автора: «по смещённой линии надо добавить ряды — 2, 3, 4, 5 и так далее».
+        var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideOutside, RowCount = 4, RowGapMm = 0.2 };
+        IReadOnlyList<PlacedStone> stones = Run(MethodKind.L3, Square(40), p).Stones;
+
+        // Четыре ряда: первый на 5 мм от квадрата, каждый следующий на шаг ряда дальше
+        // (камень 2,4 + зазор между рядами 0,2).
+        double step = D + 0.2;
+        var levels = new[] { 5.0, 5 + step, 5 + 2 * step, 5 + 3 * step };
+        foreach (double level in levels)
+        {
+            Assert.Contains(stones, s => Math.Abs(DistanceOutsideSquare(s.Center, 40) - level) < 0.3);
+        }
+
+        // Дальше последнего ряда камней нет (с запасом на срез угла — 5·√2 у самого дальнего ряда).
+        double outermost = (5 + 3 * step) * Math.Sqrt(2);
+        Assert.All(stones, s => Assert.True(DistanceOutsideSquare(s.Center, 40) < outermost + 0.5));
     }
 
     [Fact]
