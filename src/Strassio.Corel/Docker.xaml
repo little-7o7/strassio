@@ -30,18 +30,18 @@
           <StackPanel x:Name="StoneSection">
 
             <!-- Шапка -->
-            <DockPanel Margin="0,0,0,10">
-                <Button x:Name="SettingsButton" DockPanel.Dock="Right" Padding="6,3" Click="Settings_Click"
+            <DockPanel Margin="0,0,0,12">
+                <Button x:Name="SettingsButton" DockPanel.Dock="Right" Style="{StaticResource Strassio.IconButton}" Click="Settings_Click"
                         ToolTip="{Binding [docker.settings.tooltip]}"
                         FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE713;"/>
-                <TextBlock Text="{Binding [app.title]}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding [app.title]}" Style="{StaticResource Strassio.Title}"/>
             </DockPanel>
             <!-- Пробный период / «нет лицензии»; при действующей лицензии не видна -->
             <TextBlock x:Name="LicenseLine" Style="{StaticResource Strassio.Muted}" Margin="0,-4,0,10"
                        Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="LicenseLine_Click"/>
 
             <!-- Камень: размер и цвет -->
-            <TextBlock Text="{Binding [docker.stone]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <TextBlock Text="{Binding [docker.stone]}" Style="{StaticResource Strassio.Section}"/>
             <Grid x:Name="SetRow" Margin="0,0,0,6" Visibility="Collapsed">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -51,7 +51,7 @@
                 <ComboBox x:Name="SetCombo" Grid.Column="1" DisplayMemberPath="Name" SelectionChanged="SetCombo_SelectionChanged"
                           ToolTip="{Binding [docker.set.tooltip]}"/>
             </Grid>
-            <Grid Margin="0,0,0,6">
+            <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -60,7 +60,7 @@
                 <TextBlock Text="{Binding [docker.size]}" Style="{StaticResource Strassio.Caption}"/>
                 <ComboBox x:Name="SizeCombo" Grid.Column="1" DisplayMemberPath="Text"
                           ToolTip="{Binding [docker.size.tooltip]}" SelectionChanged="SizeCombo_SelectionChanged"/>
-                <Button Grid.Column="2" Margin="4,0,0,0" Padding="6,3" Click="EditStones_Click"
+                <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource Strassio.IconButton}" Click="EditStones_Click"
                         ToolTip="{Binding [docker.stones.tooltip]}"
                         FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE70F;"/>
             </Grid>
@@ -84,7 +84,7 @@
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->
             <StackPanel x:Name="EditPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [edit.delete]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [edit.delete]}" Style="{StaticResource Strassio.Section}"/>
                 <ComboBox x:Name="DeleteModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
                           SelectionChanged="DeleteModeCombo_SelectionChanged"/>
                 <TextBlock x:Name="DeleteModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
@@ -93,10 +93,10 @@
                 <Button Content="{Binding [edit.apply]}" Click="ApplyDelete_Click" Margin="0,0,0,14"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [edit.apply.tooltip]}"/>
 
-                <TextBlock Text="{Binding [edit.tools]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [edit.tools]}" Style="{StaticResource Strassio.Section}"/>
                 <Button Content="{Binding [edit.duplicates]}" Click="Duplicates_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [edit.duplicates.tooltip]}"/>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -114,8 +114,8 @@
                 <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
                 <!-- Производство (раздел 11) -->
-                <TextBlock Text="{Binding [prod.title]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,6">
+                <TextBlock Text="{Binding [prod.title]}" Style="{StaticResource Strassio.Section}"/>
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -138,15 +138,15 @@
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
                 <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
-                <TextBlock Text="{Binding [color.select]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [color.select]}" Style="{StaticResource Strassio.Section}"/>
                 <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
                 <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
                 <Button x:Name="SelectBothButton" Click="SelectBoth_Click" Margin="0,0,0,6"/>
                 <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
                 <!-- Смешение цветов (раздел 3.4): 2–3 цвета, доли в процентах или «по очереди» -->
-                <TextBlock Text="{Binding [color.mix]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,6">
+                <TextBlock Text="{Binding [color.mix]}" Style="{StaticResource Strassio.Section}"/>
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -157,11 +157,11 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    <ComboBox x:Name="MixColor1" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <ComboBox x:Name="MixColor1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
                     <TextBox x:Name="MixValue1" Grid.Column="2" Text="70" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
-                    <ComboBox x:Name="MixColor2" Grid.Row="1" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <ComboBox x:Name="MixColor2" Grid.Row="1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
                     <TextBox x:Name="MixValue2" Grid.Row="1" Grid.Column="2" Text="30" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
-                    <ComboBox x:Name="MixColor3" Grid.Row="2" DisplayMemberPath="Name" Margin="0,0,0,4"/>
+                    <ComboBox x:Name="MixColor3" Grid.Row="2" DisplayMemberPath="Name" Margin="0,0,0,6"/>
                     <TextBox x:Name="MixValue3" Grid.Row="2" Grid.Column="2" Text="0" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
                 </Grid>
                 <ComboBox x:Name="MixModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6" ToolTip="{Binding [color.mix.mode.tooltip]}"/>
@@ -174,9 +174,9 @@
 
             <!-- «Векторы» (docs/SPEC.md, раздел 10): подготовка линий — Docker.Vector.cs -->
             <StackPanel x:Name="VectorPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [vec.lines]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <TextBlock Text="{Binding [vec.offset]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,4"/>
-                <Grid Margin="0,0,0,6">
+                <TextBlock Text="{Binding [vec.lines]}" Style="{StaticResource Strassio.Section}"/>
+                <TextBlock Text="{Binding [vec.offset]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -188,7 +188,7 @@
                     <Button Grid.Column="2" Content="{Binding [vec.offsetIn]}" Click="OffsetIn_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
                     <TextBox x:Name="OffsetBox" Grid.Column="4" ToolTip="{Binding [vec.distance.tooltip]}"/>
                 </Grid>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -197,7 +197,7 @@
                     <Button Content="{Binding [vec.parallel]}" Click="Parallel_Click" ToolTip="{Binding [vec.parallel.tooltip]}"/>
                     <TextBox x:Name="ParallelCountBox" Grid.Column="2" Text="3" ToolTip="{Binding [vec.count.tooltip]}"/>
                 </Grid>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -207,7 +207,7 @@
                     <TextBox x:Name="ParallelStepBox" Grid.Column="2" ToolTip="{Binding [vec.step.tooltip]}"/>
                 </Grid>
                 <CheckBox x:Name="SharpCornersBox" Content="{Binding [vec.sharp]}" ToolTip="{Binding [vec.sharp.tooltip]}" Margin="0,0,0,10"/>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -216,7 +216,7 @@
                     <Button Content="{Binding [vec.split]}" Click="Split_Click" ToolTip="{Binding [vec.split.tooltip]}"/>
                     <TextBox x:Name="SplitBox" Grid.Column="2" Text="2" ToolTip="{Binding [vec.parts.tooltip]}"/>
                 </Grid>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -225,7 +225,7 @@
                     <Button Content="{Binding [vec.join]}" Click="Join_Click" ToolTip="{Binding [vec.join.tooltip]}"/>
                     <TextBox x:Name="JoinToleranceBox" Grid.Column="2" ToolTip="{Binding [vec.tolerance.tooltip]}"/>
                 </Grid>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -243,7 +243,7 @@
                     <Button Content="{Binding [vec.reverse]}" Click="Reverse_Click" ToolTip="{Binding [vec.reverse.tooltip]}"/>
                     <Button Grid.Column="2" Content="{Binding [vec.start]}" Click="ShowStart_Click" ToolTip="{Binding [vec.start.tooltip]}"/>
                 </Grid>
-                <Grid Margin="0,0,0,6">
+                <Grid Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="6"/>
@@ -255,14 +255,14 @@
                 <Button Content="{Binding [vec.centerline]}" Click="Centerline_Click" Margin="0,0,0,14"
                         ToolTip="{Binding [vec.centerline.tooltip]}"/>
 
-                <TextBlock Text="{Binding [vec.checkTitle]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                <TextBlock Text="{Binding [vec.checkTitle]}" Style="{StaticResource Strassio.Section}"/>
                 <Button Content="{Binding [vec.check]}" Click="Check_Click" Margin="0,0,0,6" ToolTip="{Binding [vec.check.tooltip]}"/>
                 <TextBlock Text="{Binding [vec.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
             </StackPanel>
 
             <StackPanel x:Name="MethodPanel">
             <!-- Пресеты и недавние настройки (раздел 8) -->
-            <Grid Margin="0,0,0,6">
+            <Grid Margin="0,0,0,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
@@ -272,9 +272,9 @@
                 <TextBlock Text="{Binding [docker.preset]}" Style="{StaticResource Strassio.Caption}"/>
                 <ComboBox x:Name="PresetCombo" Grid.Column="1" DisplayMemberPath="Text" SelectionChanged="PresetCombo_SelectionChanged"
                           ToolTip="{Binding [docker.preset.tooltip]}"/>
-                <Button Grid.Column="2" Margin="4,0,0,0" Padding="6,3" Click="SavePreset_Click" ToolTip="{Binding [docker.preset.save]}"
+                <Button Grid.Column="2" Margin="6,0,0,0" Style="{StaticResource Strassio.IconButton}" Click="SavePreset_Click" ToolTip="{Binding [docker.preset.save]}"
                         FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE74E;"/>
-                <Button x:Name="DeletePresetButton" Grid.Column="3" Margin="4,0,0,0" Padding="6,3" Click="DeletePreset_Click"
+                <Button x:Name="DeletePresetButton" Grid.Column="3" Margin="6,0,0,0" Style="{StaticResource Strassio.IconButton}" Click="DeletePreset_Click"
                         ToolTip="{Binding [docker.preset.delete]}" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE74D;"/>
             </Grid>
             <Grid Margin="0,0,0,4">
@@ -297,7 +297,7 @@
             <TextBlock x:Name="MethodHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,12"/>
 
             <!-- Параметры выбранного метода: поля строятся из Strassio.Core.Methods.MethodCatalog (Docker.Params.cs) -->
-            <TextBlock x:Name="ParamsHeader" Text="{Binding [docker.params]}" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <TextBlock x:Name="ParamsHeader" Text="{Binding [docker.params]}" Style="{StaticResource Strassio.Section}"/>
             <Grid x:Name="ParamsGrid" Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" MaxWidth="140"/>
@@ -322,8 +322,8 @@
             </Grid>
             <CheckBox x:Name="LivePreviewBox" Content="{Binding [docker.livePreview]}" Click="LivePreviewBox_Click"
                       ToolTip="{Binding [docker.livePreview.tooltip]}" Margin="0,8,0,0"/>
-            <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,8,0,0" Padding="6" CornerRadius="3"
-                    Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.ControlBorder}" BorderThickness="1">
+            <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,10,0,0" Padding="8" CornerRadius="10"
+                    Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.Separator}" BorderThickness="1">
                 <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
             </Border>
             <TextBlock x:Name="StatusText" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,0"/>

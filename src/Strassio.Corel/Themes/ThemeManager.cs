@@ -86,6 +86,9 @@ namespace Strassio.Corel.Themes
             resources["Strassio.SelectedBackground"] = Brush(palette.SelectedBackground);
             resources["Strassio.Accent"] = Brush(palette.Accent);
             resources["Strassio.AccentForeground"] = Brush(palette.AccentForeground);
+            resources["Strassio.CardBackground"] = Brush(palette.CardBackground);
+            resources["Strassio.Separator"] = Brush(palette.Separator);
+            resources["Strassio.AccentSoft"] = Brush(palette.AccentSoft);
         }
 
         private static SolidColorBrush Brush(string hex)

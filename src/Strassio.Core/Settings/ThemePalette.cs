@@ -12,37 +12,46 @@ namespace Strassio.Core.Settings
             "LightestGrey", isDark: false,
             background: "#F4F4F4", foreground: "#000000", mutedForeground: "#5A5A5A",
             controlBackground: "#EAEAEA", controlBorder: "#B2B2B2", inputBackground: "#FFFFFF",
-            hoverBackground: "#E0F0FF", selectedBackground: "#CEE3FF", accent: "#0078D7", accentForeground: "#FFFFFF");
+            hoverBackground: "#E0F0FF", selectedBackground: "#CEE3FF", accent: "#0078D7", accentForeground: "#FFFFFF",
+            cardBackground: "#FFFFFF", separator: "#18000000", accentSoft: "#1A0078D7");
 
         public static readonly ThemePalette MediumGrey = new ThemePalette(
             "MediumGrey", isDark: false,
             background: "#ECECEC", foreground: "#000000", mutedForeground: "#505050",
             controlBackground: "#E2E2E2", controlBorder: "#B2B2B2", inputBackground: "#FFFFFF",
-            hoverBackground: "#E0F0FF", selectedBackground: "#C2D6F0", accent: "#0078D7", accentForeground: "#FFFFFF");
+            hoverBackground: "#E0F0FF", selectedBackground: "#C2D6F0", accent: "#0078D7", accentForeground: "#FFFFFF",
+            cardBackground: "#FAFAFA", separator: "#18000000", accentSoft: "#1A0078D7");
 
         public static readonly ThemePalette ModernUI = new ThemePalette(
             "ModernUI", isDark: false,
             background: "#F3F4F6", foreground: "#1F2328", mutedForeground: "#6E7886",
             controlBackground: "#E5E7EB", controlBorder: "#D1D5DB", inputBackground: "#FFFFFF",
-            hoverBackground: "#DCE8F5", selectedBackground: "#ACC8E5", accent: "#0078D7", accentForeground: "#FFFFFF");
+            hoverBackground: "#DCE8F5", selectedBackground: "#ACC8E5", accent: "#0078D7", accentForeground: "#FFFFFF",
+            cardBackground: "#FFFFFF", separator: "#14000000", accentSoft: "#1A0078D7");
 
         public static readonly ThemePalette DarkGrey = new ThemePalette(
             "DarkGrey", isDark: true,
             background: "#383838", foreground: "#CCCCCC", mutedForeground: "#9A9A9A",
             controlBackground: "#323232", controlBorder: "#202020", inputBackground: "#2D2D2D",
-            hoverBackground: "#003C78", selectedBackground: "#0064CA", accent: "#3399FF", accentForeground: "#FFFFFF");
+            hoverBackground: "#003C78", selectedBackground: "#0064CA", accent: "#3399FF", accentForeground: "#FFFFFF",
+            cardBackground: "#404040", separator: "#26FFFFFF", accentSoft: "#333399FF");
 
         public static readonly ThemePalette Black = new ThemePalette(
             "Black", isDark: true,
             background: "#232323", foreground: "#CCCCCC", mutedForeground: "#8C8C8C",
             controlBackground: "#323232", controlBorder: "#5A5A5A", inputBackground: "#0F0F0F",
-            hoverBackground: "#003C78", selectedBackground: "#00468C", accent: "#3399FF", accentForeground: "#FFFFFF");
+            hoverBackground: "#003C78", selectedBackground: "#00468C", accent: "#3399FF", accentForeground: "#FFFFFF",
+            cardBackground: "#2C2C2C", separator: "#22FFFFFF", accentSoft: "#333399FF");
 
         private ThemePalette(
             string name, bool isDark, string background, string foreground, string mutedForeground,
             string controlBackground, string controlBorder, string inputBackground,
-            string hoverBackground, string selectedBackground, string accent, string accentForeground)
+            string hoverBackground, string selectedBackground, string accent, string accentForeground,
+            string cardBackground, string separator, string accentSoft)
         {
+            CardBackground = cardBackground;
+            Separator = separator;
+            AccentSoft = accentSoft;
             Name = name;
             IsDark = isDark;
             Background = background;
@@ -82,6 +91,15 @@ namespace Strassio.Core.Settings
         public string Accent { get; }
 
         public string AccentForeground { get; }
+
+        /// <summary>Фон карточки — блока параметров, который лежит поверх фона докера.</summary>
+        public string CardBackground { get; }
+
+        /// <summary>Тонкая линия между блоками («#AARRGGBB», полупрозрачная).</summary>
+        public string Separator { get; }
+
+        /// <summary>Акцент вполсилы: подсветка выбранной вкладки и наведения («#AARRGGBB»).</summary>
+        public string AccentSoft { get; }
 
         /// <summary>
         /// Какую палитру показать. «Авто» — как схема CorelDRAW (значение настройки CorelDRAW
