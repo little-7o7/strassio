@@ -249,8 +249,16 @@ namespace Strassio.Core.Methods
         /// </summary>
         private static double CornerNudge(MethodParameters p) => p.GapMm < 0.1 ? 0 : 1.0;
 
+        /// <summary>
+        /// Форма самого смещённого ряда в углу. «Круглые» — дуга снаружи угла; «Острые» и
+        /// «Смешанно» — срез (митр). Со скриншота автора («наружная линия — углы не получаются,
+        /// надо подгонять углы, чтобы не было пусто»): у дуги внешний ряд обходит угол по кривой,
+        /// ряды расходятся веером и в самом углу рамки остаётся пусто. Срез держит ряды
+        /// параллельными, и угол заполняется целиком; очень острый кончик при этом всё равно
+        /// смягчается — но уже расстановкой камней (<see cref="CornerPlacement"/>).
+        /// </summary>
         private static CornerStyle Corners(MethodParameters p) =>
-            p.Corners == MethodChoices.CornersSharp ? CornerStyle.Sharp : CornerStyle.Round;
+            p.Corners == MethodChoices.CornersRound ? CornerStyle.Round : CornerStyle.Sharp;
 
         /// <summary>Как ряд проходит угол — из того же выбора «Углы», что и форма смещённого ряда.</summary>
         private static CornerPlacement Placement(MethodParameters p) =>

@@ -13,7 +13,9 @@ public class MethodSamplesTests
         foreach (MethodInfo info in MethodCatalog.All)
         {
             MethodResult result = MethodSamples.Run(info.Kind, out MethodSample _);
-            Assert.InRange(result.Stones.Count, 8, 40);
+            // Схема должна читаться в списке докера: не пусто и не каша. Верхняя граница
+            // поднята с 40 до 48 — у методов со смещёнными рядами угол-срез добавляет камни.
+            Assert.InRange(result.Stones.Count, 8, 48);
 
             bool[] overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01);
             Assert.DoesNotContain(true, overlaps);

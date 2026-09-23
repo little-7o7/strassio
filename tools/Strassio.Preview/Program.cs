@@ -29,6 +29,12 @@ if (scenario == "corners")
     return;
 }
 
+if (scenario == "rows")
+{
+    RowCornerLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "vector")
 {
     RenderVectorScenario();

@@ -164,7 +164,13 @@ public class MethodRunnerTests : IDisposable
         var p = new MethodParameters { OffsetMm = 5, OffsetSide = MethodChoices.SideOutside };
         IReadOnlyList<PlacedStone> stones = Run(MethodKind.L3, Square(40), p).Stones;
         Assert.NotEmpty(stones);
-        Assert.All(stones, s => Assert.InRange(DistanceOutsideSquare(s.Center, 40), 4.9, 5.1));
+
+        // Угол ряда теперь срез (митр), а не дуга: по сторонам расстояние ровно 5 мм, а в самом
+        // углу ряд доходит до точки среза — 5·√2 ≈ 7,07 мм от угла квадрата. Ближе 5 мм не подходит
+        // нигде (иначе ряд налез бы на фигуру), дальше среза не уходит.
+        double miter = 5 * Math.Sqrt(2);
+        Assert.All(stones, s => Assert.InRange(DistanceOutsideSquare(s.Center, 40), 4.9, miter + 0.1));
+        Assert.Contains(stones, s => DistanceOutsideSquare(s.Center, 40) > miter - 0.2);
     }
 
     [Fact]
