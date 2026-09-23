@@ -35,6 +35,12 @@ if (scenario == "rows")
     return;
 }
 
+if (scenario == "site")
+{
+    RenderSiteImages();
+    return;
+}
+
 if (scenario == "vector")
 {
     RenderVectorScenario();
@@ -567,6 +573,47 @@ static void RenderRingScenario(string scenario)
     Console.WriteLine($"SVG сохранён: {outPathFixed}");
     Console.WriteLine($"SVG сохранён: {outPathShift}");
     Console.WriteLine($"SVG сохранён: {outPath}");
+}
+
+/// <summary>
+/// Картинки для сайта (раздел «Примеры»): те же алгоритмы, что в плагине, но нарисованные
+/// «по-настоящему» — одинаковые камни-стразы, без служебных цветов и без контура фигуры.
+/// Кладутся сразу в server/public/img/, поверх старых.
+/// </summary>
+static void RenderSiteImages()
+{
+    string root = FindRepoRoot();
+    string imgDir = Path.Combine(root, "server", "public", "img");
+    Directory.CreateDirectory(imgDir);
+
+    void Save(string name, IReadOnlyList<PlacedStone> stones)
+    {
+        string path = Path.Combine(imgDir, name);
+        File.WriteAllText(path, SvgWriter.RenderSite(stones));
+        Console.WriteLine($"  {name} — {stones.Count} страз");
+    }
+
+    var contour = new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+    var honeycomb = new GridFillOptions { StoneDiameterMm = 2.4, GapMm = 0.2, Pattern = GridPattern.Honeycomb };
+
+    Console.WriteLine("Картинки сайта:");
+    Save("heart.svg", ContourFiller.Fill(new[] { BuildHeart().Item1 }, contour));
+    Save("contour-letters.svg", ContourFiller.Fill(new[] { BuildLettersCurve() }, contour));
+
+    honeycomb.AngleDeg = 12;
+    Save("fill-star.svg", GridFiller.Fill(new[] { BuildStarCurve() }, honeycomb));
+
+    honeycomb.AngleDeg = 0;
+    Save("fill-honeycomb.svg", GridFiller.Fill(
+        new[]
+        {
+            Curve.FromPolyline(
+                new[] { new Point2D(0, 0), new Point2D(40, 0), new Point2D(40, 40), new Point2D(0, 40) },
+                isClosed: true),
+        },
+        honeycomb));
+
+    Console.WriteLine("Готово: " + imgDir);
 }
 
 static void RenderFillScenario(string scenario)
