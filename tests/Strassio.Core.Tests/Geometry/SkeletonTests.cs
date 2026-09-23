@@ -70,6 +70,35 @@ public class SkeletonTests
     }
 
     [Fact]
+    public void LongestPath_OnStrip_IsOneLineAlongTheMiddle()
+    {
+        // По этой линии пойдёт средний ряд страз — «прожилка», на которой сходятся ряды с двух сторон.
+        SignedDistanceField field = Field(Rectangle(40, 10));
+        Skeleton skeleton = Skeleton.Build(field);
+
+        var path = skeleton.LongestPath();
+
+        Assert.True(path.Count > 20, $"линия слишком короткая: {path.Count} точек");
+
+        double length = 0;
+        for (int i = 1; i < path.Count; i++)
+        {
+            length += Point2D.Distance(path[i - 1], path[i]);
+        }
+
+        Assert.InRange(length, 25, 45);
+
+        // Средняя часть линии идёт по середине полосы.
+        foreach (Point2D p in path)
+        {
+            if (p.X > 10 && p.X < 30)
+            {
+                Assert.InRange(p.Y, 4.0, 6.0);
+            }
+        }
+    }
+
+    [Fact]
     public void Circle_SkeletonShrinksToTheCentre()
     {
         var points = new List<Point2D>();

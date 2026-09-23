@@ -25,6 +25,16 @@ namespace Strassio.Core.Placement
 
         public GridPattern CenterPattern { get; set; } = GridPattern.Honeycomb;
 
+        /// <summary>
+        /// Класть ли по самой середине формы один ровный ряд — «прожилку» (как жилка листа).
+        ///
+        /// Ряды идут от краёв внутрь и в середине сходятся под углом друг к другу: там получается
+        /// беспорядок (на сравнении автора с ручной работой — белый завиток). Прожилка заменяет
+        /// эту тесноту одной чистой линией. Взамен рядом с ней могут остаться просветы, поэтому
+        /// по умолчанию выключено — включается осознанно.
+        /// </summary>
+        public bool MidribAlongSkeleton { get; set; }
+
         public CornerStyle CornerStyle { get; set; } = CornerStyle.Round;
 
         public double CornerAngleThresholdDeg { get; set; } = 30;

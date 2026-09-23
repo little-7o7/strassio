@@ -45,6 +45,162 @@ namespace Strassio.Core.Geometry
         /// <summary>Расстояние от клетки до ближайшей клетки срединной линии, мм.</summary>
         public double DistanceAt(int ix, int iy) => distance[iy * Width + ix];
 
+        /// <summary>
+        /// Срединная линия как упорядоченная ломаная — по ней можно вести ряд страз («прожилка»).
+        ///
+        /// После утоньшения остаются не только главная линия, но и короткие «усы» к углам и кончикам.
+        /// Берём самый длинный путь: от любой клетки ищем самую дальнюю, от неё — снова самую дальнюю;
+        /// путь между ними и есть главная линия (обычный приём для древовидных фигур). Ломаная потом
+        /// сглаживается скользящим средним, иначе она идёт ступеньками по клеткам сетки.
+        /// </summary>
+        public List<Point2D> LongestPath()
+        {
+            int start = -1;
+            for (int i = 0; i < Cells.Length; i++)
+            {
+                if (Cells[i])
+                {
+                    start = i;
+                    break;
+                }
+            }
+
+            if (start < 0)
+            {
+                return new List<Point2D>();
+            }
+
+            int farthest = FarthestFrom(start, out _);
+            FarthestFrom(farthest, out int[] cameFrom);
+
+            int end = -1;
+            double bestDistance = -1;
+            for (int i = 0; i < Cells.Length; i++)
+            {
+                if (Cells[i] && cameFrom[i] != -2)
+                {
+                    double d = PathLength(i, cameFrom);
+                    if (d > bestDistance)
+                    {
+                        bestDistance = d;
+                        end = i;
+                    }
+                }
+            }
+
+            var path = new List<Point2D>();
+            for (int i = end; i >= 0; i = cameFrom[i])
+            {
+                path.Add(new Point2D(Origin.X + (i % Width) * CellSizeMm, Origin.Y + (i / Width) * CellSizeMm));
+                if (cameFrom[i] == i)
+                {
+                    break;
+                }
+            }
+
+            return Smooth(path);
+        }
+
+        /// <summary>Обход в ширину по клеткам скелета: возвращает самую дальнюю клетку и откуда пришли.</summary>
+        private int FarthestFrom(int start, out int[] cameFrom)
+        {
+            var from = new int[Cells.Length];
+            for (int i = 0; i < from.Length; i++)
+            {
+                from[i] = -2; // не посещали
+            }
+
+            var queue = new Queue<int>();
+            queue.Enqueue(start);
+            from[start] = start;
+            int last = start;
+
+            while (queue.Count > 0)
+            {
+                int current = queue.Dequeue();
+                last = current;
+                int cx = current % Width;
+                int cy = current / Width;
+
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        if (dx == 0 && dy == 0)
+                        {
+                            continue;
+                        }
+
+                        int nx = cx + dx, ny = cy + dy;
+                        if (nx < 0 || ny < 0 || nx >= Width || ny >= Height)
+                        {
+                            continue;
+                        }
+
+                        int next = ny * Width + nx;
+                        if (Cells[next] && from[next] == -2)
+                        {
+                            from[next] = current;
+                            queue.Enqueue(next);
+                        }
+                    }
+                }
+            }
+
+            cameFrom = from;
+            return last;
+        }
+
+        private double PathLength(int index, int[] cameFrom)
+        {
+            double length = 0;
+            int current = index;
+            int guard = 0;
+
+            while (cameFrom[current] != current && guard++ < 1_000_000)
+            {
+                int previous = cameFrom[current];
+                int dx = (current % Width) - (previous % Width);
+                int dy = (current / Width) - (previous / Width);
+                length += dx != 0 && dy != 0 ? 1.41421356 : 1;
+                current = previous;
+            }
+
+            return length;
+        }
+
+        /// <summary>Сглаживание ломаной скользящим средним — убирает ступеньки сетки.</summary>
+        private static List<Point2D> Smooth(List<Point2D> path)
+        {
+            if (path.Count < 5)
+            {
+                return path;
+            }
+
+            const int Window = 4;
+            var smoothed = new List<Point2D>(path.Count);
+
+            for (int i = 0; i < path.Count; i++)
+            {
+                double sx = 0, sy = 0;
+                int n = 0;
+                for (int k = -Window; k <= Window; k++)
+                {
+                    int j = i + k;
+                    if (j >= 0 && j < path.Count)
+                    {
+                        sx += path[j].X;
+                        sy += path[j].Y;
+                        n++;
+                    }
+                }
+
+                smoothed.Add(new Point2D(sx / n, sy / n));
+            }
+
+            return smoothed;
+        }
+
         /// <summary>Строит срединную линию по карте расстояний до края фигуры.</summary>
         public static Skeleton Build(SignedDistanceField field)
         {

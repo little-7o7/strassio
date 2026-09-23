@@ -98,6 +98,13 @@ namespace Strassio.Core.Placement
             if (options.FillCenter)
             {
                 AddCenterFill(result, boundaries, field, options, ringsPlaced > 0 ? lastLevel + rowSpacing : 0);
+
+                // Доводка середины: ряды с двух сторон приходят туда под углом и оставляют завиток.
+                // Заменяем эту тесноту одним ровным рядом по самой середине — «прожилкой» листа.
+                if (options.MidribAlongSkeleton && ringsPlaced > 0)
+                {
+                    LayMidrib(result, flats, field, options, stoneStep, scatterOptions);
+                }
             }
 
             // Запас на наложение — по зазору пользователя: при зазоре 0 касающиеся стразы — это норма,
@@ -384,6 +391,102 @@ namespace Strassio.Core.Placement
         /// Обходим узлы карты расстояний, ищем такие места и ставим туда стразы — сначала в самые
         /// глубокие, чтобы новая страза вставала посередине дырки, а не у её края.
         /// </summary>
+        /// <summary>
+        /// «Прожилка»: один ровный ряд по самой середине формы вместо тесноты, которая получается
+        /// там, где ряды с двух сторон сходятся под углом (сравнение автора с ручной работой —
+        /// у него ряды сходятся к одной чистой линии, у нас оставался белый завиток).
+        ///
+        /// Делается осторожно: берётся только главная линия середины (самый длинный путь скелета),
+        /// рядом с ней убираются старые стразы, и на её место кладётся ряд обычной подгонкой шага.
+        /// Ветки скелета (лучи звезды, отростки букв) не трогаются совсем. Если середина короткая —
+        /// например у круга, где она вырождается в точку, — ничего не меняем.
+        /// </summary>
+        private static void LayMidrib(
+            List<PlacedStone> stones, IReadOnlyList<FlattenedCurve> flats, SignedDistanceField field,
+            ContourFillOptions options, double stoneStep, LineScatterOptions scatterOptions)
+        {
+            // Середину считаем на отдельной крупной сетке: клетка в половину камня. Точнее не нужно —
+            // линия всё равно сглаживается, — а считается это примерно в шестнадцать раз быстрее,
+            // чем на рабочей сетке заливки (иначе на десяти тысячах страз ждать больше десяти секунд).
+            double coarseCell = Math.Max(0.2, options.StoneDiameterMm / 2);
+            SignedDistanceField coarse = SignedDistanceField.Build(flats, coarseCell);
+
+            Skeleton skeleton = Skeleton.Build(coarse);
+            List<Point2D> path = skeleton.LongestPath();
+            if (path.Count < 3)
+            {
+                return;
+            }
+
+            double pathLength = 0;
+            for (int i = 1; i < path.Count; i++)
+            {
+                pathLength += Point2D.Distance(path[i - 1], path[i]);
+            }
+
+            // Слишком короткая середина — менять нечего.
+            if (pathLength < 3 * stoneStep)
+            {
+                return;
+            }
+
+            double radius = options.StoneDiameterMm / 2;
+
+            // Убираем стразы вплотную к середине. Быстрая отсечка по карте расстояний до скелета,
+            // потом точная проверка по самой линии — чтобы не задеть стразы у других веток.
+            // Расчищаем полосу почти в целый шаг: иначе новому ряду не хватает места и его же
+            // стразы вычищаются потом как наложения (проверено на листе автора — оставалась одна).
+            double clearance = stoneStep;
+            stones.RemoveAll(s =>
+            {
+                int ix = (int)Math.Round((s.Center.X - coarse.Origin.X) / coarse.CellSizeMm);
+                int iy = (int)Math.Round((s.Center.Y - coarse.Origin.Y) / coarse.CellSizeMm);
+                if (ix < 0 || iy < 0 || ix >= coarse.Width || iy >= coarse.Height)
+                {
+                    return false;
+                }
+
+                return skeleton.DistanceAt(ix, iy) < clearance * 1.6 && DistanceToPath(s.Center, path) < clearance;
+            });
+
+            // И кладём ряд по самой середине.
+            Curve line;
+            try
+            {
+                line = Curve.FromPolyline(path, isClosed: false);
+            }
+            catch (ArgumentException)
+            {
+                return;
+            }
+
+            foreach (PlacedStone stone in LineScatterer.Scatter(line, scatterOptions))
+            {
+                if (field.ValueAt(stone.Center) >= radius)
+                {
+                    stones.Add(new PlacedStone(stone.Center, options.StoneDiameterMm, false, rowId: -2));
+                }
+            }
+        }
+
+        /// <summary>Расстояние от точки до ломаной.</summary>
+        private static double DistanceToPath(Point2D point, List<Point2D> path)
+        {
+            double best = double.MaxValue;
+
+            for (int i = 1; i < path.Count; i++)
+            {
+                Point2D a = path[i - 1];
+                Point2D b = path[i];
+                Point2D ab = b - a;
+                double len2 = ab.Dot(ab);
+                double t = len2 < 1e-12 ? 0 : Math.Max(0, Math.Min(1, (point - a).Dot(ab) / len2));
+                best = Math.Min(best, Point2D.Distance(a + ab * t, point));
+            }
+
+            return best;
+        }
+
         private static void FillGaps(List<PlacedStone> stones, SignedDistanceField field, ContourFillOptions options)
         {
             double radius = options.StoneDiameterMm / 2;
