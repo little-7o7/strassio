@@ -165,6 +165,22 @@ public class FillMethodsTests
         Assert.Equal(rings, along);
     }
 
+    [Theory]
+    [InlineData(MethodKind.F6)]
+    [InlineData(MethodKind.F9)]
+    [InlineData(MethodKind.F10)]
+    public void Fills_LeaveNoNestWhereAWholeStoneFits(MethodKind kind)
+    {
+        // Добивка ямок: после метода не должно остаться места, где камень касается двух соседей
+        // и целиком помещается внутри формы. Раньше «от центра» на круге оставлял 19 таких мест.
+        Curve[] shape = { Circle(20) };
+        var p = new MethodParameters { GapMm = 0 };
+        IReadOnlyList<PlacedStone> stones = Run(kind, shape, p).Stones;
+
+        Assert.Equal(stones.Count, AdvancedFillers.AddMissingStones(stones, shape, D, 0, 0).Count);
+        Assert.DoesNotContain(true, IntersectionFixer.FindIndicesToRemove(stones, 0, 0.03));
+    }
+
     [Fact]
     public void CenterPattern_DefaultsToAlong()
     {

@@ -96,7 +96,7 @@ namespace Strassio.Core.Methods
                         : AdvancedFillers.AutoGrid(contours, grid, tryAngles: p.AutoGrid == MethodChoices.AutoShiftAngle));
 
                 case MethodKind.F6:
-                    return Plain(AdvancedFillers.Centerline(contours, d, p.GapMm, p.EdgeMarginMm));
+                    return Plain(Nests(AdvancedFillers.Centerline(contours, d, p.GapMm, p.EdgeMarginMm), contours, p));
 
                 case MethodKind.F7:
                     if (guides == null || guides.Count == 0)
@@ -112,10 +112,10 @@ namespace Strassio.Core.Methods
                         throw new ArgumentException("Нужна направляющая линия.", nameof(guides));
                     }
 
-                    return Plain(AdvancedFillers.AlongGuide(contours, guides[0], d, p.GapMm, p.RowGapMm, p.EdgeMarginMm));
+                    return Plain(Nests(AdvancedFillers.AlongGuide(contours, guides[0], d, p.GapMm, p.RowGapMm, p.EdgeMarginMm), contours, p));
 
                 case MethodKind.F9:
-                    return Plain(AdvancedFillers.FromCenter(contours, d, p.GapMm, p.EdgeMarginMm, spiral: p.CenterMode == MethodChoices.CenterSpiral));
+                    return Plain(Nests(AdvancedFillers.FromCenter(contours, d, p.GapMm, p.EdgeMarginMm, spiral: p.CenterMode == MethodChoices.CenterSpiral), contours, p));
 
                 case MethodKind.F10:
                     List<double> mix = SizePatterns.Parse(p.MixSizes, sizes);
@@ -124,12 +124,13 @@ namespace Strassio.Core.Methods
                         mix.Add(d);
                     }
 
-                    return Plain(AdvancedFillers.Random(contours, mix, p.GapMm, p.EdgeMarginMm, p.Variant));
+                    return Plain(Nests(AdvancedFillers.Random(contours, mix, p.GapMm, p.EdgeMarginMm, p.Variant), contours, p));
 
                 case MethodKind.F11:
-                    return Plain(AdvancedFillers.Gradient(
-                        contours, SizeRange(Diameter(p.FromSize, d, sizes), Diameter(p.ToSize, d, sizes), sizes),
-                        p.GapMm, p.EdgeMarginMm, horizontal: p.GradientDirection == MethodChoices.GradientHorizontal));
+                    List<double> range = SizeRange(Diameter(p.FromSize, d, sizes), Diameter(p.ToSize, d, sizes), sizes);
+                    return Plain(Nests(AdvancedFillers.Gradient(
+                        contours, range, p.GapMm, p.EdgeMarginMm, horizontal: p.GradientDirection == MethodChoices.GradientHorizontal),
+                        contours, p));
 
                 case MethodKind.F12:
                     double small = Diameter(p.FillSize, d * 0.6, sizes);
@@ -163,6 +164,22 @@ namespace Strassio.Core.Methods
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
+        }
+
+        /// <summary>
+        /// Добивка ямок: в каждую ямку, где камень касается двух соседей и целиком помещается внутри
+        /// формы, кладётся камень. Методы F6, F8–F11 оставляли такие дыры у края и между рядами
+        /// (звезда «по центральной линии» — 23 камня, круг «от центра» — 19). Только если в раскладке
+        /// один размер: у градиента и смеси крупный камень в ямке мелких сломал бы рисунок.
+        /// </summary>
+        private static List<PlacedStone> Nests(List<PlacedStone> stones, IReadOnlyList<Curve> contours, MethodParameters p)
+        {
+            if (stones.Count == 0 || stones.Any(s => Math.Abs(s.DiameterMm - stones[0].DiameterMm) > 1e-6))
+            {
+                return stones;
+            }
+
+            return AdvancedFillers.AddMissingStones(stones, contours, stones[0].DiameterMm, p.GapMm, p.EdgeMarginMm);
         }
 
         /// <summary>

@@ -230,6 +230,24 @@ namespace Strassio.Core.Placement
         }
 
         /// <summary>
+        /// Добивка: к готовой раскладке добавляются камни во все ямки, где новый камень касается двух
+        /// уже лежащих и целиком помещается внутри формы (<see cref="FillNests"/>).
+        /// </summary>
+        public static List<PlacedStone> AddMissingStones(
+            IReadOnlyList<PlacedStone> stones, IReadOnlyList<Curve> contours, double d, double gap, double margin)
+        {
+            double biggest = stones.Count == 0 ? d : Math.Max(d, stones.Max(s => s.DiameterMm));
+            var packer = new StonePacker(biggest, gap / 2);
+            foreach (PlacedStone s in stones)
+            {
+                packer.Add(s);
+            }
+
+            FillNests(packer, new ShapeRegion(contours, d), d, gap, margin);
+            return packer.Stones;
+        }
+
+        /// <summary>
         /// Доводка, как руками: во всякую ямку, где новый камень касается двух уже лежащих и
         /// помещается внутри формы, кладётся камень. Проходы повторяются, пока что-то добавляется.
         /// Соседи ищутся по клеткам — быстро и на десятках тысяч камней.
