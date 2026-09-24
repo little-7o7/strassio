@@ -78,6 +78,46 @@ if (scenario == "calligraphy")
     return;
 }
 
+if (scenario == "lengthwise")
+{
+    // «Ряды вдоль формы» на разных фигурах рядом с нынешней контурной заливкой: сколько камней,
+    // есть ли наложения, сколько времени.
+    string dir = Path.Combine(FindRepoRoot(), "out", "preview", "lengthwise");
+    Directory.CreateDirectory(dir);
+    var shapes = new List<(string, Curve)>
+    {
+        ("heart", BuildHeart().Item1),
+        ("star", BuildStarCurve()),
+        ("circle", Curve.FromPolyline(Enumerable.Range(0, 96).Select(i => new Point2D(15 * Math.Cos(i * Math.PI / 48), 15 * Math.Sin(i * Math.PI / 48))).ToList(), isClosed: true)),
+        ("strip", Curve.FromPolyline(new[] { new Point2D(0, 0), new Point2D(80, 0), new Point2D(80, 12), new Point2D(0, 12) }, isClosed: true)),
+    };
+    foreach (string name in new[] { "1.svg", "vector.svg" })
+    {
+        string file = Path.Combine(FindRepoRoot(), name);
+        if (File.Exists(file))
+        {
+            shapes.Add((Path.GetFileNameWithoutExtension(name) == "1" ? "leaf" : "vector", Strassio.Preview.SvgShape.Load(file)));
+        }
+    }
+
+    foreach ((string name, Curve shape) in shapes)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        List<PlacedStone>? maybe = AdvancedFillers.Lengthwise(new[] { shape }, 2.4, 0, 0);
+        long ms = watch.ElapsedMilliseconds;
+        List<PlacedStone> rings = ContourFiller.Fill(new[] { shape }, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0 });
+        List<PlacedStone> along = maybe ?? rings; // круглая фигура — кольца
+        int overlaps = IntersectionFixer.FindIndicesToRemove(along, 0, 0.03).Count(x => x);
+        Console.WriteLine($"{name,-8} вдоль формы {along.Count,5} ({ms} мс, наложений {overlaps}), кольцами {rings.Count,5}");
+        FlattenedCurve shapeFlat = CurveFlattener.Flatten(shape);
+        List<Point2D> outline = shapeFlat.Points.Select(pt => pt.Position).ToList();
+        File.WriteAllText(Path.Combine(dir, name + "-along.svg"), SvgWriter.Render(outline, true, along));
+        File.WriteAllText(Path.Combine(dir, name + "-rings.svg"), SvgWriter.Render(outline, true, rings));
+    }
+
+    return;
+}
+
 if (scenario == "vector")
 {
     RenderVectorScenario();

@@ -95,9 +95,12 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "rings")]
         public int Rings { get; set; }
 
-        /// <summary>F3 и F4: чем добивать середину — сотами или сеткой.</summary>
+        /// <summary>
+        /// F3 и F4: чем заполнить середину — рядами вдоль формы (по умолчанию, как кладут руками),
+        /// сотами или сеткой.
+        /// </summary>
         [DataMember(Name = "centerPattern")]
-        public string CenterPattern { get; set; } = MethodChoices.PatternHoneycomb;
+        public string CenterPattern { get; set; } = MethodChoices.PatternAlong;
 
         /// <summary>L2: размер крайних рядов (название из таблицы камней); пусто — как основной камень.</summary>
         [DataMember(Name = "edgeSize")]
@@ -185,7 +188,7 @@ namespace Strassio.Core.Methods
             AngleDeg = 0;
             EdgeMarginMm = 0;
             Rings = 2;
-            CenterPattern = MethodChoices.PatternHoneycomb;
+            CenterPattern = MethodChoices.PatternAlong;
             EdgeSize = string.Empty;
             FromSize = string.Empty;
             ToSize = string.Empty;
@@ -225,6 +228,7 @@ namespace Strassio.Core.Methods
         public const string IntersectShift = "shift";
         public const string IntersectShow = "show";
 
+        public const string PatternAlong = "along";
         public const string PatternHoneycomb = "honeycomb";
         public const string PatternSquare = "square";
 

@@ -95,6 +95,298 @@ namespace Strassio.Core.Placement
             return best ?? leastCrowded;
         }
 
+        /// <summary>
+        /// Заливка «ряды вдоль формы», как автор кладёт лист вручную: крайний ряд идёт по контуру,
+        /// а внутренние ряды параллельны срединной линии формы — стоят на равном расстоянии друг от
+        /// друга «в шахматку» (как соты, изогнутые вместе с формой) и просто упираются в крайний ряд.
+        /// Колец внутри нет, поэтому нет и шва посередине, где кольца с двух сторон сходились бы
+        /// под углом. Сдвиг сетки поперёк и вдоль подбирается так, чтобы камней вошло больше.
+        /// </summary>
+        /// <param name="rings">Сколько рядов идёт по контуру, прежде чем начнутся ряды вдоль формы.</param>
+        /// <returns>
+        /// null, если у фигуры нет «длины» (круг, квадрат): срединная линия короче её ширины, и
+        /// кольца там уложат камни лучше.
+        /// </returns>
+        public static List<PlacedStone>? Lengthwise(IReadOnlyList<Curve> contours, double d, double gap, double margin, int rings = 1)
+        {
+            List<PlacedStone> ring = ContourFiller.Fill(contours, new ContourFillOptions
+            {
+                StoneDiameterMm = d,
+                GapMm = gap,
+                MarginFromEdgeMm = margin,
+                MaxRings = Math.Max(1, rings),
+                FillCenter = false,
+            });
+
+            var region = new ShapeRegion(contours, d);
+            SignedDistanceField coarse = SignedDistanceField.Build(region.Contours, Math.Max(0.2, d / 2));
+            List<Point2D> path = Skeleton.Build(coarse).LongestPath();
+            double depth = 0;
+            for (int iy = 0; iy < coarse.Height; iy++)
+            {
+                for (int ix = 0; ix < coarse.Width; ix++)
+                {
+                    depth = Math.Max(depth, coarse.ValueAt(ix, iy));
+                }
+            }
+
+            double pathLength = 0;
+            for (int i = 1; i < path.Count; i++)
+            {
+                pathLength += Point2D.Distance(path[i - 1], path[i]);
+            }
+
+            if (path.Count < 3 || pathLength < 2 * depth)
+            {
+                return null;
+            }
+
+            double diagonal = Point2D.Distance(region.Min, region.Max);
+            List<Point2D> guide = Extend(SmoothPath(path, d), diagonal);
+            var guideFlat = new FlattenedCurve(guide.Select(p => new FlattenedPoint(p, true)).ToList(), isClosed: false);
+
+            double step = d + gap;
+            double rowStep = step * Math.Sqrt(3) / 2;
+
+            List<PlacedStone>? best = null;
+            // Сдвиг сетки поперёк и вдоль: по два варианта. Больше почти ничего не даёт
+            // (на листе 176 камней против 177), а считается вчетверо дольше.
+            const int shifts = 2;
+            for (int across = 0; across < shifts; across++)
+            {
+                double shift = rowStep * across / shifts;
+                List<Point2D> middle = Math.Abs(shift) < 1e-9 ? guide : CurveOffsetter.Offset(guideFlat, shift, roundOuterCorners: true);
+                for (int along = 0; along < shifts; along++)
+                {
+                    var packer = new StonePacker(d, gap / 2);
+                    foreach (PlacedStone s in ring)
+                    {
+                        packer.Add(s);
+                    }
+
+                    // Средний ряд — по середине формы с точным шагом.
+                    var first = new List<Point2D>();
+                    var options = new LineScatterOptions
+                    {
+                        StoneDiameterMm = d,
+                        GapMm = gap,
+                        Mode = StepMode.ExactStep,
+                        ExactStepMm = step,
+                        StartOffsetMm = step * along / shifts,
+                        CornerAngleThresholdDeg = 170,
+                    };
+                    foreach (PlacedStone s in LineScatterer.Scatter(Curve.FromPolyline(middle, isClosed: false), options))
+                    {
+                        if (region.Fits(s.Center, d / 2, margin) && packer.TryAdd(s.Center, d, 0))
+                        {
+                            first.Add(s.Center);
+                        }
+                    }
+
+                    // Дальше в обе стороны: каждый следующий ряд — в ямки между камнями предыдущего.
+                    foreach (int side in new[] { 1, -1 })
+                    {
+                        List<Point2D> previous = first;
+                        for (int k = 1; previous.Count > 0 && k < 1000; k++)
+                        {
+                            previous = NestRow(previous, side, step, d, margin, region, packer, side * k);
+                        }
+                    }
+
+                    FillNests(packer, region, d, gap, margin);
+                    if (best == null || packer.Stones.Count > best.Count)
+                    {
+                        best = packer.Stones;
+                    }
+                }
+            }
+
+            return best ?? ring;
+        }
+
+        /// <summary>
+        /// Срединная линия, посчитанная по клеткам, идёт мелким зигзагом; от каждого излома ряды
+        /// разъезжаются и соты рвутся. Линия переразбивается с шагом в камень и много раз
+        /// сглаживается (каждая точка тянется к середине соседей), концы остаются на месте.
+        /// Плавные изгибы формы сохраняются — сглаживание действует на длине в несколько камней.
+        /// </summary>
+        private static List<Point2D> SmoothPath(List<Point2D> path, double d)
+        {
+            FlattenedCurve flat = CurveFlattener.Flatten(Curve.FromPolyline(path, isClosed: false));
+            int count = Math.Max(3, (int)Math.Round(flat.TotalLength / d) + 1);
+            List<Point2D> pts = Resample(flat, count);
+            for (int pass = 0; pass < 30; pass++)
+            {
+                var next = new List<Point2D>(pts);
+                for (int i = 1; i + 1 < pts.Count; i++)
+                {
+                    next[i] = Point2D.Lerp(pts[i], Point2D.Lerp(pts[i - 1], pts[i + 1], 0.5), 0.5);
+                }
+
+                pts = next;
+            }
+
+            return pts;
+        }
+
+        /// <summary>
+        /// Доводка, как руками: во всякую ямку, где новый камень касается двух уже лежащих и
+        /// помещается внутри формы, кладётся камень. Проходы повторяются, пока что-то добавляется.
+        /// Соседи ищутся по клеткам — быстро и на десятках тысяч камней.
+        /// </summary>
+        private static void FillNests(StonePacker packer, ShapeRegion region, double d, double gap, double margin)
+        {
+            double step = d + gap;
+            double reach = 2 * step;
+            var cells = new Dictionary<(int, int), List<Point2D>>();
+            (int, int) Key(Point2D p) => ((int)Math.Floor(p.X / reach), (int)Math.Floor(p.Y / reach));
+            void Remember(Point2D p)
+            {
+                (int, int) key = Key(p);
+                if (!cells.TryGetValue(key, out List<Point2D>? list))
+                {
+                    cells[key] = list = new List<Point2D>();
+                }
+
+                list.Add(p);
+            }
+
+            // Очередь камней, у которых ещё не проверены ямки с соседями. Каждый камень проверяется
+            // один раз: неудачная ямка потом удачной не станет (камней только прибавляется), а ямки
+            // с новыми камнями проверятся, когда до них дойдёт очередь.
+            var queue = new Queue<Point2D>();
+            foreach (PlacedStone st in packer.Stones)
+            {
+                Remember(st.Center);
+                queue.Enqueue(st.Center);
+            }
+
+            var found = new List<Point2D>();
+            while (queue.Count > 0)
+            {
+                Point2D p = queue.Dequeue();
+                (int cx, int cy) = Key(p);
+                found.Clear();
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        if (!cells.TryGetValue((cx + dx, cy + dy), out List<Point2D>? list))
+                        {
+                            continue;
+                        }
+
+                        foreach (Point2D q in list)
+                        {
+                            double half = Point2D.Distance(p, q) / 2;
+                            if (half < 1e-9 || half >= step)
+                            {
+                                continue;
+                            }
+
+                            Point2D along = (q - p).Normalized();
+                            var normal = new Point2D(-along.Y, along.X);
+                            double h = Math.Sqrt(step * step - half * half);
+                            Point2D mid = Point2D.Lerp(p, q, 0.5);
+                            foreach (Point2D nest in new[] { mid + normal * h, mid - normal * h })
+                            {
+                                if (region.Fits(nest, d / 2, margin) && packer.TryAdd(nest, d, -3))
+                                {
+                                    found.Add(nest);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                foreach (Point2D nest in found)
+                {
+                    Remember(nest);
+                    queue.Enqueue(nest);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Следующий ряд «в шахматку»: камень встаёт в ямку между двумя соседними камнями
+        /// предыдущего ряда — касаясь обоих (вершина равностороннего треугольника) — с нужной стороны.
+        /// На концах ряд продлевается прямо, пока есть место. Возвращает центры нового ряда по порядку.
+        /// </summary>
+        private static List<Point2D> NestRow(
+            List<Point2D> previous, int side, double step, double d, double margin, ShapeRegion region, StonePacker packer, int rowId)
+        {
+            var row = new List<Point2D>();
+            for (int i = 0; i + 1 < previous.Count; i++)
+            {
+                Point2D p = previous[i];
+                Point2D q = previous[i + 1];
+                double half = Point2D.Distance(p, q) / 2;
+                if (half >= step || half < 1e-9)
+                {
+                    continue; // разрыв в ряду — ямки нет
+                }
+
+                Point2D along = (q - p).Normalized();
+                var normal = new Point2D(-along.Y * side, along.X * side);
+                Point2D nest = Point2D.Lerp(p, q, 0.5) + normal * Math.Sqrt(step * step - half * half);
+                if (region.Fits(nest, d / 2, margin) && packer.TryAdd(nest, d, rowId))
+                {
+                    row.Add(nest);
+                }
+            }
+
+            // Продлить ряд за крайние ямки, пока камни помещаются внутри формы.
+            if (row.Count >= 2)
+            {
+                for (int end = 0; end < 2; end++)
+                {
+                    for (int n = 0; n < 50; n++)
+                    {
+                        Point2D last = end == 0 ? row[0] : row[row.Count - 1];
+                        Point2D before = end == 0 ? row[1] : row[row.Count - 2];
+                        Point2D next = last + (last - before).Normalized() * step;
+                        if (!region.Fits(next, d / 2, margin) || !packer.TryAdd(next, d, rowId))
+                        {
+                            break;
+                        }
+
+                        if (end == 0)
+                        {
+                            row.Insert(0, next);
+                        }
+                        else
+                        {
+                            row.Add(next);
+                        }
+                    }
+                }
+            }
+
+            return row;
+        }
+
+        /// <summary>Две самые далёкие друг от друга точки ломаной — кончики вытянутой формы.</summary>
+        private static (int, int) FarthestPair(List<Point2D> pts)
+        {
+            int step = Math.Max(1, pts.Count / 400);
+            (int, int) best = (0, 0);
+            double bestDist = -1;
+            for (int i = 0; i < pts.Count; i += step)
+            {
+                for (int j = i + 1; j < pts.Count; j += step)
+                {
+                    double dist = Point2D.Distance(pts[i], pts[j]);
+                    if (dist > bestDist)
+                    {
+                        bestDist = dist;
+                        best = (i, j);
+                    }
+                }
+            }
+
+            return best;
+        }
+
         /// <summary>Раскладывает переход с заданным числом промежутков между рядами.</summary>
         private static List<PlacedStone> BlendRows(List<Point2D> pa, List<Point2D> pb, bool closed, int rows, double d, double gap, out int tried)
         {

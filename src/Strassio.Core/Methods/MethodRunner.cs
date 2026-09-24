@@ -138,6 +138,18 @@ namespace Strassio.Core.Methods
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:
+                    // Ряды вдоль формы. У круглых фигур длины нет (Lengthwise даёт null) — там
+                    // остаются кольца с сотами в середине.
+                    if (kind != MethodKind.F5 && p.CenterPattern == MethodChoices.PatternAlong)
+                    {
+                        List<PlacedStone>? along = AdvancedFillers.Lengthwise(
+                            contours, d, p.GapMm, p.EdgeMarginMm, kind == MethodKind.F3 ? 1 : Math.Max(1, p.Rings));
+                        if (along != null)
+                        {
+                            return Plain(along);
+                        }
+                    }
+
                     return Plain(ContourFiller.Fill(contours, new ContourFillOptions
                     {
                         StoneDiameterMm = d,

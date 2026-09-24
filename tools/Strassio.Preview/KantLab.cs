@@ -195,9 +195,12 @@ namespace Strassio.Preview
 
             Curve shape = SvgShape.Load(file);
             bool midrib = Environment.GetEnvironmentVariable("STRASSIO_MIDRIB") == "1";
-            List<PlacedStone> stones = ContourFiller.Fill(
-                new[] { shape },
-                new ContourFillOptions { StoneDiameterMm = Diameter, GapMm = 0, MidribAlongSkeleton = midrib });
+            bool lengthwise = Environment.GetEnvironmentVariable("STRASSIO_LENGTHWISE") == "1";
+            List<PlacedStone> stones = lengthwise
+                ? AdvancedFillers.Lengthwise(new[] { shape }, Diameter, 0, 0)!
+                : ContourFiller.Fill(
+                    new[] { shape },
+                    new ContourFillOptions { StoneDiameterMm = Diameter, GapMm = 0, MidribAlongSkeleton = midrib });
 
             const double S = 12;
             const double Pad = 4;
@@ -229,7 +232,7 @@ namespace Strassio.Preview
             sb.AppendLine("</g>");
             sb.AppendLine("</svg>");
 
-            string path = Path.Combine(outDir, midrib ? "leaf-midrib.svg" : "leaf.svg");
+            string path = Path.Combine(outDir, lengthwise ? "leaf-lengthwise.svg" : midrib ? "leaf-midrib.svg" : "leaf.svg");
             File.WriteAllText(path, sb.ToString());
             Console.WriteLine($"Лист автора: {stones.Count} страз — {path}");
         }

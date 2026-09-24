@@ -184,7 +184,7 @@ namespace Strassio.Core.Methods
             "rings", FieldKind.Integer, 1, 100, p => p.Rings, (p, v) => p.Rings = (int)v);
 
         public static readonly MethodField CenterPattern = MethodField.Choice(
-            "centerPattern", new[] { MethodChoices.PatternHoneycomb, MethodChoices.PatternSquare },
+            "centerPattern", new[] { MethodChoices.PatternAlong, MethodChoices.PatternHoneycomb, MethodChoices.PatternSquare },
             p => p.CenterPattern, (p, v) => p.CenterPattern = v);
 
         public static readonly MethodField EdgeSize = MethodField.SizeChoice(

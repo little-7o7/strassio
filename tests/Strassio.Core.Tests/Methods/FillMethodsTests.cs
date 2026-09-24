@@ -120,6 +120,57 @@ public class FillMethodsTests
         Assert.DoesNotContain(true, IntersectionFixer.FindIndicesToRemove(stones, 0, 0.01));
     }
 
+    /// <summary>Лист-линза: две дуги, длина <paramref name="length"/>, ширина <paramref name="width"/>.</summary>
+    private static Curve Lens(double length, double width)
+    {
+        var pts = new List<Point2D>();
+        for (int i = 0; i < 60; i++)
+        {
+            double t = Math.PI * i / 59;
+            pts.Add(new Point2D(length / 2 - length / 2 * Math.Cos(t), width / 2 * Math.Sin(t)));
+        }
+
+        for (int i = 1; i < 59; i++)
+        {
+            double t = Math.PI * i / 59;
+            pts.Add(new Point2D(length / 2 + length / 2 * Math.Cos(t), -width / 2 * Math.Sin(t)));
+        }
+
+        return Curve.FromPolyline(pts, true);
+    }
+
+    [Fact]
+    public void F3_Along_OnLeaf_DenserThanRings_NoOverlaps()
+    {
+        // Замечание автора: у листа ряды должны идти вдоль формы до середины, без белого завитка,
+        // где кольца с двух сторон сходятся под углом.
+        Curve[] leaf = { Lens(60, 24) };
+        IReadOnlyList<PlacedStone> along = Run(MethodKind.F3, leaf, new MethodParameters { GapMm = 0 }).Stones;
+        IReadOnlyList<PlacedStone> rings = Run(MethodKind.F3, leaf, new MethodParameters { GapMm = 0, CenterPattern = MethodChoices.PatternHoneycomb }).Stones;
+
+        Assert.True(along.Count >= rings.Count, $"вдоль формы {along.Count}, кольцами {rings.Count}");
+        Assert.DoesNotContain(true, IntersectionFixer.FindIndicesToRemove(along, 0, 0.03));
+        var region = new ShapeRegion(leaf, D);
+        Assert.All(along, s => Assert.True(region.Fits(s.Center, D / 2 - 0.03, 0)));
+    }
+
+    [Fact]
+    public void F3_Along_RoundShape_KeepsRings()
+    {
+        // У круга нет длины — остаются кольца, ровно как при «Середина: соты».
+        Curve[] circle = { Circle(15) };
+        Assert.Null(AdvancedFillers.Lengthwise(circle, D, 0, 0));
+        int along = Run(MethodKind.F3, circle, new MethodParameters { GapMm = 0 }).Stones.Count;
+        int rings = Run(MethodKind.F3, circle, new MethodParameters { GapMm = 0, CenterPattern = MethodChoices.PatternHoneycomb }).Stones.Count;
+        Assert.Equal(rings, along);
+    }
+
+    [Fact]
+    public void CenterPattern_DefaultsToAlong()
+    {
+        Assert.Equal(MethodChoices.PatternAlong, new MethodParameters().CenterPattern);
+    }
+
     [Fact]
     public void F8_RowsFollowGuide_InsideShape()
     {
