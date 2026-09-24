@@ -134,6 +134,24 @@ public class LineMethodsTests
     }
 
     [Fact]
+    public void L4_WidthGrowsOneRowAtATime_AndStaysWithinLineEnds()
+    {
+        // Замечание автора «каллиграфию не понял»: ширина прыгала 1 → 3 → 5 рядов, а на широком
+        // конце боковые ряды загибались вокруг конца линии. Теперь ряды прибавляются по одному.
+        var p = new MethodParameters { RowCount = 5, RowGapMm = 0.3, WidthProfile = MethodChoices.ProfileGrow };
+        IReadOnlyList<PlacedStone> stones = Run(MethodKind.L4, Line(150), p).Stones;
+
+        var seen = new SortedSet<int>();
+        for (double x = 0; x <= 150; x += 2)
+        {
+            seen.Add(stones.Where(s => Math.Abs(s.Center.X - x) < 2).Select(s => Math.Round(s.Center.Y, 1)).Distinct().Count());
+        }
+
+        Assert.Equal(new[] { 1, 2, 3, 4, 5 }, seen.Where(n => n > 0).ToArray());
+        Assert.All(stones, s => Assert.InRange(s.Center.X, -0.01, 150.01));
+    }
+
+    [Fact]
     public void L2_EdgeRows_UseOtherSize_AndDoNotOverlap()
     {
         var p = new MethodParameters { RowCount = 3, RowGapMm = 0.3, EdgeSize = "ss5" };

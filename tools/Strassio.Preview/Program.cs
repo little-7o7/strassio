@@ -47,6 +47,37 @@ if (scenario == "kant")
     return;
 }
 
+if (scenario == "calligraphy")
+{
+    // Каллиграфия (L4) для объяснения автору: одна и та же волна, 5 рядов, три варианта
+    // «Где шире всего» сверху вниз — в середине, к концу, в начале. Серая линия — исходная.
+    string dir = Path.Combine(FindRepoRoot(), "out", "preview");
+    Directory.CreateDirectory(dir);
+    var lines = new List<(IReadOnlyList<Point2D> Points, string Color)>();
+    var all = new List<PlacedStone>();
+    string[] profiles = { MethodChoices.ProfileMiddle, MethodChoices.ProfileGrow, MethodChoices.ProfileShrink };
+    for (int i = 0; i < profiles.Length; i++)
+    {
+        var pts = new List<Point2D>();
+        for (int k = 0; k <= 80; k++)
+        {
+            double x = 80.0 * k / 80;
+            pts.Add(new Point2D(x, i * 28 + 5 * Math.Sin(x / 80 * 2 * Math.PI)));
+        }
+
+        Curve wave = Curve.FromPolyline(pts, isClosed: false);
+        var p = new MethodParameters { RowCount = 5, GapMm = 0.1, RowGapMm = 0.1, WidthProfile = profiles[i] };
+        MethodResult r = MethodRunner.Run(MethodKind.L4, new[] { wave }, 2.4, p);
+        all.AddRange(r.Stones);
+        lines.Add((pts, "#9e9e9e"));
+        Console.WriteLine($"{profiles[i],-8} {r.Stones.Count} страз");
+    }
+
+    File.WriteAllText(Path.Combine(dir, "calligraphy.svg"), SvgWriter.RenderMulti(lines, all));
+    Console.WriteLine($"SVG сохранён: {Path.Combine(dir, "calligraphy.svg")}");
+    return;
+}
+
 if (scenario == "vector")
 {
     RenderVectorScenario();

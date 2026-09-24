@@ -370,19 +370,29 @@ namespace Strassio.Core.Methods
                 halfIndex.Add(Math.Abs(j));
             }
 
-            // Ряд у линии — первым: при наложениях он главнее.
-            int[] order = Enumerable.Range(0, count).OrderBy(i => halfIndex[i]).ToArray();
+            // Очередь рядов: сначала ближний к линии, дальше по одному попеременно с двух сторон
+            // (0, +1, −1, +2, −2…). Мазок утолщается на один ряд за раз, а не скачком сразу на два
+            // (1 → 3 → 5), — так ширина растёт плавно, как у пера. Ряд с меньшим номером в очереди
+            // при наложениях главнее.
+            int[] order = Enumerable.Range(0, count)
+                .OrderBy(i => halfIndex[i])
+                .ThenBy(i => specs[i].OffsetMm < 0 ? 1 : 0)
+                .ToArray();
             IReadOnlyList<PlacedStone> all = RingScatterer.Scatter(curve, order.Select(i => specs[i]).ToList());
 
             FlattenedCurve flat = CurveFlattener.Flatten(curve);
             var kept = new List<PlacedStone>();
             foreach (PlacedStone stone in all)
             {
-                double j = halfIndex[order[stone.RowId]];
                 double t = VariableLineScatterer.ProjectFraction(flat, stone.Center);
-                // Ширина в рядах, округлённая: у самого края профиля уже виден последний ряд.
+
+                // Боковой ряд незамкнутой линии не загибается вокруг её конца: камень, ближайшая
+                // точка которого — сам конец линии, стоит уже за концом.
+                bool offLine = halfIndex[order[stone.RowId]] > 0 && !flat.IsClosed && (t <= 1e-6 || t >= 1 - 1e-6);
+
+                // Сколько рядов здесь должно быть: 1 у тонкого места, все — у самого широкого.
                 double rowsHere = Math.Round(1 + (count - 1) * WidthProfile(p.WidthProfile, t));
-                if (2 * j + 1 <= rowsHere + 1e-9)
+                if (!offLine && stone.RowId < rowsHere - 1e-9)
                 {
                     kept.Add(stone);
                 }
