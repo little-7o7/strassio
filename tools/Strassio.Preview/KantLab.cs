@@ -82,6 +82,7 @@ namespace Strassio.Preview
             DiagnoseRings("лепесток", Petal());
 
             RenderAuthorShape(outDir);
+            RenderLeaf(outDir);
 
             sb.AppendLine("</svg>");
             string outPath = Path.Combine(outDir, "kant.svg");
@@ -180,6 +181,62 @@ namespace Strassio.Preview
                 FillCenter = whole,
             });
 
+        /// <summary>
+        /// Лист автора из 1.svg. Для сравнения: его ручная работа на этой же форме — 174 стразы,
+        /// наша прежняя заливка давала 171, но с белым завитком посередине.
+        /// </summary>
+        private static void RenderLeaf(string outDir)
+        {
+            string file = Path.Combine(RepoRoot(), "1.svg");
+            if (!File.Exists(file))
+            {
+                return;
+            }
+
+            Curve shape = SvgShape.Load(file);
+            bool midrib = Environment.GetEnvironmentVariable("STRASSIO_MIDRIB") == "1";
+            List<PlacedStone> stones = ContourFiller.Fill(
+                new[] { shape },
+                new ContourFillOptions { StoneDiameterMm = Diameter, GapMm = 0, MidribAlongSkeleton = midrib });
+
+            const double S = 12;
+            const double Pad = 4;
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (PlacedStone st in stones)
+            {
+                minX = Math.Min(minX, st.Center.X - st.DiameterMm / 2);
+                minY = Math.Min(minY, st.Center.Y - st.DiameterMm / 2);
+                maxX = Math.Max(maxX, st.Center.X + st.DiameterMm / 2);
+                maxY = Math.Max(maxY, st.Center.Y + st.DiameterMm / 2);
+            }
+
+            double w = (maxX - minX + 2 * Pad) * S;
+            double h = (maxY - minY + 2 * Pad) * S + 30;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{N(w)}\" height=\"{N(h)}\" font-family=\"Segoe UI, Arial, sans-serif\">");
+            sb.AppendLine("<rect width=\"100%\" height=\"100%\" fill=\"white\"/>");
+            sb.AppendLine($"<text x=\"{N(w / 2)}\" y=\"20\" text-anchor=\"middle\" font-size=\"15\" font-weight=\"600\" fill=\"#222\">Лист: {stones.Count} страз (у автора 174)</text>");
+            sb.AppendLine($"<g transform=\"translate({N(Pad * S - minX * S)},{N(28 + Pad * S - minY * S)})\">");
+
+            foreach (PlacedStone st in stones)
+            {
+                // Прожилка помечена номером ряда -2 — рисуем её отдельным цветом.
+                string fill = st.RowId == -2 ? "#2F74E0" : "#43A047";
+                sb.AppendLine($"<circle cx=\"{N(st.Center.X * S)}\" cy=\"{N(st.Center.Y * S)}\" r=\"{N(st.DiameterMm / 2 * S)}\" fill=\"{fill}\" fill-opacity=\"0.85\" stroke=\"#333\" stroke-width=\"0.6\"/>");
+            }
+
+            sb.AppendLine("</g>");
+            sb.AppendLine("</svg>");
+
+            string path = Path.Combine(outDir, midrib ? "leaf-midrib.svg" : "leaf.svg");
+            File.WriteAllText(path, sb.ToString());
+            Console.WriteLine($"Лист автора: {stones.Count} страз — {path}");
+        }
+
+        private static string RepoRoot() => Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(typeof(KantLab).Assembly.Location) ?? ".", "..", "..", "..", "..", ".."));
+
         /// <summary>Ваша форма целиком, крупно: слева как сейчас, справа после правки внутренних рядов.</summary>
         private static void RenderAuthorShape(string outDir)
         {
@@ -234,8 +291,7 @@ namespace Strassio.Preview
         }
 
         /// <summary>Настоящая работа автора: vector.svg из корня репозитория.</summary>
-        private static Curve Author() => SvgShape.Load(
-            Path.Combine(Path.GetDirectoryName(typeof(KantLab).Assembly.Location) ?? ".", "..", "..", "..", "..", "..", "vector.svg"));
+        private static Curve Author() => SvgShape.Load(Path.Combine(RepoRoot(), "vector.svg"));
 
         /// <summary>
         /// Длинный сужающийся лепесток — как на сравнении автора (зелёный вручную, красный Strassio).
