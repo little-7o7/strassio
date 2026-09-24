@@ -100,19 +100,33 @@ if (scenario == "lengthwise")
         }
     }
 
-    foreach ((string name, Curve shape) in shapes)
+    var all = shapes.Select(sh => (sh.Item1, new[] { sh.Item2 })).ToList();
+    all.AddRange(BlockLetters());
+    // Крупные буквы: штрих 20 мм — шире пяти камней.
+    all.AddRange(BlockLetters().Where(l => "TEHO".Contains(l.Item1)).Select(l => (l.Item1 + "big",
+        l.Item2.Select(c => Curve.FromPolyline(CurveFlattener.Flatten(c).Points.Select(pt => pt.Position * 2.5).ToList(), isClosed: true)).ToArray())));
+    foreach ((string name, Curve[] shape) in all)
     {
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        List<PlacedStone>? maybe = AdvancedFillers.Lengthwise(new[] { shape }, 2.4, 0, 0);
+        MethodResult along = MethodRunner.Run(MethodKind.F3, shape, 2.4, new MethodParameters { GapMm = 0 });
         long ms = watch.ElapsedMilliseconds;
-        List<PlacedStone> rings = ContourFiller.Fill(new[] { shape }, new ContourFillOptions { StoneDiameterMm = 2.4, GapMm = 0 });
-        List<PlacedStone> along = maybe ?? rings; // круглая фигура — кольца
-        int overlaps = IntersectionFixer.FindIndicesToRemove(along, 0, 0.03).Count(x => x);
-        Console.WriteLine($"{name,-8} вдоль формы {along.Count,5} ({ms} мс, наложений {overlaps}), кольцами {rings.Count,5}");
-        FlattenedCurve shapeFlat = CurveFlattener.Flatten(shape);
-        List<Point2D> outline = shapeFlat.Points.Select(pt => pt.Position).ToList();
-        File.WriteAllText(Path.Combine(dir, name + "-along.svg"), SvgWriter.Render(outline, true, along));
-        File.WriteAllText(Path.Combine(dir, name + "-rings.svg"), SvgWriter.Render(outline, true, rings));
+        MethodResult rings = MethodRunner.Run(MethodKind.F3, shape, 2.4, new MethodParameters { GapMm = 0, CenterPattern = MethodChoices.PatternHoneycomb });
+        int overlaps = IntersectionFixer.FindIndicesToRemove(along.Stones, 0, 0.03).Count(x => x);
+        SignedDistanceField field = new ShapeRegion(shape, 2.4).Field;
+        double depth = 0;
+        for (int iy = 0; iy < field.Height; iy++)
+        {
+            for (int ix = 0; ix < field.Width; ix++)
+            {
+                depth = Math.Max(depth, field.ValueAt(ix, iy));
+            }
+        }
+
+        Console.Write($"ширина {2 * depth / 2.4,4:F1} камня  ");
+        Console.WriteLine($"{name,-8} вдоль формы {along.Stones.Count,5} ({ms} мс, наложений {overlaps}), кольцами {rings.Stones.Count,5}");
+        var outlines = shape.Select(c => ((IReadOnlyList<Point2D>)CurveFlattener.Flatten(c).Points.Select(pt => pt.Position).Append(CurveFlattener.Flatten(c).Points[0].Position).ToList(), "#cccccc")).ToList();
+        File.WriteAllText(Path.Combine(dir, name + "-along.svg"), SvgWriter.RenderMulti(outlines, along.Stones));
+        File.WriteAllText(Path.Combine(dir, name + "-rings.svg"), SvgWriter.RenderMulti(outlines, rings.Stones));
     }
 
     return;
@@ -1011,6 +1025,38 @@ static (Curve, LineScatterOptions) BuildLetters()
         CornerAngleThresholdDeg = 20,
     };
     return (BuildLettersCurve(), options);
+}
+
+// Печатные буквы высотой 40 мм, штрих 8 мм (три камня ss6 в ширину) — как в надписях на одежде.
+// У O, A и 8 есть дырки: второй и третий контуры.
+static List<(string, Curve[])> BlockLetters()
+{
+    Curve P(params double[] xy) => Curve.FromPolyline(
+        Enumerable.Range(0, xy.Length / 2).Select(i => new Point2D(xy[2 * i], xy[2 * i + 1])).ToList(), isClosed: true);
+    Curve Ring(double cx, double cy, double rx, double ry)
+    {
+        var pts = new List<Point2D>();
+        for (int i = 0; i < 72; i++)
+        {
+            double a = 2 * Math.PI * i / 72;
+            pts.Add(new Point2D(cx + rx * Math.Cos(a), cy + ry * Math.Sin(a)));
+        }
+
+        return Curve.FromPolyline(pts, isClosed: true);
+    }
+
+    return new List<(string, Curve[])>
+    {
+        ("T", new[] { P(0, 0, 30, 0, 30, 8, 19, 8, 19, 40, 11, 40, 11, 8, 0, 8) }),
+        ("E", new[] { P(0, 0, 26, 0, 26, 8, 8, 8, 8, 16, 22, 16, 22, 24, 8, 24, 8, 32, 26, 32, 26, 40, 0, 40) }),
+        ("H", new[] { P(0, 0, 8, 0, 8, 16, 22, 16, 22, 0, 30, 0, 30, 40, 22, 40, 22, 24, 8, 24, 8, 40, 0, 40) }),
+        ("L", new[] { P(0, 0, 8, 0, 8, 32, 26, 32, 26, 40, 0, 40) }),
+        ("O", new[] { Ring(15, 20, 15, 20), Ring(15, 20, 7, 12) }),
+        ("A", new[] { P(11, 0, 19, 0, 30, 40, 22, 40, 20, 32, 10, 32, 8, 40, 0, 40), P(12, 24, 18, 24, 15, 12) }),
+        ("8", new[] { Ring(15, 10, 12, 10), Ring(15, 10, 5, 4), }),
+    }.Select(l => l.Item1 == "8"
+        ? ("8", new[] { Ring(15, 11, 11, 11), Ring(15, 11, 4, 4), Ring(15, 30, 13, 11), Ring(15, 30, 5, 4) })
+        : l).ToList();
 }
 
 static string FindRepoRoot()

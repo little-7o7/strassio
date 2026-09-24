@@ -227,7 +227,7 @@
   "param.rings": "Edge rows",
   "param.rings.tooltip": "How many rows run along the edge of the shape.",
   "param.centerPattern": "Middle",
-  "param.centerPattern.tooltip": "What to fill the middle of the shape with. “Along the shape” — staggered rows run tip to tip, as laid by hand; round shapes keep rings automatically.",
+  "param.centerPattern.tooltip": "What to fill the middle of the shape with. “Along the shape” — staggered rows run tip to tip, as laid by hand. For smooth shapes — leaf, heart, oval, curved band; letters, digits, stars, circles and shapes with holes keep rings automatically, they are neater there.",
   "param.centerPattern.along": "Along the shape",
   "param.centerPattern.honeycomb": "Honeycomb",
   "param.centerPattern.square": "Grid",

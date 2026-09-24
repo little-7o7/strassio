@@ -182,6 +182,19 @@ public class FillMethodsTests
     }
 
     [Fact]
+    public void F3_Along_LettersAndHolesKeepRings()
+    {
+        // У букв много прямых углов, у «O» — дырка: кольца там ровнее, и «вдоль формы» не включается.
+        Curve bigT = Curve.FromPolyline(new List<Point2D>
+        {
+            new(0, 0), new(75, 0), new(75, 20), new(47.5, 20), new(47.5, 100), new(27.5, 100), new(27.5, 20), new(0, 20),
+        }, true);
+        Assert.Null(AdvancedFillers.Lengthwise(new[] { bigT }, D, 0, 0));
+        Assert.Null(AdvancedFillers.Lengthwise(new[] { Circle(20), Circle(8) }, D, 0, 0));
+        Assert.NotNull(AdvancedFillers.Lengthwise(new[] { Lens(60, 24) }, D, 0, 0));
+    }
+
+    [Fact]
     public void CenterPattern_DefaultsToAlong()
     {
         Assert.Equal(MethodChoices.PatternAlong, new MethodParameters().CenterPattern);

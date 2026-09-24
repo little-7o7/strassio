@@ -104,11 +104,24 @@ namespace Strassio.Core.Placement
         /// </summary>
         /// <param name="rings">Сколько рядов идёт по контуру, прежде чем начнутся ряды вдоль формы.</param>
         /// <returns>
-        /// null, если у фигуры нет «длины» (круг, квадрат): срединная линия короче её ширины, и
-        /// кольца там уложат камни лучше.
+        /// null, если способ этой фигуре не подходит и кольца уложат камни ровнее: у фигуры есть
+        /// дырки или больше двух острых углов (буквы, звёзды), нет «длины» (круг: срединная линия
+        /// короче ширины) или она у́же пяти камней.
         /// </returns>
         public static List<PlacedStone>? Lengthwise(IReadOnlyList<Curve> contours, double d, double gap, double margin, int rings = 1)
         {
+            // У формы с дыркой (O, A, 8) срединная линия — петля, и ряды вдоль неё путаются.
+            if (contours.Count != 1)
+            {
+                return null;
+            }
+
+            FlattenedCurve outline = CurveFlattener.Flatten(contours[0]);
+            if (!outline.IsClosed)
+            {
+                return null;
+            }
+
             List<PlacedStone> ring = ContourFiller.Fill(contours, new ContourFillOptions
             {
                 StoneDiameterMm = d,
@@ -136,7 +149,18 @@ namespace Strassio.Core.Placement
                 pathLength += Point2D.Distance(path[i - 1], path[i]);
             }
 
-            if (path.Count < 3 || pathLength < 2 * depth)
+            // Тонкие формы (у́же пяти камней) кольца и так кладут рядами вдоль формы, и ровнее.
+            if (path.Count < 3 || pathLength < 2 * depth || 2 * depth < 5 * d - 1e-6)
+            {
+                return null;
+            }
+
+            // Только «плавные» формы: лист, овал, сердце (не больше двух острых углов) или длинная
+            // лента с обрезанными концами (до четырёх углов, длина — от пяти ширин). У букв, звёзд,
+            // квадратов кольца кладут ровные параллельные ряды с аккуратными углами, а ряды вдоль
+            // срединной линии там закручиваются вихрями.
+            int corners = CornerDetector.FindSharpCornerDistances(outline, 60).Count;
+            if (corners > 4 || (corners > 2 && pathLength < 5 * 2 * depth))
             {
                 return null;
             }
