@@ -291,12 +291,19 @@ static void RenderMethodsScenario()
     MethodResult blend = MethodRunner.Run(MethodKind.F7, new[] { waveA }, 2.4, new MethodParameters(), previewSizes, new[] { waveB });
     SaveTwo("f7-blend", waveA, waveB, blend);
 
+    // Зазор 0 и зазор между рядами 0 — как у автора: ряды должны касаться, без пропущенных рядов.
+    var gap0 = new MethodParameters { GapMm = 0, RowGapMm = 0 };
+    SaveTwo("f7-blend-gap0", waveA, waveB, MethodRunner.Run(MethodKind.F7, new[] { waveA }, 2.4, gap0, previewSizes, new[] { waveB }), 0);
+    Curve lineA = Curve.FromPolyline(new[] { new Point2D(0, 0), new Point2D(50, 0) }, isClosed: false);
+    Curve lineB = Curve.FromPolyline(new[] { new Point2D(0, 16.3), new Point2D(50, 16.3) }, isClosed: false);
+    SaveTwo("f7-blend-parallel-gap0", lineA, lineB, MethodRunner.Run(MethodKind.F7, new[] { lineA }, 2.4, gap0, previewSizes, new[] { lineB }), 0);
+
     Curve heart = BuildHeart().Item1;
     Curve guide = Curve.FromPolyline(new[] { new Point2D(-30, -20), new Point2D(0, 5), new Point2D(30, 0) }, isClosed: false);
     MethodResult guided = MethodRunner.Run(MethodKind.F8, new[] { heart }, 2.4, new MethodParameters(), previewSizes, new[] { guide });
     SaveTwo("f8-guide-heart", heart, guide, guided);
 
-    void SaveTwo(string name, Curve a, Curve b, MethodResult result)
+    void SaveTwo(string name, Curve a, Curve b, MethodResult result, double minGapMm = 0.05)
     {
         var lines = new List<(IReadOnlyList<Point2D> Points, string Color)>
         {
@@ -304,7 +311,7 @@ static void RenderMethodsScenario()
             (CurveFlattener.Flatten(b).Points.Select(pt => pt.Position).ToList(), "#1E88E5"),
         };
         File.WriteAllText(Path.Combine(outDir, name + ".svg"), SvgWriter.RenderMulti(lines, result.Stones));
-        int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, 0.05, 0.01).Count(x => x);
+        int overlaps = IntersectionFixer.FindIndicesToRemove(result.Stones, minGapMm, 0.01).Count(x => x);
         Console.WriteLine($"{name,-18} {result.Stones.Count,5} страз, наложений: {overlaps}");
     }
 

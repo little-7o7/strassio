@@ -90,6 +90,37 @@ public class FillMethodsTests
     }
 
     [Fact]
+    public void F7_Gap0_RowsTouch_NoRowIsDropped()
+    {
+        // Замечание автора: «зазор между рядами слишком большой» при зазоре 0. Между линиями 16,3 мм:
+        // раньше 16,3 ÷ 2,4 округлялось до 7 промежутков, ряды вставали теснее камня, каждый второй
+        // ряд выкидывался целиком — оставалось 4 ряда с дырами по 2,26 мм.
+        var a = Curve.FromPolyline(new List<Point2D> { new(0, 0), new(40, 0) }, false);
+        var b = Curve.FromPolyline(new List<Point2D> { new(0, 16.3), new(40, 16.3) }, false);
+        IReadOnlyList<PlacedStone> stones = MethodRunner.Run(MethodKind.F7, new[] { a }, D, new MethodParameters { GapMm = 0, RowGapMm = 0 }, Sizes, new[] { b }).Stones;
+
+        List<double> rows = stones.Select(s => Math.Round(s.Center.Y, 1)).Distinct().OrderBy(y => y).ToList();
+        Assert.Equal(7, rows.Count);
+        for (int i = 1; i < rows.Count; i++)
+        {
+            Assert.InRange(rows[i] - rows[i - 1], D - 0.01, D + 0.4);
+        }
+    }
+
+    [Fact]
+    public void F7_ShiftedLines_RowSpacingMeasuredAcross()
+    {
+        // Вторая линия сдвинута вбок: «ступенька» между парными точками длиннее, чем расстояние
+        // поперёк. Раньше ряды считались по ступеньке и налезали друг на друга.
+        var a = Curve.FromPolyline(new List<Point2D> { new(0, 0), new(40, 0) }, false);
+        var b = Curve.FromPolyline(new List<Point2D> { new(10, 15), new(50, 15) }, false);
+        IReadOnlyList<PlacedStone> stones = MethodRunner.Run(MethodKind.F7, new[] { a }, D, new MethodParameters { GapMm = 0, RowGapMm = 0 }, Sizes, new[] { b }).Stones;
+
+        Assert.True(stones.Count >= 120, $"камней {stones.Count}, было 85");
+        Assert.DoesNotContain(true, IntersectionFixer.FindIndicesToRemove(stones, 0, 0.01));
+    }
+
+    [Fact]
     public void F8_RowsFollowGuide_InsideShape()
     {
         Curve[] shape = { Rect(0, 0, 40, 30) };

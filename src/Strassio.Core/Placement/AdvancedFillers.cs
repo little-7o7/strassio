@@ -69,14 +69,44 @@ namespace Strassio.Core.Placement
                 pb.Reverse();
             }
 
-            double averageDistance = pa.Zip(pb, Point2D.Distance).Average();
-            int rows = Math.Max(1, (int)Math.Round(averageDistance / (d + rowGap)));
             bool closed = a.IsClosed && b.IsClosed;
+            // Самый плотный вариант, где ряды почти не налезают друг на друга (выкинуто не больше 5%
+            // камней). Если ряды налезают, лишние камни выкидываются вразнобой — ряды рвутся и
+            // сливаются, это выглядит хуже честного просвета.
+            List<PlacedStone> best = null;
+            List<PlacedStone> leastCrowded = null;
+            double leastRejected = double.MaxValue;
+            foreach (int rows in BlendRowCandidates(pa, pb, a, b, d + rowGap))
+            {
+                List<PlacedStone> stones = BlendRows(pa, pb, closed, rows, d, gap, out int tried);
+                double rejected = tried == 0 ? 0 : 1 - (double)stones.Count / tried;
+                if (rejected <= 0.05 && (best == null || stones.Count > best.Count))
+                {
+                    best = stones;
+                }
 
+                if (rejected < leastRejected)
+                {
+                    leastRejected = rejected;
+                    leastCrowded = stones;
+                }
+            }
+
+            return best ?? leastCrowded;
+        }
+
+        /// <summary>Раскладывает переход с заданным числом промежутков между рядами.</summary>
+        private static List<PlacedStone> BlendRows(List<Point2D> pa, List<Point2D> pb, bool closed, int rows, double d, double gap, out int tried)
+        {
+            tried = 0;
             var packer = new StonePacker(d, gap / 2);
             var options = new LineScatterOptions { StoneDiameterMm = d, GapMm = gap, Mode = StepMode.FitEven };
-            for (int k = 0; k <= rows; k++)
+
+            // Ряды кладутся от краёв к середине: 0, последний, 1, предпоследний… Если где-то кривые
+            // сходятся и ряды не помещаются, тесно становится в середине, а оба края остаются ровными.
+            for (int i = 0; i <= rows; i++)
             {
+                int k = i % 2 == 0 ? i / 2 : rows - i / 2;
                 double t = (double)k / rows;
                 List<Point2D> line = pa.Zip(pb, (p, q) => Point2D.Lerp(p, q, t)).ToList();
                 if (closed)
@@ -86,11 +116,41 @@ namespace Strassio.Core.Placement
 
                 foreach (PlacedStone s in LineScatterer.Scatter(Curve.FromPolyline(line, closed), options))
                 {
+                    tried++;
                     packer.TryAdd(s.Center, d, k);
                 }
             }
 
             return packer.Stones;
+        }
+
+        /// <summary>
+        /// Какое число промежутков между рядами пробовать. Раньше оно считалось одной формулой
+        /// (среднее расстояние ÷ шаг, с округлением), и когда округление шло вверх, ряды вставали
+        /// теснее камня: каждый второй ряд налезал на соседа и выкидывался целиком, а на его месте
+        /// оставалась дыра почти в камень. Теперь пробуются все разумные варианты — от «по самому
+        /// узкому месту» до «по самому широкому», а выбирает из них <see cref="Blend"/>.
+        /// Ширина меряется поперёк: от точки одной кривой до ближайшей точки другой.
+        /// </summary>
+        private static IEnumerable<int> BlendRowCandidates(List<Point2D> pa, List<Point2D> pb, FlattenedCurve a, FlattenedCurve b, double step)
+        {
+            double min = double.MaxValue;
+            double max = 0;
+            for (int i = 0; i < Math.Min(pa.Count, pb.Count); i++)
+            {
+                double width = Math.Max(
+                    Editing.StoneEditor.DistanceToPolyline(b, pa[i]),
+                    Editing.StoneEditor.DistanceToPolyline(a, pb[i]));
+                min = Math.Min(min, width);
+                max = Math.Max(max, Point2D.Distance(pa[i], pb[i]));
+            }
+
+            int from = Math.Max(1, (int)Math.Floor(min / step));
+            int to = Math.Max(from, (int)Math.Ceiling(max / step));
+            for (int rows = from; rows <= Math.Min(to, from + 15); rows++)
+            {
+                yield return rows;
+            }
         }
 
         /// <summary>
