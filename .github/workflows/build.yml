@@ -1,0 +1,122 @@
+# Сборка аддона и установщика на Windows-сервере GitHub — на Mac их не собрать (net48 + WPF + Inno Setup).
+#
+# - push в master: тесты ядра + установщик. Скачать: Actions → запуск → Artifacts (хранится 30 дней).
+# - тег vX.Y.Z: то же + пробный выпуск (pre-release) с установщиком на странице Releases.
+#   Заголовок и текст выпуска — из docs/releases/vX.Y.Z.md (первая строка «# …» — заголовок).
+# - вручную: Actions → «Сборка установщика» → Run workflow.
+
+name: Сборка установщика
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+    # Только сервер или документы — собирать нечего (к тегам эти фильтры не применяются).
+    paths-ignore: ['server/**', 'docs/**', '**/*.md', '.claude/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write # создать выпуск по тегу
+
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      # Концы строк как у автора (core.autocrlf=false): файлы языков встраиваются в DLL байт в байт.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      # Interop CorelDRAW — файл Corel, в публичный репозиторий его класть нельзя. Берётся из закрытого
+      # little-7o7/strassio-interop по ключу только для чтения (секрет INTEROP_DEPLOY_KEY).
+      - uses: actions/checkout@v7
+        with:
+          repository: little-7o7/strassio-interop
+          ssh-key: ${{ secrets.INTEROP_DEPLOY_KEY }}
+          persist-credentials: false
+          path: _interop
+      - name: Interop CorelDRAW
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force src/Strassio.Corel/interop | Out-Null
+          Copy-Item _interop/Corel.Interop.VGCore.dll src/Strassio.Corel/interop/
+          Remove-Item _interop -Recurse -Force
+
+      # .NET 8 SDK, как на компьютере автора (на сервере стоят и более новые — закрепляем 8).
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+      - name: .NET 8 SDK
+        shell: pwsh
+        run: |
+          $sdk = dotnet --list-sdks | ForEach-Object { ($_ -split ' ')[0] } | Where-Object { $_ -like '8.0.*' } |
+            Sort-Object { [version]$_ } | Select-Object -Last 1
+          if (-not $sdk) { throw 'Нет .NET 8 SDK' }
+          Set-Content global.json "{ `"sdk`": { `"version`": `"$sdk`", `"rollForward`": `"disable`" } }"
+          dotnet --version
+
+      # Версия в двух местах должна совпадать, а у тега — быть той же.
+      - name: Версия
+        id: version
+        shell: pwsh
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $csproj = (Select-Xml -Path src/Strassio.Corel/Strassio.Corel.csproj -XPath '//Version').Node.InnerText.Trim()
+          $iss = [regex]::Match((Get-Content installer/Strassio.iss -Raw), '#define AppVersion "([^"]+)"').Groups[1].Value
+          if ($csproj -ne $iss) { throw "Версии не совпадают: Strassio.Corel.csproj $csproj, Strassio.iss $iss" }
+          if ($env:REF_TYPE -eq 'tag' -and $env:TAG -ne "v$iss") { throw "Тег $env:TAG, а версия в проекте $iss" }
+          "version=$iss" >> $env:GITHUB_OUTPUT
+
+      - name: Тесты ядра
+        run: dotnet test tests/Strassio.Core.Tests -c Release --nologo
+
+      # Тот же скрипт, что у автора: сборка Release → Obfuscar → Inno Setup (стоит на сервере GitHub).
+      - name: Установщик
+        shell: pwsh
+        run: ./installer/build-installer.ps1
+
+      - name: SHA-256
+        id: hash
+        shell: pwsh
+        run: |
+          $exe = "installer/out/Strassio-Setup-${{ steps.version.outputs.version }}.exe"
+          $sha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+          "### Strassio-Setup-${{ steps.version.outputs.version }}.exe`n`nSHA-256 (для админки): ``$sha``" >> $env:GITHUB_STEP_SUMMARY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Strassio-Setup-${{ steps.version.outputs.version }}
+          path: ${{ steps.hash.outputs.exe }}
+          retention-days: 30
+
+      - name: Выпуск на GitHub
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          EXE: ${{ steps.hash.outputs.exe }}
+        run: |
+          $notesFile = "docs/releases/$env:TAG.md"
+          if (Test-Path $notesFile) {
+            $lines = @(Get-Content $notesFile -Encoding utf8)
+            $title = $lines[0] -replace '^#\s*', ''
+            $body = ($lines | Select-Object -Skip 1) -join "`n"
+          } else {
+            $title = "Strassio $env:VERSION"
+            $body = "Пробная версия.`n`nЗакройте CorelDRAW и запустите Strassio-Setup-$env:VERSION.exe."
+          }
+          $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
+          Set-Content $notes $body.Trim() -Encoding utf8
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $env:EXE --clobber
+          } else {
+            gh release create $env:TAG $env:EXE --prerelease --verify-tag --title $title --notes-file $notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Не удалось создать выпуск' }
