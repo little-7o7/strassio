@@ -218,6 +218,12 @@ dotnet run --project tools/Strassio.UiShots                   # снимки д�
 powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1   # установщик → installer/out/
 ```
 
+Аддон и установщик собираются и на GitHub ([Actions](https://github.com/little-7o7/strassio/actions),
+`.github/workflows/build.yml`): после каждого push в master — установщик в Artifacts, по тегу
+`vX.Y.Z` — пробный выпуск на странице Releases. Interop CorelDRAW сборка берёт из закрытого
+репозитория. Работа с Mac — [docs/РАБОТА-НА-MAC.md](docs/РАБОТА-НА-MAC.md),
+план — [docs/ПЛАН.md](docs/ПЛАН.md).
+
 Вся геометрия живёт в `Strassio.Core` и сначала проверяется тестами и SVG-картинками,
 и только потом подключается к CorelDRAW. Внутри всё считается в миллиметрах.
 Правила проекта — в [CLAUDE.md](CLAUDE.md).

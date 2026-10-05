@@ -82,6 +82,20 @@ Strassio/
 - Визуальная проверка: `dotnet run --project tools/Strassio.Preview -- <сценарий>` → SVG в `out/preview/`.
   Обязательные сценарии для углов: звезда, сердце, зигзаг с острыми углами, тугая спираль, S-кривая, буквы.
 
+## Работа на Mac (с 2026-10-05)
+
+Автор работает на MacBook, CorelDRAW проверяет на Windows. Подробно — `docs/РАБОТА-НА-MAC.md`.
+
+- **План и состояние — `docs/ПЛАН.md`.** Читать в начале работы, обновлять после каждого рабочего шага.
+- На Mac собираются только кроссплатформенные части: тесты ядра и Preview. Аддон (net48 + WPF), UiShots
+  и установщик собирает GitHub Actions (`.github/workflows/build.yml`) после каждого push в master.
+  После push проверить запуск: `gh run list --limit 1`, при ошибке — `gh run view <id> --log-failed`.
+- Выпуск версии: одинаковая версия в `Strassio.Corel.csproj` и `installer/Strassio.iss`, запись в CHANGELOG,
+  текст выпуска в `docs/releases/vX.Y.Z.md` (первая строка `# Strassio X.Y.Z — …`), затем
+  `git tag vX.Y.Z && git push origin master vX.Y.Z` — GitHub сам соберёт установщик и выложит пробный выпуск.
+- Список проверки для автора начинается с «скачайте Strassio-Setup-X.Y.Z.exe со страницы Releases».
+- Репозиторий публичный: коммиты только с адресом `97856162+little-7o7@users.noreply.github.com`.
+
 ## Сервер
 
 - На время разработки и бета-теста — Vercel Hobby (бесплатно). Hobby разрешён только для некоммерческого
