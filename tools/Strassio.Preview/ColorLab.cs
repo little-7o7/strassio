@@ -52,6 +52,75 @@ namespace Strassio.Preview
             }
 
             Save(dir, "heart-stripes", heart, MethodKind.F3, heartRegions);
+
+            // «Весь дизайн за раз»: ромашка на стебле из четырёх фигур, у каждой свой цвет. Фигуры идут
+            // сверху вниз: середина, лепестки, лист, стебель — нижние обходят верхние.
+            var design = new List<(Curve Shape, byte R, byte G, byte B)>
+            {
+                (Circle(0, 0, 8), 255, 214, 0),
+                (Flower(12, 11, 10), 255, 255, 255),
+                (Leaf(new Point2D(2, 40), new Point2D(18, 26), 7), 40, 160, 60),
+                (Stem(), 30, 120, 50),
+            };
+            foreach (MethodKind kind in new[] { MethodKind.F2, MethodKind.F3 })
+            {
+                DesignResult result = DesignRunner.Run(
+                    kind, design.Select(d => (IReadOnlyList<Curve>)new[] { d.Shape }).ToList(), 2.4, new MethodParameters { GapMm = 0.2 });
+                var stones = new List<PlacedStone>();
+                var fills = new List<string>();
+                for (int i = 0; i < design.Count; i++)
+                {
+                    StoneColor color = Palette[ArtworkColors.Nearest(design[i].R, design[i].G, design[i].B, Palette)];
+                    stones.AddRange(result.PerShape[i].Stones);
+                    fills.AddRange(result.PerShape[i].Stones.Select(_ => color.Rgb));
+                }
+
+                string name = "design-" + kind.ToString().ToLowerInvariant();
+                string path = Path.Combine(dir, name + ".svg");
+                File.WriteAllText(path, SvgWriter.RenderColored(stones, fills));
+                Console.WriteLine($"{name}: {stones.Count} страз, убрано на стыках {result.Removed} → {path}");
+            }
+        }
+
+        /// <summary>Лист: две дуги от черешка до кончика, ширина посередине <paramref name="width"/>.</summary>
+        private static Curve Leaf(Point2D from, Point2D to, double width)
+        {
+            Point2D axis = to - from;
+            double length = axis.Length;
+            Point2D dir = axis / length;
+            var nrm = new Point2D(-dir.Y, dir.X);
+            var pts = new List<Point2D>();
+            for (int i = 0; i <= 40; i++)
+            {
+                double t = i / 40.0;
+                pts.Add(from + dir * (t * length) + nrm * (width / 2 * Math.Sin(Math.PI * t)));
+            }
+
+            for (int i = 39; i > 0; i--)
+            {
+                double t = i / 40.0;
+                pts.Add(from + dir * (t * length) - nrm * (width / 2 * Math.Sin(Math.PI * t)));
+            }
+
+            return Curve.FromPolyline(pts, isClosed: true);
+        }
+
+        /// <summary>Стебель: лёгкий изгиб от цветка вниз, ширина 4 мм.</summary>
+        private static Curve Stem()
+        {
+            var left = new List<Point2D>();
+            var right = new List<Point2D>();
+            for (int i = 0; i <= 30; i++)
+            {
+                // В картинке Preview ось Y смотрит вниз — стебель идёт вниз от цветка.
+                double y = 15 + 45.0 * i / 30;
+                double x = 4 * Math.Sin((y - 15) / 45 * Math.PI);
+                left.Add(new Point2D(x - 2, y));
+                right.Add(new Point2D(x + 2, y));
+            }
+
+            right.Reverse();
+            return Curve.FromPolyline(left.Concat(right).ToList(), isClosed: true);
         }
 
         private static void Save(string dir, string name, Curve shape, MethodKind method, IReadOnlyList<ColorRegion> regions)
