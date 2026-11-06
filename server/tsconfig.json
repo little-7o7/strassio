@@ -8,6 +8,7 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": ".",
+    "typeRoots": ["./node_modules/@types"],
     "types": ["node"]
   },
   "include": ["core/**/*.ts", "api/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"]
