@@ -82,6 +82,7 @@ namespace Strassio.Core.Editing
             // С кем страза может столкнуться: каждая сдвигается не дальше предела, так что хватает
             // тех, кто был ближе «радиусы + просвет + два предела». Список один раз — дальше без сетки.
             int[][] close = Close(stones, grid, minGapMm + 2 * maxShiftMm);
+            double[][] closest = Closest(stones, close, minGapMm);
 
             // Кого пересчитать, если страза сдвинулась: тех, у кого она сосед по ряду, и тех, кому она мешала.
             var dependents = new List<int>[stones.Count];
@@ -100,7 +101,7 @@ namespace Strassio.Core.Editing
             }
 
             // Шаг меньше этого не делаем: глазу не видно, а итерации тратятся.
-            double minStep = Math.Max(0.002, toleranceMm / 50);
+            double minStep = Math.Max(0.005, toleranceMm / 20);
             var active = new bool[stones.Count];
             var next = new bool[stones.Count];
             for (int i = 0; i < stones.Count; i++)
@@ -148,8 +149,8 @@ namespace Strassio.Core.Editing
                         continue;
                     }
 
-                    if (TryMove(stones, close[i], original, current, i, target, minGapMm) ||
-                        TryMove(stones, close[i], original, current, i, current[i] + (target - current[i]) * 0.5, minGapMm))
+                    if (TryMove(close[i], closest[i], current, i, target) ||
+                        TryMove(close[i], closest[i], current, i, current[i] + (target - current[i]) * 0.5))
                     {
                         moved = true;
                         next[i] = true;
@@ -187,17 +188,15 @@ namespace Strassio.Core.Editing
         /// <summary>
         /// Новое место годится, если просвет до каждого соседа не меньше заданного — или не меньше, чем
         /// был у этой пары с самого начала (если он и так был меньше: тогда хуже не делаем).
+        /// <paramref name="closest"/> — самое близкое допустимое расстояние между центрами для каждого соседа.
         /// </summary>
-        private static bool TryMove(
-            IReadOnlyList<DocStone> stones, int[] close, Point2D[] original, Point2D[] current, int i, Point2D target, double minGapMm)
+        private static bool TryMove(int[] close, double[] closest, Point2D[] current, int i, Point2D target)
         {
-            foreach (int j in close)
+            for (int k = 0; k < close.Length; k++)
             {
-                double radii = stones[i].Radius + stones[j].Radius;
-                double was = Point2D.Distance(original[i], original[j]) - radii;
-                double need = Math.Min(minGapMm, was) - 1e-6;
-                double now = Point2D.Distance(target, current[j]) - radii;
-                if (now < need && now < Point2D.Distance(current[i], current[j]) - radii)
+                Point2D other = current[close[k]];
+                double now = DistanceSquared(target, other);
+                if (now < closest[k] * closest[k] && now < DistanceSquared(current[i], other))
                 {
                     return false;
                 }
@@ -205,6 +204,31 @@ namespace Strassio.Core.Editing
 
             current[i] = target;
             return true;
+        }
+
+        private static double DistanceSquared(Point2D a, Point2D b)
+        {
+            double dx = a.X - b.X;
+            double dy = a.Y - b.Y;
+            return dx * dx + dy * dy;
+        }
+
+        private static double[][] Closest(IReadOnlyList<DocStone> stones, int[][] close, double minGapMm)
+        {
+            var closest = new double[stones.Count][];
+            for (int i = 0; i < stones.Count; i++)
+            {
+                closest[i] = new double[close[i].Length];
+                for (int k = 0; k < close[i].Length; k++)
+                {
+                    int j = close[i][k];
+                    double radii = stones[i].Radius + stones[j].Radius;
+                    double was = Point2D.Distance(stones[i].Center, stones[j].Center) - radii;
+                    closest[i][k] = Math.Max(0, radii + Math.Min(minGapMm, was) - 1e-6);
+                }
+            }
+
+            return closest;
         }
 
         private static int[][] Close(IReadOnlyList<DocStone> stones, StoneGrid grid, double extraMm)
