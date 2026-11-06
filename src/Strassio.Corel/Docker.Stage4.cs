@@ -300,6 +300,7 @@ namespace Strassio.Corel
 
             var modes = new List<ChoiceOption>
             {
+                new ChoiceOption("even", Loc["color.mix.even"]),
                 new ChoiceOption("random", Loc["color.mix.random"]),
                 new ChoiceOption("sequence", Loc["color.mix.sequence"]),
             };
@@ -339,7 +340,7 @@ namespace Strassio.Corel
                 return;
             }
 
-            bool sequence = (MixModeCombo.SelectedItem as ChoiceOption)?.Value == "sequence";
+            string mixMode = (MixModeCombo.SelectedItem as ChoiceOption)?.Value ?? "even";
             string fallbackSize = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? string.Empty;
             RunInDocument("undo.mix", doc =>
             {
@@ -350,9 +351,13 @@ namespace Strassio.Corel
                     return;
                 }
 
-                int[] assignment = sequence
+                List<double> shares = parts.Select(p => (double)p.Value).ToList();
+                int[] assignment = mixMode == "sequence"
                     ? ColorMixer.Sequence(stones.Count, parts.Select(p => p.Value).ToList())
-                    : ColorMixer.Random(stones.Count, parts.Select(p => (double)p.Value).ToList(), Environment.TickCount);
+                    : mixMode == "random"
+                        ? ColorMixer.Random(stones.Count, shares, Environment.TickCount)
+                        : ColorMixer.Even(
+                            stones.Select(st => st.Stone.Center).ToList(), stones.Select(st => st.Stone.DiameterMm).ToList(), shares, Environment.TickCount);
 
                 for (int c = 0; c < parts.Count; c++)
                 {

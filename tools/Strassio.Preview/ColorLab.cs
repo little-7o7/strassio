@@ -80,6 +80,23 @@ namespace Strassio.Preview
                 File.WriteAllText(path, SvgWriter.RenderColored(stones, fills));
                 Console.WriteLine($"{name}: {stones.Count} страз, убрано на стыках {result.Removed} → {path}");
             }
+
+            // Смешение 70% кристалл / 30% золото в сердце: «случайно» и «равномерно» рядом.
+            MethodResult mixed = MethodRunner.Run(MethodKind.F3, new[] { heart }, 2.4, new MethodParameters { GapMm = 0.2 });
+            List<Point2D> centers = mixed.Stones.Select(s => s.Center).ToList();
+            List<double> diameters = mixed.Stones.Select(s => s.DiameterMm).ToList();
+            var shares = new[] { 70.0, 30.0 };
+            string[] mixColors = { Palette[0].Rgb, Palette[2].Rgb };
+            foreach ((string name, int[] colors) in new[]
+            {
+                ("mix-random", ColorMixer.Random(centers.Count, shares, 4)),
+                ("mix-even", ColorMixer.Even(centers, diameters, shares, 4)),
+            })
+            {
+                string path = Path.Combine(dir, name + ".svg");
+                File.WriteAllText(path, SvgWriter.RenderColored(mixed.Stones, colors.Select(c => mixColors[c]).ToList()));
+                Console.WriteLine($"{name}: {centers.Count} страз, золото касается золота {ColorMixer.SameColorTouches(centers, diameters, colors, 1)} раз → {path}");
+            }
         }
 
         /// <summary>Лист: две дуги от черешка до кончика, ширина посередине <paramref name="width"/>.</summary>
