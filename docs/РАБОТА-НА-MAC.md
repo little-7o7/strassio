@@ -10,7 +10,7 @@
 |---|---|
 | Код, ядро, тесты, картинки Preview (SVG) | на Mac |
 | Сборка плагина и установщика | GitHub, сам — после каждого push в master |
-| Новая пробная версия на странице Releases | GitHub, сам — по тегу vX.Y.Z |
+| Новая версия в публичном strassio-releases | GitHub, сам — по тегу vX.Y.Z |
 | Проверка в CorelDRAW | на Windows: скачать установщик с GitHub |
 | Сайт лицензий (папка server) | с Mac, через Vercel |
 
@@ -19,8 +19,7 @@
 1. Общие настройки компьютера и Claude Code (Homebrew, Git, GitHub CLI, Node, Claude Code, плагины,
    память Claude) — по README закрытого репозитория `little-7o7/claude-config`.
    Папка для проектов — `~/Developer`.
-2. Скачать проект. Репозиторий публичный, поэтому коммиты в нём подписываются адресом noreply,
-   а не gmail:
+2. Скачать проект. Коммиты в нём подписываются адресом noreply, а не gmail:
    ```bash
    cd ~/Developer
    gh repo clone little-7o7/strassio
@@ -61,7 +60,7 @@ dotnet run --project tools/Strassio.Preview -- methods    # картинки →
 вкладка **Actions** → последний запуск «Сборка установщика» → внизу **Artifacts** →
 `Strassio-Setup-<версия>` (zip, хранится 30 дней).
 
-**Новая пробная версия на странице Releases:**
+**Новая версия для пользователей:**
 1. Поднять версию — одинаково в `src/Strassio.Corel/Strassio.Corel.csproj` (`<Version>`) и
    `installer/Strassio.iss` (`AppVersion`).
 2. Записать изменения в `docs/CHANGELOG.md`, а текст для страницы выпуска — в
@@ -69,12 +68,16 @@ dotnet run --project tools/Strassio.Preview -- methods    # картинки →
    нового простыми словами.
 3. Коммит, тег и отправка: `git tag vX.Y.Z` и `git push origin master vX.Y.Z`.
 
-Минуты через две на странице [Releases](https://github.com/little-7o7/strassio/releases) появится
-пробный выпуск с установщиком. Если версия в двух файлах не совпадает или не совпадает с тегом,
+Минуты через две на странице [strassio-releases](https://github.com/little-7o7/strassio-releases/releases)
+появится выпуск с установщиком (код Strassio закрыт, туда попадают только установщики). Тег с дефисом
+(`v1.0.0-beta.1`) — пробный выпуск, остальные — обычные: последний из них скачивается по ссылке
+https://strassio.vercel.app/download. Если версия в двух файлах не совпадает или не совпадает с тегом,
 выпуск не создастся — запуск в Actions будет красным и напишет, что не так.
 
-**На Windows:** скачать `Strassio-Setup-X.Y.Z.exe` со страницы Releases, закрыть CorelDRAW,
+**На Windows:** скачать `Strassio-Setup-X.Y.Z.exe` со страницы strassio-releases, закрыть CorelDRAW,
 запустить.
 
-**Обновление у пользователей:** в админке сайта вставить ссылку на установщик со страницы Releases
-и его SHA-256 — он написан на странице запуска в Actions (раздел Summary).
+**Обновление у пользователей:** в админке сайта, раздел «Обновление», канал stable — версия, ссылка на
+установщик и SHA-256 (их GitHub пишет на странице запуска в Actions, раздел Summary) и «что нового».
+После «Опубликовать» плагины у пользователей при следующем запуске (или в течение суток) покажут
+строку «Доступна новая версия». «Минимальная версия» — у кого ниже, увидят «Эта версия устарела».

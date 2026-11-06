@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/little-7o7/strassio/releases">Скачать</a> ·
+  <a href="https://strassio.vercel.app/download">Скачать</a> ·
   <a href="docs/CHANGELOG.md">Что нового</a> ·
   <a href="docs/SPEC.md">Техническое задание</a> ·
   <a href="#english">English</a>
@@ -18,8 +18,9 @@
 
 ---
 
-> **Статус: бета, в разработке.** Готовы расстановка по линиям и заливки, докер с параметрами,
-> правка и перекраска камней. Лицензия и автообновление — впереди (см. [что дальше](#что-дальше)).
+> **Статус: бета, готовится к продаже.** Готовы расстановка по линиям и заливки, докер с параметрами,
+> правка и перекраска камней, инструменты для производства, лицензия с активацией через сайт и
+> уведомление о новых версиях. Дальше — бета-тест с мастерами (см. [что дальше](#что-дальше)).
 
 ## Что умеет
 
@@ -126,7 +127,8 @@
 
 ## Установка
 
-1. Скачайте `Strassio-Setup-<версия>.exe` со страницы [Releases](https://github.com/little-7o7/strassio/releases).
+1. Скачайте установщик: [strassio.vercel.app/download](https://strassio.vercel.app/download)
+   (все версии — [strassio-releases](https://github.com/little-7o7/strassio-releases/releases)).
 2. Закройте CorelDRAW и запустите установщик. Он сам найдёт установленные версии CorelDRAW
    и предложит выбрать, куда ставить.
 3. Откройте CorelDRAW и нажмите кнопку-камень на панели **Strassio** —
@@ -145,8 +147,8 @@
 | 3 | Правка и цвет | ✅ готово |
 | 4 | Прокачка линий и заливок | ✅ готово |
 | 5 | Инструменты и подготовка к производству | ✅ готово |
-| 6 | Лицензия и обновления | 🔧 в работе |
-| 7 | Бета-тест с мастерами | |
+| 6 | Лицензия и обновления | ✅ готово |
+| 7 | Бета-тест с мастерами, подготовка к продаже | 🔧 в работе |
 
 ### Доделать в докере (Этап 2)
 - ✅ Предпросмотр, редактор таблицы камней, картинки-схемы методов, горизонтальная раскладка,
@@ -230,8 +232,8 @@ powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1   # ус�
 
 ## Лицензия
 
-© 2026 Munisxonov Maxmudxon. Все права защищены. Исходный код открыт для просмотра;
-использование, копирование и распространение — только с письменного разрешения автора.
+© 2026 Munisxonov Maxmudxon. Все права защищены. Исходный код закрыт; использование, копирование
+и распространение — только с письменного разрешения автора.
 
 ---
 
@@ -250,8 +252,8 @@ Every stone is a plain circle of the right diameter, ready for template cutting.
   Russian and English UI, mm or inches, follows the CorelDRAW colour scheme.
 - One operation = one group = one Ctrl+Z.
 
-Targets CorelDRAW X7 and newer (32/64-bit); currently tested on CorelDRAW 2025 and 2026. Status: beta, under active development.
-Download the installer from [Releases](https://github.com/little-7o7/strassio/releases).
+Targets CorelDRAW X7 and newer (32/64-bit); currently tested on CorelDRAW 2025 and 2026. Status: beta, preparing for sale.
+Download the installer: [strassio.vercel.app/download](https://strassio.vercel.app/download).
 
-© 2026 Munisxonov Maxmudxon. All rights reserved. Source is visible for reference only;
+© 2026 Munisxonov Maxmudxon. All rights reserved. Proprietary software;
 use, copying and redistribution require the author's written permission.

@@ -92,15 +92,22 @@ Strassio/
   После push проверить запуск: `gh run list --limit 1`, при ошибке — `gh run view <id> --log-failed`.
 - Выпуск версии: одинаковая версия в `Strassio.Corel.csproj` и `installer/Strassio.iss`, запись в CHANGELOG,
   текст выпуска в `docs/releases/vX.Y.Z.md` (первая строка `# Strassio X.Y.Z — …`), затем
-  `git tag vX.Y.Z && git push origin master vX.Y.Z` — GitHub сам соберёт установщик и выложит пробный выпуск.
-- Список проверки для автора начинается с «скачайте Strassio-Setup-X.Y.Z.exe со страницы Releases».
-- Репозиторий публичный: коммиты только с адресом `97856162+little-7o7@users.noreply.github.com`.
+  `git tag vX.Y.Z && git push origin master vX.Y.Z` — GitHub сам соберёт установщик и выложит выпуск
+  в публичный `little-7o7/strassio-releases` (секрет `RELEASES_TOKEN`). Тег с дефисом (`v1.0.0-beta.1`) —
+  пробный выпуск. Ссылку и SHA-256 для админки («Обновление») GitHub пишет в Summary запуска.
+- Список проверки для автора начинается с «скачайте Strassio-Setup-X.Y.Z.exe со страницы
+  https://github.com/little-7o7/strassio-releases/releases».
+- Код Strassio закрыт перед продажей (решение автора, 2026-11-06): в публичный strassio-releases идут
+  только установщики и описание, никогда — исходники. Коммиты — с адресом
+  `97856162+little-7o7@users.noreply.github.com`.
 
 ## Сервер
 
-- На время разработки и бета-теста — Vercel Hobby (бесплатно). Hobby разрешён только для некоммерческого
-  использования, поэтому **до первой продажи** сервер переезжает на Vercel Pro или Cloudflare Workers.
-- Поэтому вся логика лицензий — в `server/core/` без привязки к Vercel. Платформа — тонкий адаптер.
+- Vercel Pro (с 2026-11-06; Hobby разрешён только для некоммерческого использования).
+- Адрес сервера зашит в каждую копию плагина (`LicenseKeys.DefaultServer`), поэтому менять его можно только
+  выпуском новой версии, а старые копии останутся на старом адресе. Свой домен — решение автора.
+- Вся логика лицензий — в `server/core/` без привязки к Vercel. Платформа — тонкий адаптер.
+- `/download` на сайте — перенаправление на последний установщик в strassio-releases (`server/vercel.json`).
 - База: Postgres (Neon, бесплатный план через маркетплейс Vercel), доступ через `DATABASE_URL`.
 
 ## Порядок работы
