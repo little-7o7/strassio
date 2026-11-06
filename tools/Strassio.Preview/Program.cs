@@ -47,6 +47,12 @@ if (scenario == "colors")
     return;
 }
 
+if (scenario == "gaps")
+{
+    GapLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "kant")
 {
     KantLab.Render(FindRepoRoot());

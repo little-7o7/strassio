@@ -113,6 +113,17 @@
                         ToolTip="{Binding [edit.restoreSize.tooltip]}"/>
                 <Button Content="{Binding [edit.fillHoles]}" Click="FillHoles_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [edit.fillHoles.tooltip]}"/>
+                <Button Content="{Binding [edit.showUneven]}" Click="ShowUneven_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.showUneven.tooltip]}"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [edit.evenGaps]}" Click="EvenGaps_Click" ToolTip="{Binding [edit.evenGaps.tooltip]}"/>
+                    <TextBox x:Name="EvenShiftBox" Grid.Column="2" TextChanged="EvenShiftBox_TextChanged" ToolTip="{Binding [edit.evenShift.tooltip]}"/>
+                </Grid>
                 <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [edit.updateLive.tooltip]}"/>
                 <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>

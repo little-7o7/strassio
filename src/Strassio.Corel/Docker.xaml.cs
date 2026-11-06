@@ -170,6 +170,7 @@ namespace Strassio.Corel
             RebuildColors();
             RebuildEditTexts();
             RefreshBridgeBox();
+            RefreshEvenShiftBox();
             RefreshVectorBoxes();
             RebuildSets();
             RebuildPresets();
