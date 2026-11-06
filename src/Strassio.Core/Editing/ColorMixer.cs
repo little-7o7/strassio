@@ -98,14 +98,174 @@ namespace Strassio.Core.Editing
             // 2. Обмены с камнями поблизости (обмен сохраняет доли точно): камень, у которого вплотную
             //    стоит такой же, меняется цветом с соседом, если от этого всем вместе лучше. Самый
             //    частый цвет не перебираем: его соседство дешёвое, а обмен с ним видно со стороны редкого.
-            int common = Array.IndexOf(quota, quota.Max());
+            Spread(colors, near, price, Array.IndexOf(quota, quota.Max()), sideways: true, rnd, order, share: null);
+            return colors;
+        }
 
+        /// <summary>Направление омбре.</summary>
+        public enum OmbreDirection
+        {
+            /// <summary>Слева направо.</summary>
+            LeftToRight,
+
+            /// <summary>Сверху вниз (в координатах CorelDRAW: Y растёт вверх).</summary>
+            TopToBottom,
+
+            /// <summary>От центра рисунка к краю.</summary>
+            CenterOut,
+
+            /// <summary>Вдоль линии — по порядку страз (у страз по линии порядок и есть путь по линии).</summary>
+            AlongLine,
+        }
+
+        /// <summary>
+        /// Омбре: <paramref name="colorCount"/> цветов (2–3) плавно перетекают друг в друга — первый в начале,
+        /// последний в конце. Доля следующего цвета растёт по рисунку, а камни раскладываются так же ровно,
+        /// как в <see cref="Even"/>: без кучек, переход мягкий, а не полосой.
+        /// </summary>
+        public static int[] Ombre(
+            IReadOnlyList<Point2D> centers, IReadOnlyList<double> diameters, int colorCount, OmbreDirection direction, int seed)
+        {
+            int n = centers.Count;
+            var colors = new int[n];
+            if (n == 0 || colorCount < 2)
+            {
+                return colors;
+            }
+
+            double[] t = Positions(centers, direction);
+
+            // Доля каждого цвета у камня: цвета стоят на равных расстояниях вдоль 0…1, между соседними —
+            // линейный переход (у трёх цветов: 0 — первый, 0,5 — второй, 1 — третий).
+            var share = new double[n, colorCount];
+            var expected = new double[colorCount];
+            for (int i = 0; i < n; i++)
+            {
+                double x = t[i] * (colorCount - 1);
+                int lo = Math.Min(colorCount - 2, (int)Math.Floor(x));
+                double f = x - lo;
+                share[i, lo] = 1 - f;
+                share[i, lo + 1] = f;
+                expected[lo] += 1 - f;
+                expected[lo + 1] += f;
+            }
+
+            // 1. Раскладка от начала к концу перехода: каждый камень берёт цвет, которому больше всех
+            //    «недодали» до его доли в этом месте. Камни с одинаковым положением — в случайном порядке.
+            var rnd = new Random(seed);
+            int[] order = Enumerable.Range(0, n).ToArray();
+            Shuffle(order, rnd);
+            Array.Sort(order, (a, b) => t[a].CompareTo(t[b]));
+            var debt = new double[colorCount];
+            for (int c = 0; c < colorCount; c++)
+            {
+                debt[c] = rnd.NextDouble() * 0.5;
+            }
+
+            foreach (int i in order)
+            {
+                int best = 0;
+                for (int c = 0; c < colorCount; c++)
+                {
+                    debt[c] += share[i, c];
+                    if (debt[c] > debt[best])
+                    {
+                        best = c;
+                    }
+                }
+
+                colors[i] = best;
+                debt[best] -= 1;
+            }
+
+            // 2. Обмены только с ближними соседями и только к лучшему — переход не размывается, а кучки
+            //    одного цвета посреди перехода расходятся.
+            var price = new double[colorCount];
+            for (int c = 0; c < colorCount; c++)
+            {
+                price[c] = n / Math.Max(1.0, expected[c]);
+            }
+
+            Spread(colors, Neighbours(centers, diameters), price, common: -1, sideways: false, rnd, order, share);
+            return colors;
+        }
+
+        /// <summary>Положение камня вдоль перехода, 0…1.</summary>
+        private static double[] Positions(IReadOnlyList<Point2D> centers, OmbreDirection direction)
+        {
+            int n = centers.Count;
+            var t = new double[n];
+            if (direction == OmbreDirection.AlongLine)
+            {
+                for (int i = 0; i < n; i++)
+                {
+                    t[i] = n > 1 ? (double)i / (n - 1) : 0;
+                }
+
+                return t;
+            }
+
+            double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+            double cx = 0, cy = 0;
+            foreach (Point2D p in centers)
+            {
+                minX = Math.Min(minX, p.X);
+                maxX = Math.Max(maxX, p.X);
+                minY = Math.Min(minY, p.Y);
+                maxY = Math.Max(maxY, p.Y);
+                cx += p.X / n;
+                cy += p.Y / n;
+            }
+
+            double maxR = 0;
+            if (direction == OmbreDirection.CenterOut)
+            {
+                foreach (Point2D p in centers)
+                {
+                    maxR = Math.Max(maxR, Point2D.Distance(p, new Point2D(cx, cy)));
+                }
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                Point2D p = centers[i];
+                switch (direction)
+                {
+                    case OmbreDirection.LeftToRight:
+                        t[i] = maxX > minX ? (p.X - minX) / (maxX - minX) : 0;
+                        break;
+                    case OmbreDirection.TopToBottom:
+                        t[i] = maxY > minY ? (maxY - p.Y) / (maxY - minY) : 0;
+                        break;
+                    default:
+                        t[i] = maxR > 0 ? Point2D.Distance(p, new Point2D(cx, cy)) / maxR : 0;
+                        break;
+                }
+            }
+
+            return t;
+        }
+
+        /// <summary>
+        /// Обмены цветами с камнями поблизости, пока одинаковые камни стоят вплотную и от обмена всем
+        /// вместе лучше. Доли не меняются. <paramref name="common"/> — цвет, который не перебираем (−1 — все).
+        /// С <paramref name="sideways"/> иногда меняемся и «вбок» (не хуже): стык двух ровных участков
+        /// сдвигается, пока не встретит другой стык и оба не исчезнут. <paramref name="share"/> (для омбре) — какая
+        /// доля каждого цвета должна быть у камня: туда, где цвета быть не должно, он не переезжает, и обмен
+        /// против перехода «стоит» дороже.
+        /// </summary>
+        private static void Spread(
+            int[] colors, List<(int Other, double Weight)>[] near, double[] price, int common, bool sideways, Random rnd, int[] order,
+            double[,]? share)
+        {
+            double fidelity = price.Min();
             // «Вбок» — обмен, который меняет только дальних соседей, а вплотную ничего не ухудшает.
             double sidewaysLimit = 3 * FarWeight * price.Max();
             var candidates = new List<int>();
-            var sideways = new List<int>();
+            var sidewaysMoves = new List<int>();
             int idle = 0;
-            for (int pass = 0; pass < 150 && idle < 30; pass++)
+            int patience = sideways ? 30 : 1;
+            for (int pass = 0; pass < 150 && idle < patience; pass++)
             {
                 int improved = 0;
                 int touching = 0;
@@ -135,7 +295,7 @@ namespace Strassio.Core.Editing
                     double now = Cost(i, a, colors, near, price);
                     int bestJ = -1;
                     double bestDelta = -1e-9;
-                    sideways.Clear();
+                    sidewaysMoves.Clear();
                     foreach (int j in candidates)
                     {
                         int b = colors[j];
@@ -144,9 +304,18 @@ namespace Strassio.Core.Editing
                             continue;
                         }
 
+                        if (share != null && (share[i, b] <= 0 || share[j, a] <= 0))
+                        {
+                            continue;
+                        }
+
                         double wij = WeightBetween(near[i], j);
                         double delta = (Cost(i, b, colors, near, price) - wij * price[b]) - now
                             + (Cost(j, a, colors, near, price) - wij * price[a]) - Cost(j, b, colors, near, price);
+                        if (share != null)
+                        {
+                            delta += fidelity * (share[i, a] - share[i, b] + share[j, b] - share[j, a]);
+                        }
                         if (delta < bestDelta)
                         {
                             bestDelta = delta;
@@ -154,15 +323,13 @@ namespace Strassio.Core.Editing
                         }
                         else if (delta <= sidewaysLimit)
                         {
-                            sideways.Add(j);
+                            sidewaysMoves.Add(j);
                         }
                     }
 
-                    // Нет обмена, от которого лучше, — иногда меняемся «вбок» (не хуже): так стык двух
-                    // ровных участков сдвигается, пока не встретит другой стык и оба не исчезнут.
-                    if (bestJ < 0 && sideways.Count > 0 && rnd.Next(2) == 0)
+                    if (bestJ < 0 && sideways && sidewaysMoves.Count > 0 && rnd.Next(2) == 0)
                     {
-                        bestJ = sideways[rnd.Next(sideways.Count)];
+                        bestJ = sidewaysMoves[rnd.Next(sidewaysMoves.Count)];
                     }
                     else if (bestJ >= 0)
                     {
@@ -184,7 +351,6 @@ namespace Strassio.Core.Editing
                 idle = improved == 0 ? idle + 1 : 0;
             }
 
-            return colors;
         }
 
         private static bool Touches(int i, int color, int[] colors, List<(int Other, double Weight)>[] near)

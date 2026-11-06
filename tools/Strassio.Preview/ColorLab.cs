@@ -111,6 +111,21 @@ namespace Strassio.Preview
                 File.WriteAllText(path, SvgWriter.RenderColored(made.Stones, row.Select(r => r > 0 ? Palette[2].Rgb : Palette[0].Rgb).ToList()));
                 Console.WriteLine($"{name}: {made.Stones.Count} страз, по краю {row.Count(r => r > 0)} → {path}");
             }
+
+            // Омбре: сердце сотами розовый → красный слева направо и ромашка золото → цитрин → кристалл от центра.
+            foreach ((string name, Curve shape, ColorMixer.OmbreDirection direction, string[] ombre) in new[]
+            {
+                ("ombre-heart", heart, ColorMixer.OmbreDirection.LeftToRight, new[] { Palette[4].Rgb, Palette[3].Rgb }),
+                ("ombre-chamomile", flower, ColorMixer.OmbreDirection.CenterOut, new[] { Palette[2].Rgb, Palette[1].Rgb, Palette[0].Rgb }),
+            })
+            {
+                MethodResult made = MethodRunner.Run(MethodKind.F2, new[] { shape }, 2.4, new MethodParameters { GapMm = 0.2 });
+                int[] colors = ColorMixer.Ombre(
+                    made.Stones.Select(s => s.Center).ToList(), made.Stones.Select(s => s.DiameterMm).ToList(), ombre.Length, direction, 1);
+                string path = Path.Combine(dir, name + ".svg");
+                File.WriteAllText(path, SvgWriter.RenderColored(made.Stones, colors.Select(c => ombre[c]).ToList()));
+                Console.WriteLine($"{name}: {made.Stones.Count} страз → {path}");
+            }
         }
 
         /// <summary>Лист: две дуги от черешка до кончика, ширина посередине <paramref name="width"/>.</summary>

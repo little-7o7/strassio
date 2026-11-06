@@ -303,6 +303,10 @@ namespace Strassio.Corel
                 new ChoiceOption("even", Loc["color.mix.even"]),
                 new ChoiceOption("random", Loc["color.mix.random"]),
                 new ChoiceOption("sequence", Loc["color.mix.sequence"]),
+                new ChoiceOption("ombreX", Loc["color.mix.ombreX"]),
+                new ChoiceOption("ombreY", Loc["color.mix.ombreY"]),
+                new ChoiceOption("ombreCenter", Loc["color.mix.ombreCenter"]),
+                new ChoiceOption("ombreLine", Loc["color.mix.ombreLine"]),
             };
             string? mode = (MixModeCombo.SelectedItem as ChoiceOption)?.Value;
             MixModeCombo.ItemsSource = modes;
@@ -352,7 +356,11 @@ namespace Strassio.Corel
                 }
 
                 List<double> shares = parts.Select(p => (double)p.Value).ToList();
-                int[] assignment = mixMode == "sequence"
+                ColorMixer.OmbreDirection? ombre = OmbreDirectionOf(mixMode);
+                int[] assignment = ombre != null
+                    ? ColorMixer.Ombre(
+                        stones.Select(st => st.Stone.Center).ToList(), stones.Select(st => st.Stone.DiameterMm).ToList(), parts.Count, ombre.Value, Environment.TickCount)
+                    : mixMode == "sequence"
                     ? ColorMixer.Sequence(stones.Count, parts.Select(p => p.Value).ToList())
                     : mixMode == "random"
                         ? ColorMixer.Random(stones.Count, shares, Environment.TickCount)
@@ -378,6 +386,24 @@ namespace Strassio.Corel
 
                 SetStatus("color.mixed", stones.Count, parts.Count);
             });
+        }
+
+        /// <summary>Омбре (пункт 7 прокачки): цвета 1 → 2 → 3 плавно перетекают в выбранном направлении.</summary>
+        private static ColorMixer.OmbreDirection? OmbreDirectionOf(string mode)
+        {
+            switch (mode)
+            {
+                case "ombreX":
+                    return ColorMixer.OmbreDirection.LeftToRight;
+                case "ombreY":
+                    return ColorMixer.OmbreDirection.TopToBottom;
+                case "ombreCenter":
+                    return ColorMixer.OmbreDirection.CenterOut;
+                case "ombreLine":
+                    return ColorMixer.OmbreDirection.AlongLine;
+                default:
+                    return null;
+            }
         }
 
         // ---- Цвет: палитра документа -----------------------------------------------------------
