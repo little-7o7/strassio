@@ -109,6 +109,8 @@ namespace Strassio.Corel
                 {
                     // Сверка — дело фоновое: любая беда здесь не должна мешать работе.
                 }
+
+                await CheckForUpdateAsync();
             });
 
             // CorelDRAW могут не закрывать неделями: раз в час смотрим, не пора ли сверка (пора — раз в сутки).
@@ -120,6 +122,11 @@ namespace Strassio.Corel
 
         private async void CheckIfDue()
         {
+            if (DateTime.UtcNow - lastUpdateCheckUtc > TimeSpan.FromDays(1))
+            {
+                await CheckForUpdateAsync();
+            }
+
             try
             {
                 if (await License.CheckAsync())
@@ -134,6 +141,40 @@ namespace Strassio.Corel
             catch (Exception)
             {
                 // См. StartBackgroundCheck.
+            }
+        }
+
+        /// <summary>
+        /// Версия новее установленной (SPEC 14.1), если сервер о ней сообщил; иначе null. Докер
+        /// показывает строку «Доступна версия…» — событие <see cref="UpdateFound"/> приходит не из потока окна.
+        /// </summary>
+        public UpdateInfo? AvailableUpdate { get; private set; }
+
+        public event EventHandler? UpdateFound;
+
+        private DateTime lastUpdateCheckUtc = DateTime.MinValue;
+
+        /// <summary>При запуске и раз в сутки, если в настройках не выключено «Проверять обновления».</summary>
+        private async System.Threading.Tasks.Task CheckForUpdateAsync()
+        {
+            lastUpdateCheckUtc = DateTime.UtcNow;
+            if (!Settings.CheckUpdates)
+            {
+                return;
+            }
+
+            try
+            {
+                UpdateInfo? found = await new UpdateChecker(Api, LicenseKeys.Key, License.PluginVersion).CheckAsync("stable");
+                if (found != null && found.Version != AvailableUpdate?.Version)
+                {
+                    AvailableUpdate = found;
+                    UpdateFound?.Invoke(this, EventArgs.Empty);
+                }
+            }
+            catch (Exception)
+            {
+                // Обновления — подсказка, а не условие работы.
             }
         }
 

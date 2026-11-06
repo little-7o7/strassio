@@ -58,11 +58,13 @@ namespace Strassio.Corel
             context.Localizer.PropertyChanged += Localizer_PropertyChanged;
             context.SettingsChanged += Context_SettingsChanged;
             context.License.Changed += License_Changed;
+            context.UpdateFound += Context_UpdateFound;
             Loaded += (s, e) => ThemeManager.Attach(this, this.app);
             Unloaded += (s, e) =>
             {
                 ThemeManager.Detach(this);
                 context.License.Changed -= License_Changed;
+                context.UpdateFound -= Context_UpdateFound;
             };
 
             string? corelVersion = null;
@@ -175,6 +177,7 @@ namespace Strassio.Corel
             LivePreviewBox.IsChecked = context.Settings.LivePreview;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
             RefreshLicenseLine();
+            RefreshUpdateLine();
         }
 
         private void SetStatus(string key, params object[] args)
@@ -328,6 +331,63 @@ namespace Strassio.Corel
 
             LicenseLine.Text = text;
             LicenseLine.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>Сервер сообщил о новой версии — событие приходит не из потока окна.</summary>
+        private void Context_UpdateFound(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(RefreshUpdateLine));
+
+        /// <summary>Строка «Доступна новая версия…» под шапкой (SPEC 14.1). Нет обновления — не видна.</summary>
+        private void RefreshUpdateLine()
+        {
+            string text = string.Empty;
+            try
+            {
+                Strassio.Licensing.UpdateInfo? update = context.AvailableUpdate;
+                if (update != null)
+                {
+                    bool required = update.IsRequiredFor(context.License.PluginVersion);
+                    text = Loc.Format(required ? "docker.update.required" : "docker.update.available", update.Version);
+                }
+            }
+            catch (Exception)
+            {
+                // Строка — только подсказка; ошибка здесь не должна ломать докер.
+            }
+
+            UpdateLine.Text = text;
+            UpdateLine.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// Что нового и «Скачать?». Установщик качает браузер: CorelDRAW часто закрыт брандмауэром,
+        /// а ставить новую версию всё равно можно только при закрытом CorelDRAW.
+        /// </summary>
+        private void UpdateLine_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            Strassio.Licensing.UpdateInfo? update = context.AvailableUpdate;
+            if (update == null)
+            {
+                return;
+            }
+
+            string current = context.License.PluginVersion ?? "?";
+            string notes = update.Notes(context.Settings.Language);
+            string question = notes.Length > 0
+                ? Loc.Format("docker.update.ask", update.Version, current, notes)
+                : Loc.Format("docker.update.askShort", update.Version, current);
+            if (MessageBox.Show(question, Loc["docker.update.title"], MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(update.Url) { UseShellExecute = true });
+            }
+            catch (Exception)
+            {
+                SetStatus("docker.update.error", update.Url);
+            }
         }
 
         /// <summary>

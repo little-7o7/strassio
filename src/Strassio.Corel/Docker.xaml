@@ -39,6 +39,10 @@
             <!-- Пробный период / «нет лицензии»; при действующей лицензии не видна -->
             <TextBlock x:Name="LicenseLine" Style="{StaticResource Strassio.Muted}" Margin="0,-4,0,10"
                        Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="LicenseLine_Click"/>
+            <!-- Доступна новая версия (SPEC 14.1); нет обновления — не видна -->
+            <TextBlock x:Name="UpdateLine" Style="{StaticResource Strassio.Muted}" Margin="0,-4,0,10"
+                       Foreground="{DynamicResource Strassio.Accent}" TextDecorations="Underline"
+                       Visibility="Collapsed" Cursor="Hand" MouseLeftButtonUp="UpdateLine_Click"/>
 
             <!-- Камень: размер и цвет -->
             <TextBlock Text="{Binding [docker.stone]}" Style="{StaticResource Strassio.Section}"/>

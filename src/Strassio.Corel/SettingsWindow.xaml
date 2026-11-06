@@ -57,6 +57,9 @@
                       ToolTip="{Binding [settings.layout.tooltip]}"/>
         </Grid>
 
+        <CheckBox x:Name="CheckUpdatesBox" Content="{Binding [settings.checkUpdates]}" Margin="0,2,0,8"
+                  ToolTip="{Binding [settings.checkUpdates.tooltip]}"/>
+
         <TextBlock x:Name="ErrorText" Foreground="#E53935" TextWrapping="Wrap" Margin="0,0,0,8" Visibility="Collapsed"/>
 
         <!-- Перенос на другой компьютер (раздел 12 ТЗ) и папка с файлами -->

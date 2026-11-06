@@ -76,6 +76,7 @@ namespace Strassio.Corel
 
             DecimalsCombo.ItemsSource = Enumerable.Range(0, 5).ToList();
             DecimalsCombo.SelectedItem = Math.Max(0, Math.Min(4, s.Decimals));
+            CheckUpdatesBox.IsChecked = s.CheckUpdates;
 
             UpdateOutlineWidth();
         }
@@ -129,6 +130,7 @@ namespace Strassio.Corel
             s.Decimals = DecimalsCombo.SelectedItem is int d ? d : s.Decimals;
             s.Outline = outline;
             s.OutlineWidthMm = outlineWidthMm;
+            s.CheckUpdates = CheckUpdatesBox.IsChecked == true;
 
             context.SaveSettings();
             DialogResult = true;
