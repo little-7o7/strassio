@@ -7,8 +7,9 @@
 ;     с галочками; копирует аддон в папку Addons\Strassio каждой отмеченной версии;
 ;   - не даёт ставить поверх запущенного CorelDRAW (файлы были бы заняты);
 ;   - удаление — «Удалить Strassio» в C:\Strassio (или «Программы и компоненты»): убирает плагин
-;     из ВСЕХ версий CorelDRAW и стирает все данные Strassio (C:\Strassio, %APPDATA%\Strassio,
-;     %LOCALAPPDATA%\Strassio, раздел реестра Software\Strassio).
+;     из ВСЕХ версий CorelDRAW и спрашивает, сохранить ли настройки, таблицу камней и лицензию
+;     (C:\Strassio\data, метки в %LOCALAPPDATA%\Strassio и HKCU\Software\Strassio). «Нет» или
+;     тихое удаление — стирает всё (C:\Strassio, %APPDATA%\Strassio, %LOCALAPPDATA%\Strassio, реестр).
 ;
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
@@ -61,6 +62,10 @@ ru.Bits64=64 бита
 ru.Bits32=32 бита
 ru.UninstallDone=Strassio удалён из всех версий CorelDRAW, все его данные стёрты.
 en.UninstallDone=Strassio was removed from all CorelDRAW versions and all its data was deleted.
+ru.UninstallDoneKept=Strassio удалён из всех версий CorelDRAW. Настройки, таблица камней и лицензия сохранены в C:\Strassio\data — при следующей установке всё будет на месте.
+en.UninstallDoneKept=Strassio was removed from all CorelDRAW versions. Settings, the stone table and the license are kept in C:\Strassio\data and will be there after the next install.
+ru.KeepDataAsk=Сохранить настройки, таблицу камней, пресеты и лицензию Strassio?%n%nДа — после повторной установки всё будет на месте, активировать заново не нужно.%nНет — удалить всё без следа.
+en.KeepDataAsk=Keep Strassio settings, stone table, presets and license?%n%nYes — everything will be in place after reinstalling, no new activation needed.%nNo — delete everything.
 ru.UninstallShortcut=Удалить Strassio
 en.UninstallShortcut=Uninstall Strassio
 ru.AfterInstall=Запустите CorelDRAW — вверху появится панель «Strassio» с кнопкой-камнем. Если панели нет, откройте докер через меню «Окно → Докеры → Strassio».
@@ -113,6 +118,7 @@ var
   CorelPage: TInputOptionWizardPage;
   CorelTitles: TStringList;   { что видит пользователь }
   CorelAddonDirs: TStringList; { ...\Programs64\Addons\Strassio }
+  KeepUserData: Boolean;       { удаление: оставить настройки, таблицу камней и лицензию }
 
 { ---------- Список файлов аддона ---------- }
 
@@ -456,6 +462,11 @@ begin
       if MsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL) = IDCANCEL then
         Abort;
 
+    { Переустановка не должна стоить мастеру его таблицы камней и повторной активации.
+      Тихое удаление (/SILENT) — как раньше, всё стирается. }
+    KeepUserData := (not UninstallSilent) and
+      (MsgBox(CustomMessage('KeepDataAsk'), mbConfirmation, MB_YESNO or MB_DEFBUTTON1) = IDYES);
+
     if not RegQueryDWordValue(HKLM, 'Software\Strassio', 'TargetCount', Count) then
       Count := 0;
 
@@ -468,14 +479,23 @@ begin
 
   if CurUninstallStep = usPostUninstall then
   begin
-    { Все данные Strassio (решение автора): настройки, таблица камней, пресеты, лицензия и метки. }
-    DelTree(ExpandConstant('{app}'), True, True, True);
-    DelTree(ExpandConstant('{userappdata}\Strassio'), True, True, True);
-    DelTree(ExpandConstant('{localappdata}\Strassio'), True, True, True);
     DelTree(ExpandConstant('{autopf}\Strassio'), True, True, True);
-    RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Strassio');
     RegDeleteKeyIncludingSubkeys(HKLM, 'Software\Strassio');
-    if not UninstallSilent then
-      MsgBox(CustomMessage('UninstallDone'), mbInformation, MB_OK);
+    if KeepUserData then
+    begin
+      { Данные в C:\Strassio\data и метки времени лицензии (%LOCALAPPDATA%, HKCU) остаются — без меток
+        плагин после переустановки считал бы, что часы переведены. Файлы плагина деинсталлятор уже убрал. }
+      MsgBox(CustomMessage('UninstallDoneKept'), mbInformation, MB_OK);
+    end
+    else
+    begin
+      { Все данные Strassio: настройки, таблица камней, пресеты, лицензия и метки. }
+      DelTree(ExpandConstant('{app}'), True, True, True);
+      DelTree(ExpandConstant('{userappdata}\Strassio'), True, True, True);
+      DelTree(ExpandConstant('{localappdata}\Strassio'), True, True, True);
+      RegDeleteKeyIncludingSubkeys(HKCU, 'Software\Strassio');
+      if not UninstallSilent then
+        MsgBox(CustomMessage('UninstallDone'), mbInformation, MB_OK);
+    end;
   end;
 end;
