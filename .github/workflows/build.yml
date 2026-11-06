@@ -100,7 +100,7 @@ jobs:
           $repo = if ($env:RELEASES_TOKEN) { $env:RELEASES_REPO } else { $env:OWN_REPO }
           $url = "https://github.com/$repo/releases/download/v$version/Strassio-Setup-$version.exe"
           "exe=$exe" >> $env:GITHUB_OUTPUT
-          "### Strassio-Setup-$version.exe`n`nДля админки (раздел «Обновление»), после выпуска по тегу v$version:`n`n- ссылка: ``$url```n- SHA-256: ``$sha``" >> $env:GITHUB_STEP_SUMMARY
+          "### Strassio-Setup-$version.exe`n`nДля админки (раздел «Обновление»), после выпуска по тегу v${version}:`n`n- ссылка: ``$url```n- SHA-256: ``$sha``" >> $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v7
         with:
