@@ -184,6 +184,19 @@
                     <Button Content="{Binding [motif.around.make]}" Click="MotifAround_Click" ToolTip="{Binding [motif.around.make.tooltip]}"/>
                     <TextBox x:Name="MotifAroundBox" Grid.Column="2" ToolTip="{Binding [motif.around.count.tooltip]}"/>
                 </Grid>
+
+                <TextBlock Text="{Binding [motif.splash]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding [motif.splash.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [motif.splash.make]}" Click="Splash_Click" ToolTip="{Binding [motif.splash.make.tooltip]}"/>
+                    <TextBox x:Name="SplashWidthBox" Grid.Column="2" TextChanged="SplashWidthBox_TextChanged"
+                             ToolTip="{Binding [motif.splash.width.tooltip]}"/>
+                </Grid>
             </StackPanel>
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->

@@ -138,7 +138,7 @@ namespace Strassio.Preview
             return Curve.FromPolyline(pts, true);
         }
 
-        private static string Svg(IReadOnlyList<Curve> contours, IReadOnlyList<(Point2D P, double D, string Rgb)> stones)
+        internal static string Svg(IReadOnlyList<Curve> contours, IReadOnlyList<(Point2D P, double D, string Rgb)> stones)
         {
             List<List<Point2D>> outlines = contours.Select(c => CurveFlattener.Flatten(c).Points.Select(p => p.Position).ToList()).ToList();
             IEnumerable<Point2D> all = outlines.SelectMany(o => o).Concat(stones.SelectMany(s => new[]

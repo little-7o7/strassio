@@ -141,6 +141,9 @@ namespace Strassio.Core.Methods
                     double thin = Diameter(p.ThinSize, sizes != null && sizes.Count > 0 ? Math.Min(d, sizes.Values.Min()) : d, sizes);
                     return Plain(StrokeRow.Place(contours, SizeRange(thin, d, sizes), p.GapMm, p.EdgeMarginMm));
 
+                case MethodKind.F14:
+                    return Plain(Scatter.Dissolve(contours, d, p.GapMm, Math.Max(p.GapMm, p.FadeGapMm), FadeOf(p.FadeTo), p.EdgeMarginMm, p.Variant));
+
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:
@@ -177,6 +180,25 @@ namespace Strassio.Core.Methods
         /// (звезда «по центральной линии» — 23 камня, круг «от центра» — 19). Только если в раскладке
         /// один размер: у градиента и смеси крупный камень в ямке мелких сломал бы рисунок.
         /// </summary>
+        private static FadeDirection FadeOf(string value)
+        {
+            switch (value)
+            {
+                case MethodChoices.FadeCenter:
+                    return FadeDirection.Center;
+                case MethodChoices.FadeRight:
+                    return FadeDirection.Right;
+                case MethodChoices.FadeLeft:
+                    return FadeDirection.Left;
+                case MethodChoices.FadeUp:
+                    return FadeDirection.Up;
+                case MethodChoices.FadeDown:
+                    return FadeDirection.Down;
+                default:
+                    return FadeDirection.Edge;
+            }
+        }
+
         private static List<PlacedStone> Nests(List<PlacedStone> stones, IReadOnlyList<Curve> contours, MethodParameters p)
         {
             if (stones.Count == 0 || stones.Any(s => Math.Abs(s.DiameterMm - stones[0].DiameterMm) > 1e-6))

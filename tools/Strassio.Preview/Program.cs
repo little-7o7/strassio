@@ -53,6 +53,12 @@ if (scenario == "gaps")
     return;
 }
 
+if (scenario == "scatter")
+{
+    ScatterLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "motif")
 {
     MotifLab.Render(FindRepoRoot());

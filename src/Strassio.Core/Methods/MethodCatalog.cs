@@ -70,6 +70,9 @@ namespace Strassio.Core.Methods
 
         /// <summary>По толщине штриха: один ряд по середине, размер камня следует ширине.</summary>
         F13,
+
+        /// <summary>Растворение: плотные соты, которые плавно редеют к краю или в сторону.</summary>
+        F14,
     }
 
     /// <summary>Метод в списке докера: ключ текста, вкладка, нужна ли замкнутая фигура и какие поля показывать.</summary>
@@ -240,6 +243,14 @@ namespace Strassio.Core.Methods
         public static readonly MethodField FillSize = MethodField.SizeChoice(
             "fillSize", allowSame: false, p => p.FillSize, (p, v) => p.FillSize = v, smallest: true);
 
+        public static readonly MethodField FadeGap = MethodField.Number(
+            "fadeGap", FieldKind.Length, 0, 100, p => p.FadeGapMm, (p, v) => p.FadeGapMm = v);
+
+        public static readonly MethodField FadeTo = MethodField.Choice(
+            "fadeTo",
+            new[] { MethodChoices.FadeEdge, MethodChoices.FadeCenter, MethodChoices.FadeRight, MethodChoices.FadeLeft, MethodChoices.FadeUp, MethodChoices.FadeDown },
+            p => p.FadeTo, (p, v) => p.FadeTo = v);
+
         public static readonly MethodField ThinSize = MethodField.SizeChoice(
             "thinSize", allowSame: false, p => p.ThinSize, (p, v) => p.ThinSize = v, smallest: true);
 
@@ -271,6 +282,7 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.F11, isFill: true, needsClosed: true, Gap, FromSize, ToSize, GradientDirection, EdgeMargin),
             new MethodInfo(MethodKind.F12, isFill: true, needsClosed: true, Gap, FillSize, EdgeMargin),
             new MethodInfo(MethodKind.F13, isFill: true, needsClosed: true, Gap, ThinSize, EdgeMargin),
+            new MethodInfo(MethodKind.F14, isFill: true, needsClosed: true, Gap, FadeGap, FadeTo, Variant, EdgeMargin),
         };
 
         public static MethodInfo Get(MethodKind kind)

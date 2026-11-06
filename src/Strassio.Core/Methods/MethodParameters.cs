@@ -166,6 +166,14 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "thinSize")]
         public string ThinSize { get; set; } = string.Empty;
 
+        /// <summary>F14: просвет между камнями там, где заливка растворилась сильнее всего, мм.</summary>
+        [DataMember(Name = "fadeGap")]
+        public double FadeGapMm { get; set; } = 3;
+
+        /// <summary>F14: куда камни редеют — к краю, к середине, вправо, влево, вверх, вниз.</summary>
+        [DataMember(Name = "fadeTo")]
+        public string FadeTo { get; set; } = MethodChoices.FadeEdge;
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -209,6 +217,8 @@ namespace Strassio.Core.Methods
             GradientDirection = MethodChoices.GradientCenter;
             FillSize = string.Empty;
             ThinSize = string.Empty;
+            FadeGapMm = 3;
+            FadeTo = MethodChoices.FadeEdge;
         }
     }
 
@@ -254,6 +264,13 @@ namespace Strassio.Core.Methods
 
         public const string GradientCenter = "center";
         public const string GradientHorizontal = "horizontal";
+
+        public const string FadeEdge = "edge";
+        public const string FadeCenter = "center";
+        public const string FadeRight = "right";
+        public const string FadeLeft = "left";
+        public const string FadeUp = "up";
+        public const string FadeDown = "down";
 
         /// <summary>Для поля «размер»: как у основного камня.</summary>
         public const string SameSize = "";

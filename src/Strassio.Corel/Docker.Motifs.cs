@@ -10,6 +10,7 @@ using Corel.Interop.VGCore;
 using Strassio.Core.Editing;
 using Strassio.Core.Geometry;
 using Strassio.Core.Motifs;
+using Strassio.Core.Placement;
 using Strassio.Core.Settings;
 using CoreCurve = Strassio.Core.Geometry.Curve;
 
@@ -74,6 +75,7 @@ namespace Strassio.Corel
             }
 
             RefreshMotifSpacingBox();
+            RefreshSplashWidthBox();
             UpdateMotifModeHint();
         }
 
@@ -366,6 +368,101 @@ namespace Strassio.Corel
                 doc.CreateShapeRangeFromArray(ref shapes).CreateSelection();
                 int skipped = stones.Count * (count - 1) - copies.Count;
                 SetStatus("motif.around.done", count, copies.Count, skipped);
+            });
+        }
+
+        // ---- Россыпь вокруг (брызги) --------------------------------------------------------------
+
+        private double splashWidthMm = 12;
+
+        private double SplashWidthMm
+        {
+            get
+            {
+                if (LengthUnits.TryParse(SplashWidthBox.Text, context.Settings.Units, out double mm) && mm > 0 && mm <= 200)
+                {
+                    splashWidthMm = mm;
+                }
+
+                return splashWidthMm;
+            }
+        }
+
+        private void SplashWidthBox_TextChanged(object sender, TextChangedEventArgs e) => _ = SplashWidthMm;
+
+        private void RefreshSplashWidthBox() =>
+            SplashWidthBox.Text = LengthUnits.Format(splashWidthMm, context.Settings.Units, Math.Max(1, context.Settings.Decimals), CultureInfo.CurrentCulture);
+
+        /// <summary>
+        /// Случайные камни вокруг выделенного дизайна (стразы и/или фигуры): у дизайна — основной камень и
+        /// почти вплотную, дальше — мельче и реже. Каждое нажатие — новая россыпь (Ctrl+Z и ещё раз).
+        /// </summary>
+        private void Splash_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color))
+            {
+                SetStatus("status.noStone");
+                return;
+            }
+
+            double d = size.Size.DiameterMm;
+            double smallest = ThinDiameter(d);
+            List<double> sizes = SizeTable.Values.Where(v => v <= d + 1e-6 && v >= smallest - 1e-6)
+                .Distinct().OrderByDescending(v => v).ToList();
+            if (sizes.Count == 0)
+            {
+                sizes.Add(d);
+            }
+
+            // Не больше четырёх размеров: крупный, мелкий и равномерно между ними.
+            if (sizes.Count > 4)
+            {
+                sizes = new[] { 0, sizes.Count / 3, 2 * sizes.Count / 3, sizes.Count - 1 }.Select(i => sizes[i]).Distinct().ToList();
+            }
+
+            double width = SplashWidthMm;
+            double gap = Math.Max(Params.GapMm, 0.2 * d);
+            double fadeGap = d + width / 4;
+            int variant = Environment.TickCount & 0x7FFFFFFF;
+            string caption = Loc.Format("undo.splash", size.Size.Name, color.Name);
+            RunInDocument(null, doc =>
+            {
+                StoneSelection selection = StoneShapes.FromSelection(doc, KnownSizes);
+                List<PlacedStone> design = selection.Stones.Select(s => new PlacedStone(s.Stone.Center, s.Stone.DiameterMm, false)).ToList();
+                List<CoreCurve> shapes = ToolCurves(selection.Tools).Where(c => c.IsClosed).ToList();
+                if (design.Count == 0 && shapes.Count == 0)
+                {
+                    SetStatus("motif.splash.select");
+                    return;
+                }
+
+                IEnumerable<Point2D> points = design.Select(s => s.Center)
+                    .Concat(shapes.SelectMany(c => CurveFlattener.Flatten(c).Points.Select(p => p.Position)));
+                double minX = points.Min(p => p.X) - width - d, maxX = points.Max(p => p.X) + width + d;
+                double minY = points.Min(p => p.Y) - width - d, maxY = points.Max(p => p.Y) + width + d;
+                List<PlacedStone> obstacles = StoneShapes.ObstaclesNear(doc.ActivePage, KnownSizes, minX, minY, maxX, maxY);
+
+                List<PlacedStone> stones = Scatter.Splash(shapes, design, obstacles, sizes, gap, width, fadeGap, variant);
+                if (stones.Count == 0)
+                {
+                    SetStatus("motif.splash.none");
+                    return;
+                }
+
+                color.Color.TryGetRgb(out byte red, out byte green, out byte blue);
+                doc.BeginCommandGroup(caption);
+                try
+                {
+                    Shape group = CreateStoneGroup(doc, stones, size.Size, color.Name, red, green, blue, Array.Empty<int>(), caption);
+                    doc.ClearSelection();
+                    group.CreateSelection();
+                }
+                finally
+                {
+                    doc.EndCommandGroup();
+                }
+
+                SetStatus("motif.splash.done", stones.Count);
             });
         }
     }
