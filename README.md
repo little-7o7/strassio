@@ -205,7 +205,7 @@ installer/                установщик Inno Setup
 lang/                     тексты интерфейса (ru.json, en.json)
 ```
 
-Нужен [.NET 8 SDK](https://dotnet.microsoft.com/download); для установщика — [Inno Setup 6](https://jrsoftware.org/isdl.php).
+Нужен [.NET 10 SDK](https://dotnet.microsoft.com/download); для установщика — [Inno Setup 6](https://jrsoftware.org/isdl.php).
 
 Для сборки аддона нужен файл interop CorelDRAW `Corel.Interop.VGCore.dll` — это файл Corel,
 поэтому его нет в репозитории. Положите его в `src/Strassio.Corel/interop/`. Проект собирается

@@ -30,9 +30,9 @@
    ```bash
    claude plugin install superpowers@claude-plugins-official --scope local
    ```
-4. .NET 8 SDK — для тестов ядра и картинок Preview:
+4. .NET 10 SDK — для тестов ядра и картинок Preview (с 2026-11-06; .NET 8 больше не нужен):
    ```bash
-   curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0
+   curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 10.0
    echo 'export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"' >> ~/.zshrc
    ```
    Потом открыть новое окно терминала.

@@ -49,16 +49,16 @@ jobs:
           Copy-Item _interop/Corel.Interop.VGCore.dll src/Strassio.Corel/interop/
           Remove-Item _interop -Recurse -Force
 
-      # .NET 8 SDK, как на компьютере автора (на сервере стоят и более новые — закрепляем 8).
+      # .NET 10 SDK, как на компьютере автора (на сервере могут стоять и другие — закрепляем 10).
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: 8.0.x
-      - name: .NET 8 SDK
+          dotnet-version: 10.0.x
+      - name: .NET 10 SDK
         shell: pwsh
         run: |
-          $sdk = dotnet --list-sdks | ForEach-Object { ($_ -split ' ')[0] } | Where-Object { $_ -like '8.0.*' } |
+          $sdk = dotnet --list-sdks | ForEach-Object { ($_ -split ' ')[0] } | Where-Object { $_ -like '10.0.*' } |
             Sort-Object { [version]$_ } | Select-Object -Last 1
-          if (-not $sdk) { throw 'Нет .NET 8 SDK' }
+          if (-not $sdk) { throw 'Нет .NET 10 SDK' }
           Set-Content global.json "{ `"sdk`": { `"version`": `"$sdk`", `"rollForward`": `"disable`" } }"
           dotnet --version
 
