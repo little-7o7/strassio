@@ -3,6 +3,13 @@
   "buildCommand": "tsc -p tsconfig.json --noEmit",
   "outputDirectory": "public",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/download",
+      "destination": "https://github.com/little-7o7/strassio-releases/releases/latest/download/Strassio-Setup.exe",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/adminpanel",

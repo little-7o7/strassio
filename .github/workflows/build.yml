@@ -1,7 +1,8 @@
 # Сборка аддона и установщика на Windows-сервере GitHub — на Mac их не собрать (net48 + WPF + Inno Setup).
 #
 # - push в master: тесты ядра + установщик. Скачать: Actions → запуск → Artifacts (хранится 30 дней).
-# - тег vX.Y.Z: то же + пробный выпуск (pre-release) с установщиком на странице Releases.
+# - тег vX.Y.Z: то же + выпуск с установщиком в публичном little-7o7/strassio-releases (код там не лежит).
+#   Тег с дефисом (v1.0.0-beta.1) — пробный выпуск (pre-release).
 #   Заголовок и текст выпуска — из docs/releases/vX.Y.Z.md (первая строка «# …» — заголовок).
 # - вручную: Actions → «Сборка установщика» → Run workflow.
 
@@ -16,7 +17,12 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # создать выпуск по тегу
+  contents: write # создать выпуск по тегу (запасной путь — в этом же репозитории)
+
+env:
+  # Код закрыт, поэтому установщики выкладываются в отдельный публичный репозиторий: там только .exe
+  # и описание. Доступ на запись только к нему — секрет RELEASES_TOKEN. Нет секрета — выпуск, как раньше, здесь.
+  RELEASES_REPO: little-7o7/strassio-releases
 
 jobs:
   installer:
@@ -81,11 +87,20 @@ jobs:
       - name: SHA-256
         id: hash
         shell: pwsh
+        env:
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_REPO: ${{ github.repository }}
         run: |
-          $exe = "installer/out/Strassio-Setup-${{ steps.version.outputs.version }}.exe"
+          $version = "${{ steps.version.outputs.version }}"
+          $exe = "installer/out/Strassio-Setup-$version.exe"
           $sha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          # Та же программа под постоянным именем — для ссылки «Скачать» на сайте:
+          # https://github.com/little-7o7/strassio-releases/releases/latest/download/Strassio-Setup.exe
+          Copy-Item $exe installer/out/Strassio-Setup.exe
+          $repo = if ($env:RELEASES_TOKEN) { $env:RELEASES_REPO } else { $env:OWN_REPO }
+          $url = "https://github.com/$repo/releases/download/v$version/Strassio-Setup-$version.exe"
           "exe=$exe" >> $env:GITHUB_OUTPUT
-          "### Strassio-Setup-${{ steps.version.outputs.version }}.exe`n`nSHA-256 (для админки): ``$sha``" >> $env:GITHUB_STEP_SUMMARY
+          "### Strassio-Setup-$version.exe`n`nДля админки (раздел «Обновление»), после выпуска по тегу v$version:`n`n- ссылка: ``$url```n- SHA-256: ``$sha``" >> $env:GITHUB_STEP_SUMMARY
 
       - uses: actions/upload-artifact@v7
         with:
@@ -97,11 +112,20 @@ jobs:
         if: github.ref_type == 'tag'
         shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
+          RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          OWN_TOKEN: ${{ github.token }}
+          OWN_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
           VERSION: ${{ steps.version.outputs.version }}
           EXE: ${{ steps.hash.outputs.exe }}
         run: |
+          if ($env:RELEASES_TOKEN) {
+            $env:GH_TOKEN = $env:RELEASES_TOKEN; $repo = $env:RELEASES_REPO; $verify = @()
+          } else {
+            Write-Host "::warning::Нет секрета RELEASES_TOKEN — выпуск в этом репозитории. Если он закрыт, покупатели скачать не смогут."
+            $env:GH_TOKEN = $env:OWN_TOKEN; $repo = $env:OWN_REPO; $verify = @('--verify-tag')
+          }
+
           $notesFile = "docs/releases/$env:TAG.md"
           if (Test-Path $notesFile) {
             $lines = @(Get-Content $notesFile -Encoding utf8)
@@ -109,14 +133,19 @@ jobs:
             $body = ($lines | Select-Object -Skip 1) -join "`n"
           } else {
             $title = "Strassio $env:VERSION"
-            $body = "Пробная версия.`n`nЗакройте CorelDRAW и запустите Strassio-Setup-$env:VERSION.exe."
+            $body = "Закройте CorelDRAW и запустите Strassio-Setup-$env:VERSION.exe."
           }
           $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
           Set-Content $notes $body.Trim() -Encoding utf8
-          gh release view $env:TAG *> $null
+
+          # Пробный выпуск (pre-release) — только версии с дефисом, например v1.0.0-beta.1. Остальные —
+          # обычные: последний из них открывается ссылкой …/releases/latest (кнопка «Скачать» на сайте).
+          $pre = if ($env:TAG -match '-') { @('--prerelease') } else { @() }
+          gh release view $env:TAG --repo $repo *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload $env:TAG $env:EXE --clobber
+            gh release upload $env:TAG $env:EXE installer/out/Strassio-Setup.exe --repo $repo --clobber
           } else {
-            gh release create $env:TAG $env:EXE --prerelease --verify-tag --title $title --notes-file $notes
+            gh release create $env:TAG $env:EXE installer/out/Strassio-Setup.exe --repo $repo @pre @verify --title $title --notes-file $notes
           }
           if ($LASTEXITCODE -ne 0) { throw 'Не удалось создать выпуск' }
+          "Выпуск: https://github.com/$repo/releases/tag/$env:TAG" >> $env:GITHUB_STEP_SUMMARY
