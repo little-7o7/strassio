@@ -175,6 +175,8 @@ namespace Strassio.Corel
             RebuildPresets();
             ShowTabPanels();
             LivePreviewBox.IsChecked = context.Settings.LivePreview;
+            AvoidExistingBox.IsChecked = context.Settings.AvoidExisting;
+            ColorFromShapeBox.IsChecked = context.Settings.ColorFromShape;
             StatusText.Text = Loc.Format(statusKey, statusArgs);
             RefreshLicenseLine();
             RefreshUpdateLine();
@@ -436,6 +438,14 @@ namespace Strassio.Corel
             context.Settings.DefaultSize = size.Size.Name;
             context.Settings.DefaultColor = color.Name;
             context.SaveSettingsQuietly();
+
+            // Несколько фигур, учёт готовых страз или цвет из фигуры — путь «весь дизайн за раз».
+            Document? active = app?.ActiveDocument;
+            if (active != null && UsesDesignPath(active, method))
+            {
+                CreateDesign(size.Size, color.Color, method);
+                return;
+            }
 
             string caption = Loc.Format(method.Info.IsFill ? "undo.fill" : "undo.line", size.Size.Name, color.Name);
             CreateFromSelectedCurve(caption, size.Size, color.Color, method);

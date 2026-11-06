@@ -36,7 +36,7 @@ namespace Strassio.Corel
         /// </summary>
         private void ScheduleLivePreview()
         {
-            if (LivePreviewBox?.IsChecked != true || previewContours == null || !IsMethodTab)
+            if (LivePreviewBox?.IsChecked != true || (previewContours == null && previewDesign == null) || !IsMethodTab)
             {
                 return;
             }
@@ -47,7 +47,11 @@ namespace Strassio.Corel
                 liveTimer.Tick += (s, e) =>
                 {
                     liveTimer.Stop();
-                    if (previewContours != null)
+                    if (previewDesign != null)
+                    {
+                        ShowDesignPreview();
+                    }
+                    else if (previewContours != null)
                     {
                         ShowPreview(previewContours, previewGuides);
                     }
@@ -84,6 +88,12 @@ namespace Strassio.Corel
                 return;
             }
 
+            if (UsesDesignPath(doc, method))
+            {
+                PreviewDesign(doc, size.Size, color.Color, method);
+                return;
+            }
+
             cdrUnit prevUnit = doc.Unit;
             List<CoreCurve>? contours;
             List<CoreCurve>? guides = null;
@@ -110,6 +120,8 @@ namespace Strassio.Corel
 
             previewContours = contours;
             previewGuides = guides;
+            previewDesign = null;
+            previewObstacles = null;
             ShowPreview(contours, guides);
         }
 

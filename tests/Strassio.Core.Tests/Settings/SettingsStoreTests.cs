@@ -75,6 +75,20 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(2, s.Decimals);
         Assert.Equal(LengthUnit.Millimeter, s.Units);
         Assert.True(s.CheckUpdates);
+        Assert.True(s.AvoidExisting);    // «не налезать на готовые стразы» — включено, пока не выключат
+        Assert.False(s.ColorFromShape);
+    }
+
+    [Fact]
+    public void DesignSwitches_SaveThenLoad()
+    {
+        var store = new SettingsStore(dir);
+        store.SaveSettings(new PluginSettings { AvoidExisting = false, ColorFromShape = true });
+
+        PluginSettings back = new SettingsStore(dir).LoadSettings();
+
+        Assert.False(back.AvoidExisting);
+        Assert.True(back.ColorFromShape);
     }
 
     [Fact]

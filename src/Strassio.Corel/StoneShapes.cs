@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Corel.Interop.VGCore;
 using Strassio.Core.Editing;
 using Strassio.Core.Geometry;
+using Strassio.Core.Placement;
 
 namespace Strassio.Corel
 {
@@ -136,6 +137,56 @@ namespace Strassio.Corel
             int order = 0;
             CollectStones(page.Shapes, knownSizes, stones, ref order);
             return stones;
+        }
+
+        /// <summary>
+        /// Стразы страницы в прямоугольнике (мм) — препятствия для новых страз («учитывать готовые»).
+        /// Группа, которая целиком вне прямоугольника, не просматривается вовсе: так тысячи камней
+        /// в стороне от рисунка не стоят ни одного лишнего обращения к CorelDRAW.
+        /// </summary>
+        public static List<PlacedStone> ObstaclesNear(Page page, IEnumerable<string> knownSizes, double minX, double minY, double maxX, double maxY)
+        {
+            var known = new HashSet<string>(knownSizes, StringComparer.OrdinalIgnoreCase);
+            var result = new List<PlacedStone>();
+
+            bool Outside(Shape shape)
+            {
+                shape.GetBoundingBox(out double x, out double y, out double w, out double h, false);
+                return x > maxX || y > maxY || x + w < minX || y + h < minY;
+            }
+
+            void Walk(Shapes shapes)
+            {
+                int count = shapes.Count;
+                for (int i = 1; i <= count; i++)
+                {
+                    Shape shape = shapes[i];
+                    cdrShapeType type = shape.Type;
+                    if (type == cdrShapeType.cdrGroupShape)
+                    {
+                        if (!Outside(shape))
+                        {
+                            Walk(shape.Shapes);
+                        }
+
+                        continue;
+                    }
+
+                    if (type != cdrShapeType.cdrEllipseShape || Outside(shape))
+                    {
+                        continue;
+                    }
+
+                    StoneShape? stone = Read(shape, known);
+                    if (stone != null)
+                    {
+                        result.Add(new PlacedStone(stone.Stone.Center, stone.Stone.DiameterMm, false));
+                    }
+                }
+            }
+
+            Walk(page.Shapes);
+            return result;
         }
 
         private static void CollectStones(Shapes shapes, IEnumerable<string> knownSizes, List<StoneShape> into, ref int order)

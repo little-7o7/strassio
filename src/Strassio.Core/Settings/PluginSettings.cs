@@ -80,6 +80,14 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "livePreview")]
         public bool LivePreview { get; set; }
 
+        /// <summary>Новые стразы не налезают на те, что уже лежат на странице: отодвигаются или убираются.</summary>
+        [DataMember(Name = "avoidExisting")]
+        public bool AvoidExisting { get; set; }
+
+        /// <summary>«Создать» на нескольких фигурах: цвет камня у каждой фигуры — ближайший к цвету её заливки.</summary>
+        [DataMember(Name = "colorFromShape")]
+        public bool ColorFromShape { get; set; }
+
         /// <summary>Последние настройки, с которыми создавали стразы («Недавние» в списке пресетов).</summary>
         [DataMember(Name = "recent")]
         public List<Preset> Recent { get; set; } = new List<Preset>();
@@ -137,6 +145,8 @@ namespace Strassio.Core.Settings
             CheckUpdates = true;
             LastMethod = string.Empty;
             LivePreview = false;
+            AvoidExisting = true;
+            ColorFromShape = false;
             Recent = new List<Preset>();
             ActiveSet = string.Empty;
             Method = new MethodParameters();

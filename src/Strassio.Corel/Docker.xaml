@@ -332,6 +332,10 @@
             </Grid>
             <CheckBox x:Name="LivePreviewBox" Content="{Binding [docker.livePreview]}" Click="LivePreviewBox_Click"
                       ToolTip="{Binding [docker.livePreview.tooltip]}" Margin="0,8,0,0"/>
+            <CheckBox x:Name="AvoidExistingBox" Content="{Binding [docker.avoidExisting]}" Click="AvoidExistingBox_Click"
+                      ToolTip="{Binding [docker.avoidExisting.tooltip]}" Margin="0,6,0,0"/>
+            <CheckBox x:Name="ColorFromShapeBox" Content="{Binding [docker.colorFromShape]}" Click="ColorFromShapeBox_Click"
+                      ToolTip="{Binding [docker.colorFromShape.tooltip]}" Margin="0,6,0,0"/>
             <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,10,0,0" Padding="8" CornerRadius="10"
                     Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.Separator}" BorderThickness="1">
                 <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
