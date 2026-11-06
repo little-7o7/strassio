@@ -82,6 +82,7 @@
                 <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
                 <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
                 <TabItem x:Name="TextTab" Header="{Binding [docker.tab.text]}"/>
+                <TabItem x:Name="MotifTab" Header="{Binding [docker.tab.motif]}"/>
                 <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}"/>
                 <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}"/>
                 <TabItem x:Name="VectorTab" Header="{Binding [docker.tab.vector]}"/>
@@ -108,6 +109,81 @@
                 <Button Content="{Binding [text.make]}" Click="TextMake_Click" Margin="0,0,0,8"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.make.tooltip]}"/>
                 <TextBlock Text="{Binding [text.note]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+            </StackPanel>
+
+            <!-- «Мотивы» (docs/SPEC.md, раздел 9): библиотека, по линии, рамкой, по кругу — Docker.Motifs.cs -->
+            <StackPanel x:Name="MotifPanel" Visibility="Collapsed">
+                <TextBlock Text="{Binding [motif.title]}" Style="{StaticResource Strassio.Section}"/>
+                <TextBlock Text="{Binding [motif.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox x:Name="MotifCombo" DisplayMemberPath="Text" ToolTip="{Binding [motif.list.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [motif.delete]}" Click="MotifDelete_Click" Padding="10,4"
+                            ToolTip="{Binding [motif.delete.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" ToolTip="{Binding [motif.save.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [motif.folder]}" Click="MotifFolder_Click" Padding="10,4"
+                            ToolTip="{Binding [motif.folder.tooltip]}"/>
+                </Grid>
+
+                <TextBlock Text="{Binding [motif.layout]}" Style="{StaticResource Strassio.Section}"/>
+                <ComboBox x:Name="MotifModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                          SelectionChanged="MotifModeCombo_SelectionChanged" ToolTip="{Binding [motif.mode.tooltip]}"/>
+                <TextBlock x:Name="MotifModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="MotifSecondCaption" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.second.tooltip]}"/>
+                    <ComboBox x:Name="MotifSecondCombo" Grid.Column="1" DisplayMemberPath="Text"
+                              ToolTip="{Binding [motif.second.tooltip]}"/>
+                </Grid>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding [motif.count]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.count.tooltip]}"/>
+                    <TextBox x:Name="MotifCountBox" Grid.Column="1" ToolTip="{Binding [motif.count.tooltip]}"/>
+                    <TextBlock Grid.Column="3" Text="{Binding [motif.spacing]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.spacing.tooltip]}"/>
+                    <TextBox x:Name="MotifSpacingBox" Grid.Column="4" TextChanged="MotifSpacingBox_TextChanged"
+                             ToolTip="{Binding [motif.spacing.tooltip]}"/>
+                </Grid>
+                <CheckBox x:Name="MotifRotateBox" Content="{Binding [motif.rotate]}" IsChecked="True" Margin="0,0,0,4"
+                          ToolTip="{Binding [motif.rotate.tooltip]}"/>
+                <CheckBox x:Name="MotifFlipBox" Content="{Binding [motif.flip]}" Margin="0,0,0,6"
+                          ToolTip="{Binding [motif.flip.tooltip]}"/>
+                <Button Content="{Binding [motif.place]}" Click="MotifPlace_Click" Margin="0,0,0,14"
+                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.place.tooltip]}"/>
+
+                <TextBlock Text="{Binding [motif.around]}" Style="{StaticResource Strassio.Section}"/>
+                <TextBlock Text="{Binding [motif.around.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [motif.around.make]}" Click="MotifAround_Click" ToolTip="{Binding [motif.around.make.tooltip]}"/>
+                    <TextBox x:Name="MotifAroundBox" Grid.Column="2" ToolTip="{Binding [motif.around.count.tooltip]}"/>
+                </Grid>
             </StackPanel>
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->

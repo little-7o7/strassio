@@ -53,6 +53,12 @@ if (scenario == "gaps")
     return;
 }
 
+if (scenario == "motif")
+{
+    MotifLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "seam")
 {
     SeamLab.Render(FindRepoRoot());
