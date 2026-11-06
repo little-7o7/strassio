@@ -318,6 +318,7 @@ namespace Strassio.Corel
                 previewGuides = null;
                 previewDesign = parts;
                 previewObstacles = ReadObstacles(doc, parts, size.DiameterMm);
+                ClearVariants();
             }
             catch (Exception ex)
             {
@@ -367,6 +368,7 @@ namespace Strassio.Corel
 
             PreviewImage.Source = BuildDesignPreview(previewDesign, result, previewObstacles, color.Color);
             PreviewPanel.Visibility = Visibility.Visible;
+            lastPreviewCount = result.StoneCount;
             int conflicts = result.PerShape.Sum(r => r.ConflictIndices.Count);
             SetStatus(DesignStatusKey(result, conflicts, preview: true), result.StoneCount, previewDesign.Count, result.Removed + conflicts, result.SkippedShapes);
         }

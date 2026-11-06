@@ -489,7 +489,12 @@
                       ToolTip="{Binding [docker.colorFromShape.tooltip]}" Margin="0,6,0,0"/>
             <Border x:Name="PreviewPanel" Visibility="Collapsed" Margin="0,10,0,0" Padding="8" CornerRadius="10"
                     Background="#FFFFFF" BorderBrush="{DynamicResource Strassio.Separator}" BorderThickness="1">
-                <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
+                <StackPanel>
+                    <Image x:Name="PreviewImage" Stretch="Uniform" MaxHeight="260"/>
+                    <Button Content="{Binding [variant.pin]}" Click="PinVariant_Click" HorizontalAlignment="Right"
+                            Padding="10,3" Margin="0,6,0,0" ToolTip="{Binding [variant.pin.tooltip]}"/>
+                    <UniformGrid x:Name="VariantStrip" Rows="1" Margin="0,6,0,0" Visibility="Collapsed"/>
+                </StackPanel>
             </Border>
             <TextBlock x:Name="StatusText" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,0"/>
           </StackPanel>

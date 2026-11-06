@@ -122,6 +122,7 @@ namespace Strassio.Corel
             previewGuides = guides;
             previewDesign = null;
             previewObstacles = null;
+            ClearVariants();
             ShowPreview(contours, guides);
         }
 
@@ -161,6 +162,7 @@ namespace Strassio.Corel
 
             PreviewImage.Source = BuildPreview(guides == null ? contours : contours.Concat(guides).ToList(), result, color.Color);
             PreviewPanel.Visibility = Visibility.Visible;
+            lastPreviewCount = result.Stones.Count;
             if (result.ConflictIndices.Count > 0)
             {
                 SetStatus("status.previewConflicts", result.Stones.Count, result.ConflictIndices.Count);
