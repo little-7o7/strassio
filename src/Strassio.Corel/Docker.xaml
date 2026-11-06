@@ -128,6 +128,8 @@
                     <Button Content="{Binding [prod.bridges]}" Click="CheckBridges_Click" ToolTip="{Binding [prod.bridges.tooltip]}"/>
                     <TextBox x:Name="BridgeBox" Grid.Column="2" TextChanged="BridgeBox_TextChanged" ToolTip="{Binding [prod.bridgeMin.tooltip]}"/>
                 </Grid>
+                <Button Content="{Binding [prod.count]}" Click="CountStones_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [prod.count.tooltip]}"/>
                 <Button Content="{Binding [prod.layers]}" Click="LayersBySize_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [prod.layers.tooltip]}"/>
                 <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"

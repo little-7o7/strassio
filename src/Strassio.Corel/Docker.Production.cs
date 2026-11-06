@@ -7,6 +7,7 @@ using System.Windows;
 using Corel.Interop.VGCore;
 using Strassio.Core.Editing;
 using Strassio.Core.Settings;
+using Strassio.Core.Stones;
 
 namespace Strassio.Corel
 {
@@ -61,6 +62,69 @@ namespace Strassio.Corel
                 doc.CreateShapeRangeFromArray(ref bad).CreateSelection();
                 SetStatus("prod.bridgesBad", bridges.Count, Format(Math.Max(0, bridges[0].GapMm)), bad.Length);
             });
+        }
+
+        /// <summary>
+        /// Сколько камней каждого размера и цвета — для заказа (только количество, без цен). Таблица
+        /// сразу в буфере обмена: Ctrl+V в Excel или Google Таблицах.
+        /// </summary>
+        private void CountStones_Click(object sender, RoutedEventArgs e)
+        {
+            StoneCount? count = null;
+            RunInDocument(null, doc =>
+            {
+                StoneSelection selection = StoneShapes.FromSelection(doc, KnownSizes);
+                List<StoneShape> stones = selection.Stones.Count > 0 ? selection.Stones : StoneShapes.FromPage(doc.ActivePage, KnownSizes);
+                if (stones.Count == 0)
+                {
+                    SetStatus("edit.noStones");
+                    return;
+                }
+
+                count = StoneCount.Of(stones.Select(s => (s.Size, s.Color)), KnownSizes);
+            });
+
+            if (count == null)
+            {
+                return;
+            }
+
+            bool copied = true;
+            try
+            {
+                Clipboard.SetText(count.ToTable(Loc["prod.count.size"], Loc["prod.count.color"], Loc["prod.count.pieces"], Loc["prod.count.total"]));
+            }
+            catch (Exception)
+            {
+                // Буфер обмена занят другой программой — таблица всё равно видна в окне.
+                copied = false;
+            }
+
+            SetStatus(copied ? "prod.countDone" : "prod.countDoneNoCopy", count.Total, count.BySize.Count, count.ColorCount);
+            MessageBox.Show(CountText(count, copied), Loc["prod.count.title"], MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>Для окна: размер, под ним цвета с числом камней, итог по размеру; внизу — всего.</summary>
+        private string CountText(StoneCount count, bool copied)
+        {
+            var text = new System.Text.StringBuilder();
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            foreach (KeyValuePair<string, int> size in count.BySize)
+            {
+                text.Append(size.Key).Append(": ").Append(size.Value.ToString("N0", culture)).Append('\n');
+                foreach (StoneCountRow row in count.Rows.Where(r => string.Equals(r.Size, size.Key, StringComparison.OrdinalIgnoreCase)))
+                {
+                    text.Append("    ").Append(row.Color).Append(" — ").Append(row.Count.ToString("N0", culture)).Append('\n');
+                }
+            }
+
+            text.Append('\n').Append(Loc.Format("prod.count.totalLine", count.Total.ToString("N0", culture)));
+            if (copied)
+            {
+                text.Append("\n\n").Append(Loc["prod.count.copied"]);
+            }
+
+            return text.ToString();
         }
 
         /// <summary>Каждый размер — на свой слой с названием размера («ss6», «ss10»…).</summary>
