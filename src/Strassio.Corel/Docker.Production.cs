@@ -128,7 +128,15 @@ namespace Strassio.Corel
         }
 
         /// <summary>Каждый размер — на свой слой с названием размера («ss6», «ss10»…).</summary>
-        private void LayersBySize_Click(object sender, RoutedEventArgs e)
+        private void LayersBySize_Click(object sender, RoutedEventArgs e) => SplitToLayers(byColor: false);
+
+        /// <summary>
+        /// Каждый размер каждого цвета — на свой слой («ss6 Розовый»): у многоцветного дизайна на каждый цвет
+        /// свой трафарет, камни насыпаются по одному цвету за раз.
+        /// </summary>
+        private void LayersBySizeColor_Click(object sender, RoutedEventArgs e) => SplitToLayers(byColor: true);
+
+        private void SplitToLayers(bool byColor)
         {
             RunInDocument("undo.layers", doc =>
             {
@@ -142,7 +150,13 @@ namespace Strassio.Corel
 
                 Page page = doc.ActivePage;
                 int layers = 0;
-                foreach (IGrouping<string, StoneShape> bySize in stones.GroupBy(s => s.Size.Length > 0 ? s.Size : "?", StringComparer.OrdinalIgnoreCase))
+                string KeyOf(StoneShape s)
+                {
+                    string size = s.Size.Length > 0 ? s.Size : "?";
+                    return byColor && s.Color.Length > 0 ? StoneNames.Compose(size, s.Color) : size;
+                }
+
+                foreach (IGrouping<string, StoneShape> bySize in stones.GroupBy(KeyOf, StringComparer.OrdinalIgnoreCase))
                 {
                     string name = Loc.Format("prod.layerName", bySize.Key);
                     Layer? layer = FindLayer(page, name);
@@ -156,7 +170,14 @@ namespace Strassio.Corel
                     doc.CreateShapeRangeFromArray(ref shapes).MoveToLayer(layer);
                 }
 
-                SetStatus("prod.layersDone", stones.Count, stones.Select(s => s.Size).Distinct(StringComparer.OrdinalIgnoreCase).Count(), layers);
+                if (byColor)
+                {
+                    SetStatus("prod.layersColorDone", stones.Count, stones.Select(KeyOf).Distinct(StringComparer.OrdinalIgnoreCase).Count(), layers);
+                }
+                else
+                {
+                    SetStatus("prod.layersDone", stones.Count, stones.Select(s => s.Size).Distinct(StringComparer.OrdinalIgnoreCase).Count(), layers);
+                }
             });
         }
 

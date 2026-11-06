@@ -248,6 +248,8 @@
                 </Grid>
                 <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [edit.updateLive.tooltip]}"/>
+                <Button Content="{Binding [edit.resizeLive]}" Click="ResizeLive_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [edit.resizeLive.tooltip]}"/>
                 <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
                 <!-- Производство (раздел 11) -->
@@ -265,6 +267,8 @@
                         ToolTip="{Binding [prod.count.tooltip]}"/>
                 <Button Content="{Binding [prod.layers]}" Click="LayersBySize_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [prod.layers.tooltip]}"/>
+                <Button Content="{Binding [prod.layersColor]}" Click="LayersBySizeColor_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [prod.layersColor.tooltip]}"/>
                 <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"
                         ToolTip="{Binding [prod.clean.tooltip]}"/>
             </StackPanel>
