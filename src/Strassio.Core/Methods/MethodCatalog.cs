@@ -67,6 +67,9 @@ namespace Strassio.Core.Methods
 
         /// <summary>Добивка щелей мелкими камнями.</summary>
         F12,
+
+        /// <summary>По толщине штриха: один ряд по середине, размер камня следует ширине.</summary>
+        F13,
     }
 
     /// <summary>Метод в списке докера: ключ текста, вкладка, нужна ли замкнутая фигура и какие поля показывать.</summary>
@@ -237,6 +240,9 @@ namespace Strassio.Core.Methods
         public static readonly MethodField FillSize = MethodField.SizeChoice(
             "fillSize", allowSame: false, p => p.FillSize, (p, v) => p.FillSize = v, smallest: true);
 
+        public static readonly MethodField ThinSize = MethodField.SizeChoice(
+            "thinSize", allowSame: false, p => p.ThinSize, (p, v) => p.ThinSize = v, smallest: true);
+
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
@@ -264,6 +270,7 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.F10, isFill: true, needsClosed: true, Gap, MixSizes, Variant, EdgeMargin),
             new MethodInfo(MethodKind.F11, isFill: true, needsClosed: true, Gap, FromSize, ToSize, GradientDirection, EdgeMargin),
             new MethodInfo(MethodKind.F12, isFill: true, needsClosed: true, Gap, FillSize, EdgeMargin),
+            new MethodInfo(MethodKind.F13, isFill: true, needsClosed: true, Gap, ThinSize, EdgeMargin),
         };
 
         public static MethodInfo Get(MethodKind kind)

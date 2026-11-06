@@ -15,7 +15,11 @@ namespace Strassio.Core.Vector
     {
         /// <param name="contours">Контуры формы (внешний и отверстия).</param>
         /// <param name="minBranchMm">Короче этого «усики» (ветки со свободным концом) убираются; 0 — по толщине формы.</param>
-        public static List<Curve> Build(IReadOnlyList<Curve> contours, double minBranchMm = 0)
+        /// <param name="smooth">
+        /// false — ломаные без сглаживания: у развилок остаются настоящие углы (сглаженная линия срезает угол
+        /// дугой и может даже выйти за край). Нужно для ряда «по толщине штриха», который сам режет линию в углах.
+        /// </param>
+        public static List<Curve> Build(IReadOnlyList<Curve> contours, double minBranchMm = 0, bool smooth = true)
         {
             List<FlattenedCurve> flats = contours.Select(c => CurveFlattener.Flatten(c)).Where(f => f.IsClosed).ToList();
             var result = new List<Curve>();
@@ -65,7 +69,7 @@ namespace Strassio.Core.Vector
                     continue;
                 }
 
-                result.Add(simple.Count >= 3 ? VectorTools.Smooth(simple, closedList[i]) : Curve.FromPolyline(simple, closedList[i]));
+                result.Add(smooth && simple.Count >= 3 ? VectorTools.Smooth(simple, closedList[i]) : Curve.FromPolyline(simple, closedList[i]));
             }
 
             return result;

@@ -136,6 +136,11 @@ namespace Strassio.Core.Methods
                     double small = Diameter(p.FillSize, d * 0.6, sizes);
                     return Plain(AdvancedFillers.FillGaps(contours, d, Math.Min(small, d), p.GapMm, p.EdgeMarginMm));
 
+                case MethodKind.F13:
+                    // От мелкого камня до основного через все размеры таблицы между ними.
+                    double thin = Diameter(p.ThinSize, sizes != null && sizes.Count > 0 ? Math.Min(d, sizes.Values.Min()) : d, sizes);
+                    return Plain(StrokeRow.Place(contours, SizeRange(thin, d, sizes), p.GapMm, p.EdgeMarginMm));
+
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:

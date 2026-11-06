@@ -162,6 +162,10 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "fillSize")]
         public string FillSize { get; set; } = string.Empty;
 
+        /// <summary>F13: самый мелкий камень для тонких мест штриха (крупный — основной камень).</summary>
+        [DataMember(Name = "thinSize")]
+        public string ThinSize { get; set; } = string.Empty;
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -204,6 +208,7 @@ namespace Strassio.Core.Methods
             MixSizes = string.Empty;
             GradientDirection = MethodChoices.GradientCenter;
             FillSize = string.Empty;
+            ThinSize = string.Empty;
         }
     }
 

@@ -53,6 +53,12 @@ if (scenario == "gaps")
     return;
 }
 
+if (scenario == "stroke")
+{
+    StrokeLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
 if (scenario == "kant")
 {
     KantLab.Render(FindRepoRoot());
