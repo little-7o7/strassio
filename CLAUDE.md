@@ -107,7 +107,9 @@ Strassio/
 - Адрес сервера зашит в каждую копию плагина (`LicenseKeys.DefaultServer`), поэтому менять его можно только
   выпуском новой версии, а старые копии останутся на старом адресе. Свой домен — решение автора.
 - Вся логика лицензий — в `server/core/` без привязки к Vercel. Платформа — тонкий адаптер.
-- `/download` на сайте — перенаправление на последний установщик в strassio-releases (`server/vercel.json`).
+- `/download` на сайте — перенаправление на последний установщик (`server/vercel.json`). Пока репозитория
+  strassio-releases нет, ведёт на v0.8.3 в strassio; после первого выпуска там — вернуть
+  `https://github.com/little-7o7/strassio-releases/releases/latest/download/Strassio-Setup.exe`.
 - Vercel собирает сайт сам после каждого push в GitHub: в настройках проекта Root Directory = `server`
   (с 2026-11-06; до этого с 2026-10-05 сборки шли из корня, были пустыми, и сайт отвечал 404).
   После каждого выпуска сайта проверять `https://strassio.vercel.app/api/health` → `{"ok":true}`.

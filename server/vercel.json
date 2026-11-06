@@ -6,7 +6,7 @@
   "redirects": [
     {
       "source": "/download",
-      "destination": "https://github.com/little-7o7/strassio-releases/releases/latest/download/Strassio-Setup.exe",
+      "destination": "https://github.com/little-7o7/strassio/releases/download/v0.8.3/Strassio-Setup-0.8.3.exe",
       "permanent": false
     }
   ],
