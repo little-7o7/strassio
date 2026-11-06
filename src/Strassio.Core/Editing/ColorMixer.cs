@@ -258,64 +258,65 @@ namespace Strassio.Core.Editing
             int[] colors, List<(int Other, double Weight)>[] near, double[] price, int common, bool sideways, Random rnd, int[] order,
             double[,]? share)
         {
+            int n = colors.Length;
+            int k = price.Length;
             double fidelity = price.Min();
+
+            // Сколько «соседства» каждого цвета вокруг камня (вплотную — 1, дальше — чуть-чуть) и сколько
+            // соседей вплотную каждого цвета. Обмен пересчитывает только соседей двух камней.
+            var around = new double[n * k];
+            var touching = new int[n * k];
+            for (int i = 0; i < n; i++)
+            {
+                foreach ((int j, double w) in near[i])
+                {
+                    around[i * k + colors[j]] += w;
+                    if (w >= 1)
+                    {
+                        touching[i * k + colors[j]]++;
+                    }
+                }
+            }
+
             // «Вбок» — обмен, который меняет только дальних соседей, а вплотную ничего не ухудшает.
             double sidewaysLimit = 3 * FarWeight * price.Max();
-            var candidates = new List<int>();
             var sidewaysMoves = new List<int>();
             int idle = 0;
             int patience = sideways ? 30 : 1;
             for (int pass = 0; pass < 150 && idle < patience; pass++)
             {
                 int improved = 0;
-                int touching = 0;
+                int touchingCount = 0;
                 Shuffle(order, rnd);
                 foreach (int i in order)
                 {
                     int a = colors[i];
-                    if (a == common || !Touches(i, a, colors, near))
+                    if (a == common || touching[i * k + a] == 0)
                     {
                         continue;
                     }
 
-                    touching++;
-                    candidates.Clear();
-                    foreach ((int k, double w) in near[i])
-                    {
-                        candidates.Add(k);
-                        if (w >= 1)
-                        {
-                            foreach ((int k2, _) in near[k])
-                            {
-                                candidates.Add(k2);
-                            }
-                        }
-                    }
-
-                    double now = Cost(i, a, colors, near, price);
+                    touchingCount++;
+                    double now = around[i * k + a] * price[a];
                     int bestJ = -1;
                     double bestDelta = -1e-9;
                     sidewaysMoves.Clear();
-                    foreach (int j in candidates)
+                    foreach ((int j, double wij) in near[i])
                     {
                         int b = colors[j];
-                        if (b == a || j == i)
+                        if (b == a || (share != null && (share[i, b] <= 0 || share[j, a] <= 0)))
                         {
                             continue;
                         }
 
-                        if (share != null && (share[i, b] <= 0 || share[j, a] <= 0))
-                        {
-                            continue;
-                        }
-
-                        double wij = WeightBetween(near[i], j);
-                        double delta = (Cost(i, b, colors, near, price) - wij * price[b]) - now
-                            + (Cost(j, a, colors, near, price) - wij * price[a]) - Cost(j, b, colors, near, price);
+                        // После обмена у i цвет b, а j уже не b; у j цвет a, а i уже не a.
+                        double delta = (around[i * k + b] - wij) * price[b] - now
+                            + (around[j * k + a] - wij) * price[a] - around[j * k + b] * price[b];
                         if (share != null)
                         {
                             delta += fidelity * (share[i, a] - share[i, b] + share[j, b] - share[j, a]);
                         }
+
                         if (delta < bestDelta)
                         {
                             bestDelta = delta;
@@ -338,32 +339,36 @@ namespace Strassio.Core.Editing
 
                     if (bestJ >= 0)
                     {
-                        colors[i] = colors[bestJ];
+                        int b = colors[bestJ];
+                        Recolor(i, a, b, near, around, touching, k);
+                        Recolor(bestJ, b, a, near, around, touching, k);
+                        colors[i] = b;
                         colors[bestJ] = a;
                     }
                 }
 
-                if (touching == 0)
+                if (touchingCount == 0)
                 {
                     break;
                 }
 
                 idle = improved == 0 ? idle + 1 : 0;
             }
-
         }
 
-        private static bool Touches(int i, int color, int[] colors, List<(int Other, double Weight)>[] near)
+        /// <summary>Камень <paramref name="i"/> меняет цвет с <paramref name="from"/> на <paramref name="to"/>: соседи пересчитывают окружение.</summary>
+        private static void Recolor(int i, int from, int to, List<(int Other, double Weight)>[] near, double[] around, int[] touching, int k)
         {
             foreach ((int j, double w) in near[i])
             {
-                if (w >= 1 && colors[j] == color)
+                around[j * k + from] -= w;
+                around[j * k + to] += w;
+                if (w >= 1)
                 {
-                    return true;
+                    touching[j * k + from]--;
+                    touching[j * k + to]++;
                 }
             }
-
-            return false;
         }
 
         /// <summary>Сколько раз одинаковые камни стоят вплотную (для проверки и подсказки).</summary>
@@ -391,33 +396,6 @@ namespace Strassio.Core.Editing
         }
 
         private const double FarWeight = 0.02;
-
-        private static double Cost(int i, int color, int[] colors, List<(int Other, double Weight)>[] near, double[] price)
-        {
-            double sum = 0;
-            foreach ((int j, double w) in near[i])
-            {
-                if (colors[j] == color)
-                {
-                    sum += w;
-                }
-            }
-
-            return sum * price[color];
-        }
-
-        private static double WeightBetween(List<(int Other, double Weight)> near, int j)
-        {
-            foreach ((int other, double w) in near)
-            {
-                if (other == j)
-                {
-                    return w;
-                }
-            }
-
-            return 0;
-        }
 
         /// <summary>
         /// Соседи: вплотную (просвет до половины камня) — вес 1; через одного (до полутора камней) — чуть-чуть,
