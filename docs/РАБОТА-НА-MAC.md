@@ -36,10 +36,14 @@
    echo 'export DOTNET_ROOT="$HOME/.dotnet"; export PATH="$HOME/.dotnet:$PATH"' >> ~/.zshrc
    ```
    Потом открыть новое окно терминала.
-5. Сайт лицензий: `npm install -g vercel`, `vercel login`, затем `cd server && vercel link`
-   (команда little7o7s-projects, проект strassio). Выкладывать сайт — только из папки server:
-   `cd server && vercel deploy --prod --yes`. Пароли и ключи сайта хранятся в Vercel, на Mac их
-   переносить не нужно. Резервную копию ключа подписи лицензий в GitHub не класть никогда.
+5. Сайт лицензий выкладывается сам: Vercel собирает папку `server` после каждого push в master
+   (настройка проекта Root Directory = `server`). Вручную, если нужно: `npm install -g vercel`,
+   `vercel login`, `cd server && vercel link` (команда little7o7s-projects, проект strassio), затем
+   `cd server && vercel deploy --prod --yes` — только из папки server. После выкладки проверить
+   https://strassio.vercel.app/api/health → `{"ok":true}`. Если сайт сломался — в Vercel
+   (Deployments) вернуть прошлую рабочую версию кнопкой Instant Rollback. Пароли и ключи сайта
+   хранятся в Vercel, на Mac их переносить не нужно. Резервную копию ключа подписи лицензий в
+   GitHub не класть никогда.
 
 Файл Corel `Corel.Interop.VGCore.dll` на Mac не нужен: GitHub берёт его из закрытого репозитория
 `little-7o7/strassio-interop` сам.
