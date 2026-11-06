@@ -152,11 +152,11 @@ namespace Strassio.Core.Methods
                             contours, d, p.GapMm, p.EdgeMarginMm, kind == MethodKind.F3 ? 1 : Math.Max(1, p.Rings));
                         if (along != null)
                         {
-                            return Plain(along);
+                            return Plain(Seam(kind, along, contours, p));
                         }
                     }
 
-                    return Plain(ContourFiller.Fill(contours, new ContourFillOptions
+                    return Plain(Seam(kind, ContourFiller.Fill(contours, new ContourFillOptions
                     {
                         StoneDiameterMm = d,
                         GapMm = p.GapMm,
@@ -164,7 +164,7 @@ namespace Strassio.Core.Methods
                         MaxRings = kind == MethodKind.F3 ? (int?)null : p.Rings,
                         FillCenter = kind != MethodKind.F5,
                         CenterPattern = p.CenterPattern == MethodChoices.PatternSquare ? GridPattern.Square : GridPattern.Honeycomb,
-                    }));
+                    }), contours, p));
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
@@ -185,6 +185,22 @@ namespace Strassio.Core.Methods
             }
 
             return AdvancedFillers.AddMissingStones(stones, contours, stones[0].DiameterMm, p.GapMm, p.EdgeMarginMm);
+        }
+
+        /// <summary>
+        /// Шов контурной заливки (F3, F4): где середина упирается в крайние кольца или кольца сходятся
+        /// посередине, камни раздвигаются, чтобы цепочка дырок разошлась мелкими просветами
+        /// (<see cref="SeamSmoother"/>). Крайние ряды по контуру не двигаются. У «Канта» (F5) середины нет.
+        /// Квадратная сетка в середине — тоже без сглаживания: раздвигание превратило бы её в соты.
+        /// </summary>
+        private static List<PlacedStone> Seam(MethodKind kind, List<PlacedStone> stones, IReadOnlyList<Curve> contours, MethodParameters p)
+        {
+            if (kind == MethodKind.F5 || p.CenterPattern == MethodChoices.PatternSquare)
+            {
+                return stones;
+            }
+
+            return SeamSmoother.Smooth(stones, contours, p.GapMm, p.EdgeMarginMm, kind == MethodKind.F3 ? 1 : Math.Max(1, p.Rings));
         }
 
         /// <summary>

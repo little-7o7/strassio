@@ -53,6 +53,12 @@ if (scenario == "gaps")
     return;
 }
 
+if (scenario == "seam")
+{
+    SeamLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "text")
 {
     TextLab.Render(FindRepoRoot(), args.Skip(1).ToList());
