@@ -267,7 +267,7 @@ namespace Strassio.Corel
             {
                 ShowTabPanels();
                 SetStatus(MethodTabs.SelectedItem == EditTab ? "edit.ready" : MethodTabs.SelectedItem == ColorTab ? "color.ready" :
-                    MethodTabs.SelectedItem == VectorTab ? "vec.ready" : "status.ready");
+                    MethodTabs.SelectedItem == VectorTab ? "vec.ready" : MethodTabs.SelectedItem == TextTab ? "text.ready" : "status.ready");
                 if (IsMethodTab)
                 {
                     RebuildMethods();

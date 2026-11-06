@@ -42,8 +42,10 @@ namespace Strassio.Corel
             bool edit = MethodTabs.SelectedItem == EditTab;
             bool color = MethodTabs.SelectedItem == ColorTab;
             bool vector = MethodTabs.SelectedItem == VectorTab;
-            bool method = !edit && !color && !vector;
+            bool text = MethodTabs.SelectedItem == TextTab;
+            bool method = !edit && !color && !vector && !text;
             VectorPanel.Visibility = vector ? Visibility.Visible : Visibility.Collapsed;
+            TextPanel.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
 
             MethodPanel.Visibility = method ? Visibility.Visible : Visibility.Collapsed;
             CreateRow.Visibility = MethodPanel.Visibility;
@@ -74,6 +76,7 @@ namespace Strassio.Corel
             RecolorButton.Content = Loc.Format("color.recolor", colorName);
             EdgeRecolorButton.Content = Loc.Format("color.edge", colorName);
             RebuildMirrorSides();
+            RebuildTextModes();
             SelectSizeButton.Content = Loc.Format("color.selectSize", size);
             SelectColorButton.Content = Loc.Format("color.selectColor", colorName);
             SelectBothButton.Content = Loc.Format("color.selectBoth", size, colorName);

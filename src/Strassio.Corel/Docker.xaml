@@ -81,10 +81,34 @@
             <TabControl x:Name="MethodTabs" SelectionChanged="MethodTabs_SelectionChanged">
                 <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
                 <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
+                <TabItem x:Name="TextTab" Header="{Binding [docker.tab.text]}"/>
                 <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}"/>
                 <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}"/>
                 <TabItem x:Name="VectorTab" Header="{Binding [docker.tab.vector]}"/>
             </TabControl>
+
+            <!-- «Текст» (docs/SPEC.md, раздел 10.1): надпись стразами одной кнопкой — Docker.Text.cs -->
+            <StackPanel x:Name="TextPanel" Visibility="Collapsed">
+                <TextBlock Text="{Binding [text.title]}" Style="{StaticResource Strassio.Section}"/>
+                <TextBlock Text="{Binding [text.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <ComboBox x:Name="TextModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                          SelectionChanged="TextModeCombo_SelectionChanged" ToolTip="{Binding [text.mode.tooltip]}"/>
+                <TextBlock x:Name="TextModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid x:Name="TextThinRow" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding [param.thinSize]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [param.thinSize.tooltip]}"/>
+                    <ContentControl x:Name="TextThinHost" Grid.Column="1"/>
+                </Grid>
+                <Button Content="{Binding [text.check]}" Click="TextCheck_Click" Margin="0,0,0,6"
+                        ToolTip="{Binding [text.check.tooltip]}"/>
+                <Button Content="{Binding [text.make]}" Click="TextMake_Click" Margin="0,0,0,8"
+                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.make.tooltip]}"/>
+                <TextBlock Text="{Binding [text.note]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+            </StackPanel>
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->
             <StackPanel x:Name="EditPanel" Visibility="Collapsed">
