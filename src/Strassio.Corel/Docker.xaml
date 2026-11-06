@@ -142,6 +142,12 @@
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
                 <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
+                <!-- Цвет по рисунку: стразы берут цвета фигур рисунка — Docker.Artwork.cs -->
+                <TextBlock Text="{Binding [color.artwork.title]}" Style="{StaticResource Strassio.Section}"/>
+                <Button Content="{Binding [color.artwork]}" Click="ArtworkRecolor_Click" Margin="0,0,0,4"
+                        ToolTip="{Binding [color.artwork.tooltip]}"/>
+                <TextBlock Text="{Binding [color.artwork.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+
                 <TextBlock Text="{Binding [color.select]}" Style="{StaticResource Strassio.Section}"/>
                 <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
                 <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
