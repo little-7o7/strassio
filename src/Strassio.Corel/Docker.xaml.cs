@@ -338,17 +338,51 @@ namespace Strassio.Corel
         /// <summary>Сервер сообщил о новой версии — событие приходит не из потока окна.</summary>
         private void Context_UpdateFound(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(RefreshUpdateLine));
 
-        /// <summary>Строка «Доступна новая версия…» под шапкой (SPEC 14.1). Нет обновления — не видна.</summary>
+        /// <summary>Пока скачивается обновление, строка перечитывает файл состояния раз в 2 секунды.</summary>
+        private System.Windows.Threading.DispatcherTimer? updateTimer;
+
+        /// <summary>Когда нажали «Обновить»: пока программа обновления не написала о себе, строка говорит «скачивается».</summary>
+        private DateTime autoUpdateStartedUtc = DateTime.MinValue;
+
+        /// <summary>
+        /// Строка под шапкой (SPEC 14.1): «доступна новая версия», ход автообновления или «Strassio
+        /// обновлён». Нечего сказать — строка не видна.
+        /// </summary>
         private void RefreshUpdateLine()
         {
             string text = string.Empty;
+            bool poll = false;
             try
             {
+                Strassio.Licensing.UpdateProgress progress = context.ReadUpdateProgress(out Strassio.Licensing.UpdateStatus? status);
                 Strassio.Licensing.UpdateInfo? update = context.AvailableUpdate;
-                if (update != null)
+                bool starting = DateTime.UtcNow - autoUpdateStartedUtc < TimeSpan.FromSeconds(15);
+                if (progress == Strassio.Licensing.UpdateProgress.Downloading && status != null)
+                {
+                    text = Loc.Format("docker.update.downloading", status.Version);
+                    poll = true;
+                }
+                else if (progress == Strassio.Licensing.UpdateProgress.Ready && status != null)
+                {
+                    text = Loc.Format("docker.update.ready", status.Version);
+                }
+                else if (starting && update != null)
+                {
+                    text = Loc.Format("docker.update.downloading", update.Version);
+                    poll = true;
+                }
+                else if (progress == Strassio.Licensing.UpdateProgress.Failed && status != null && update != null)
+                {
+                    text = Loc.Format("docker.update.failed", update.Version, UpdateFailureText(status.Detail));
+                }
+                else if (update != null)
                 {
                     bool required = update.IsRequiredFor(context.License.PluginVersion);
                     text = Loc.Format(required ? "docker.update.required" : "docker.update.available", update.Version);
+                }
+                else if (context.JustUpdatedTo != null)
+                {
+                    text = Loc.Format("docker.update.done", context.JustUpdatedTo);
                 }
             }
             catch (Exception)
@@ -358,14 +392,59 @@ namespace Strassio.Corel
 
             UpdateLine.Text = text;
             UpdateLine.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            SetUpdatePolling(poll);
+        }
+
+        private void SetUpdatePolling(bool on)
+        {
+            if (!on)
+            {
+                updateTimer?.Stop();
+                return;
+            }
+
+            if (updateTimer == null)
+            {
+                updateTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+                updateTimer.Tick += (s, e) => RefreshUpdateLine();
+            }
+
+            if (!updateTimer.IsEnabled)
+            {
+                updateTimer.Start();
+            }
+        }
+
+        /// <summary>Почему обновление не поставилось — словами для мастера.</summary>
+        private string UpdateFailureText(string detail)
+        {
+            switch (detail)
+            {
+                case "sha256":
+                    return Loc["docker.update.reason.sha256"];
+                case "cancelled":
+                    return Loc["docker.update.reason.cancelled"];
+                case "timeout":
+                    return Loc["docker.update.reason.timeout"];
+                default:
+                    return detail;
+            }
         }
 
         /// <summary>
-        /// Что нового и «Скачать?». Установщик качает браузер: CorelDRAW часто закрыт брандмауэром,
-        /// а ставить новую версию всё равно можно только при закрытом CorelDRAW.
+        /// Что нового и как обновиться. Есть SHA-256 от сервера — «Да» обновляет само (скачать,
+        /// проверить, поставить после закрытия CorelDRAW), «Нет» — страница загрузки в браузере.
         /// </summary>
         private void UpdateLine_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
+            Strassio.Licensing.UpdateProgress progress = context.ReadUpdateProgress(out Strassio.Licensing.UpdateStatus? status);
+            if ((progress == Strassio.Licensing.UpdateProgress.Downloading || progress == Strassio.Licensing.UpdateProgress.Ready) && status != null)
+            {
+                string info = Loc.Format(progress == Strassio.Licensing.UpdateProgress.Ready ? "docker.update.readyInfo" : "docker.update.downloadingInfo", status.Version);
+                MessageBox.Show(info, Loc["docker.update.title"], MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
             Strassio.Licensing.UpdateInfo? update = context.AvailableUpdate;
             if (update == null)
             {
@@ -374,14 +453,48 @@ namespace Strassio.Corel
 
             string current = context.License.PluginVersion ?? "?";
             string notes = update.Notes(context.Settings.Language);
-            string question = notes.Length > 0
-                ? Loc.Format("docker.update.ask", update.Version, current, notes)
-                : Loc.Format("docker.update.askShort", update.Version, current);
-            if (MessageBox.Show(question, Loc["docker.update.title"], MessageBoxButton.YesNo, MessageBoxImage.Information) != MessageBoxResult.Yes)
+            if (context.CanAutoUpdate(update))
             {
+                string ask = notes.Length > 0
+                    ? Loc.Format("docker.update.askAuto", update.Version, current, notes)
+                    : Loc.Format("docker.update.askAutoShort", update.Version, current);
+                MessageBoxResult answer = MessageBox.Show(ask, Loc["docker.update.title"], MessageBoxButton.YesNoCancel, MessageBoxImage.Information);
+                if (answer == MessageBoxResult.Yes)
+                {
+                    try
+                    {
+                        context.StartAutoUpdate(update);
+                        autoUpdateStartedUtc = DateTime.UtcNow;
+                        RefreshUpdateLine();
+                    }
+                    catch (Exception ex)
+                    {
+                        SetStatus("docker.update.autoError", ex.Message);
+                    }
+
+                    return;
+                }
+
+                if (answer == MessageBoxResult.No)
+                {
+                    OpenDownloadPage(update);
+                }
+
                 return;
             }
 
+            string question = notes.Length > 0
+                ? Loc.Format("docker.update.ask", update.Version, current, notes)
+                : Loc.Format("docker.update.askShort", update.Version, current);
+            if (MessageBox.Show(question, Loc["docker.update.title"], MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+            {
+                OpenDownloadPage(update);
+            }
+        }
+
+        /// <summary>Установщик качает браузер (без автообновления или если мастер так выбрал).</summary>
+        private void OpenDownloadPage(Strassio.Licensing.UpdateInfo update)
+        {
             try
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(update.Url) { UseShellExecute = true });
