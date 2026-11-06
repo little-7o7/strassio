@@ -126,6 +126,24 @@ namespace Strassio.Preview
                 File.WriteAllText(path, SvgWriter.RenderColored(made.Stones, colors.Select(c => ombre[c]).ToList()));
                 Console.WriteLine($"{name}: {made.Stones.Count} страз → {path}");
             }
+
+            // Симметрия: левая половина ромашки (золото) отражена вправо (кристалл).
+            {
+                MethodResult made = MethodRunner.Run(MethodKind.F4, new[] { flower }, 2.4, new MethodParameters { GapMm = 0.2, Rings = 2 });
+                List<DocStone> half = made.Stones.Where(s => s.Center.X <= 0.6).Select(s => new DocStone(s.Center, s.DiameterMm, 0)).ToList();
+                MirrorResult mirrored = Symmetry.Mirror(half, Symmetry.AxisAt(half, MirrorSide.Right).Point, new Point2D(0, 1), 0.2);
+                Point2D[] moved = half.Select(s => s.Center).ToArray();
+                foreach (StoneMove m in mirrored.Snapped)
+                {
+                    moved[m.Index] = m.NewCenter;
+                }
+
+                var stones = moved.Select(c => new PlacedStone(c, 2.4, false)).Concat(mirrored.Added.Select(a => new PlacedStone(a.Center, 2.4, false))).ToList();
+                var fills = moved.Select(_ => Palette[2].Rgb).Concat(mirrored.Added.Select(_ => Palette[0].Rgb)).ToList();
+                string path = Path.Combine(dir, "mirror-chamomile.svg");
+                File.WriteAllText(path, SvgWriter.RenderColored(stones, fills));
+                Console.WriteLine($"mirror-chamomile: половина {half.Count}, копий {mirrored.Added.Count}, на ось {mirrored.Snapped.Count}, пропущено {mirrored.Skipped} → {path}");
+            }
         }
 
         /// <summary>Лист: две дуги от черешка до кончика, ширина посередине <paramref name="width"/>.</summary>
