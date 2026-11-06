@@ -77,6 +77,7 @@ namespace Strassio.Corel
             RefreshMotifSpacingBox();
             RefreshSplashWidthBox();
             UpdateMotifModeHint();
+            RebuildRepeat();
         }
 
         private void MotifModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => UpdateMotifModeHint();

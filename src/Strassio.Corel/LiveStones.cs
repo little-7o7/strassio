@@ -43,6 +43,26 @@ namespace Strassio.Corel
             }
         }
 
+        /// <summary>
+        /// Снять рецепт: группа становится обычной. Нужно копиям «живой» группы (раппорт) — иначе «Обновить»
+        /// пересобрал бы каждую копию по исходной фигуре, на месте оригинала.
+        /// </summary>
+        public static void Forget(Shape shape)
+        {
+            try
+            {
+                Properties props = shape.Properties;
+                if (props.Exists(Tag, RecipeId))
+                {
+                    props[Tag, RecipeId] = string.Empty;
+                }
+            }
+            catch (Exception)
+            {
+                // Не группа или CorelDRAW не дал метку — копия просто останется как есть.
+            }
+        }
+
         /// <summary>Исходная фигура по её номеру — на любой странице документа; null — её удалили.</summary>
         public static Shape? FindSource(Document doc, int staticId)
         {
