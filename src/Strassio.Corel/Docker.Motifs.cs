@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,6 +12,7 @@ using Strassio.Core.Motifs;
 using Strassio.Core.Placement;
 using Strassio.Core.Settings;
 using CoreCurve = Strassio.Core.Geometry.Curve;
+using CorelApplication = Corel.Interop.VGCore.Application;
 
 namespace Strassio.Corel
 {
@@ -28,7 +28,7 @@ namespace Strassio.Corel
 
         private List<Motif> motifs = new List<Motif>();
 
-        private MotifLibrary MotifStore => new MotifLibrary(Path.Combine(context.Store.Directory, "motifs"));
+        private MotifLibrary MotifStore => new MotifLibrary(System.IO.Path.Combine(context.Store.Directory, "motifs"));
 
         private bool IsFrameMode => (MotifModeCombo.SelectedItem as ChoiceOption)?.Value == "frame";
 
@@ -184,7 +184,7 @@ namespace Strassio.Corel
             try
             {
                 string folder = MotifStore.Folder;
-                Directory.CreateDirectory(folder);
+                System.IO.Directory.CreateDirectory(folder);
                 System.Diagnostics.Process.Start("explorer.exe", "\"" + folder + "\"");
             }
             catch (Exception ex)
