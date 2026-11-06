@@ -22,6 +22,17 @@ namespace Strassio.Preview
         private static readonly double[] Sizes = { 2.0, 2.8, 3.9 };
         private static readonly string[] Colors = { "#81D4FA", "#66BB6A", "#7E57C2" };
 
+        /// <summary>Буквы из JSON шрифта: все контуры надписи подряд, мм.</summary>
+        internal static List<(string Char, Curve[] Contours)> LoadGlyphs(string file)
+        {
+            using JsonDocument json = JsonDocument.Parse(File.ReadAllText(file));
+            return json.RootElement.GetProperty("letters").EnumerateArray()
+                .Select(letter => (letter.GetProperty("char").GetString() ?? "?", letter.GetProperty("contours").EnumerateArray()
+                    .Select(c => Curve.FromPolyline(c.EnumerateArray().Select(p => new Point2D(p[0].GetDouble(), p[1].GetDouble())).ToList(), true))
+                    .ToArray()))
+                .ToList();
+        }
+
         public static void Render(string repoRoot, IReadOnlyList<string> glyphFiles)
         {
             string dir = Path.Combine(repoRoot, "out", "preview", "stroke");
@@ -38,13 +49,9 @@ namespace Strassio.Preview
 
             foreach (string file in glyphFiles)
             {
-                using JsonDocument json = JsonDocument.Parse(File.ReadAllText(file));
                 int index = 0;
-                foreach (JsonElement letter in json.RootElement.GetProperty("letters").EnumerateArray())
+                foreach ((string _, Curve[] contours) in LoadGlyphs(file))
                 {
-                    Curve[] contours = letter.GetProperty("contours").EnumerateArray()
-                        .Select(c => Curve.FromPolyline(c.EnumerateArray().Select(p => new Point2D(p[0].GetDouble(), p[1].GetDouble())).ToList(), true))
-                        .ToArray();
                     shapes.Add(($"{Path.GetFileNameWithoutExtension(file)}-{index++}", contours));
                 }
             }
@@ -140,7 +147,7 @@ namespace Strassio.Preview
             return Curve.FromPolyline(pts, true);
         }
 
-        private static string Svg(IReadOnlyList<Curve> contours, IReadOnlyList<PlacedStone> stones)
+        internal static string Svg(IReadOnlyList<Curve> contours, IReadOnlyList<PlacedStone> stones, IReadOnlyList<Point2D>? marks = null)
         {
             List<List<Point2D>> outlines = contours.Select(c => CurveFlattener.Flatten(c).Points.Select(p => p.Position).ToList()).ToList();
             IEnumerable<Point2D> all = outlines.SelectMany(o => o);
@@ -165,6 +172,11 @@ namespace Strassio.Preview
                 int size = Array.FindIndex(Sizes, v => Math.Abs(v - s.DiameterMm) < 1e-6);
                 string fill = Colors[Math.Max(0, size)];
                 sb.Append($"<circle cx=\"{X(s.Center.X)}\" cy=\"{Y(s.Center.Y)}\" r=\"{(s.DiameterMm / 2 * k).ToString("0.#", ci)}\" fill=\"{fill}\" stroke=\"#37474F\" stroke-width=\"0.8\"/>");
+            }
+
+            foreach (Point2D m in marks ?? Array.Empty<Point2D>())
+            {
+                sb.Append($"<circle cx=\"{X(m.X)}\" cy=\"{Y(m.Y)}\" r=\"{(1.2 * k).ToString("0.#", ci)}\" fill=\"none\" stroke=\"#E53935\" stroke-width=\"2.5\"/>");
             }
 
             sb.Append("</svg>");

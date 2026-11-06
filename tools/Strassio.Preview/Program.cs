@@ -53,6 +53,12 @@ if (scenario == "gaps")
     return;
 }
 
+if (scenario == "text")
+{
+    TextLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
 if (scenario == "stroke")
 {
     StrokeLab.Render(FindRepoRoot(), args.Skip(1).ToList());
