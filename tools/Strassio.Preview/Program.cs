@@ -59,6 +59,12 @@ if (scenario == "scatter")
     return;
 }
 
+if (scenario == "fabric")
+{
+    FabricLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "motif")
 {
     MotifLab.Render(FindRepoRoot());

@@ -174,6 +174,34 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "fadeTo")]
         public string FadeTo { get; set; } = MethodChoices.FadeEdge;
 
+        /// <summary>F15: просвет между соседними лучами (край в край), мм. Больше — лучи видны отдельными линиями.</summary>
+        [DataMember(Name = "rayGap")]
+        public double RayGapMm { get; set; } = 1.2;
+
+        /// <summary>F15: радиус пустой середины, мм (0 — в середине одна страза).</summary>
+        [DataMember(Name = "centerHole")]
+        public double CenterHoleMm { get; set; } = 3;
+
+        /// <summary>F16: просвет между соседними линиями штрихов (край в край), мм.</summary>
+        [DataMember(Name = "lineGap")]
+        public double LineGapMm { get; set; } = 0.8;
+
+        /// <summary>F16: направление штрихов, градусы (90 — сверху вниз).</summary>
+        [DataMember(Name = "streakAngle")]
+        public double StreakAngleDeg { get; set; } = 90;
+
+        /// <summary>F16: самый длинный штрих, страз.</summary>
+        [DataMember(Name = "streakLength")]
+        public int StreakLength { get; set; } = 8;
+
+        /// <summary>F16: самый длинный разрыв между штрихами, пустых мест.</summary>
+        [DataMember(Name = "streakBreak")]
+        public int StreakBreak { get; set; } = 3;
+
+        /// <summary>F16: куда штрихи редеют (none — ровно везде).</summary>
+        [DataMember(Name = "streakFade")]
+        public string StreakFade { get; set; } = MethodChoices.FadeNone;
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -219,6 +247,13 @@ namespace Strassio.Core.Methods
             ThinSize = string.Empty;
             FadeGapMm = 3;
             FadeTo = MethodChoices.FadeEdge;
+            RayGapMm = 1.2;
+            CenterHoleMm = 3;
+            LineGapMm = 0.8;
+            StreakAngleDeg = 90;
+            StreakLength = 8;
+            StreakBreak = 3;
+            StreakFade = MethodChoices.FadeNone;
         }
     }
 
@@ -265,6 +300,7 @@ namespace Strassio.Core.Methods
         public const string GradientCenter = "center";
         public const string GradientHorizontal = "horizontal";
 
+        public const string FadeNone = "none";
         public const string FadeEdge = "edge";
         public const string FadeCenter = "center";
         public const string FadeRight = "right";

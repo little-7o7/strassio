@@ -144,6 +144,14 @@ namespace Strassio.Core.Methods
                 case MethodKind.F14:
                     return Plain(Scatter.Dissolve(contours, d, p.GapMm, Math.Max(p.GapMm, p.FadeGapMm), FadeOf(p.FadeTo), p.EdgeMarginMm, p.Variant));
 
+                case MethodKind.F15:
+                    return Plain(PatternFills.Rays(contours, d, p.GapMm, p.RayGapMm, p.CenterHoleMm, p.EdgeMarginMm));
+
+                case MethodKind.F16:
+                    return Plain(PatternFills.Streaks(
+                        contours, d, p.GapMm, p.LineGapMm, p.StreakAngleDeg, p.StreakLength, p.StreakBreak,
+                        p.StreakFade == MethodChoices.FadeNone ? (FadeDirection?)null : FadeOf(p.StreakFade), p.Variant, p.EdgeMarginMm));
+
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:
@@ -174,12 +182,7 @@ namespace Strassio.Core.Methods
             }
         }
 
-        /// <summary>
-        /// Добивка ямок: в каждую ямку, где камень касается двух соседей и целиком помещается внутри
-        /// формы, кладётся камень. Методы F6, F8–F11 оставляли такие дыры у края и между рядами
-        /// (звезда «по центральной линии» — 23 камня, круг «от центра» — 19). Только если в раскладке
-        /// один размер: у градиента и смеси крупный камень в ямке мелких сломал бы рисунок.
-        /// </summary>
+        /// <summary>Выбор «куда редеть» из настроек (F14, F16) — направление растворения.</summary>
         private static FadeDirection FadeOf(string value)
         {
             switch (value)
@@ -199,6 +202,12 @@ namespace Strassio.Core.Methods
             }
         }
 
+        /// <summary>
+        /// Добивка ямок: в каждую ямку, где камень касается двух соседей и целиком помещается внутри
+        /// формы, кладётся камень. Методы F6, F8–F11 оставляли такие дыры у края и между рядами
+        /// (звезда «по центральной линии» — 23 камня, круг «от центра» — 19). Только если в раскладке
+        /// один размер: у градиента и смеси крупный камень в ямке мелких сломал бы рисунок.
+        /// </summary>
         private static List<PlacedStone> Nests(List<PlacedStone> stones, IReadOnlyList<Curve> contours, MethodParameters p)
         {
             if (stones.Count == 0 || stones.Any(s => Math.Abs(s.DiameterMm - stones[0].DiameterMm) > 1e-6))

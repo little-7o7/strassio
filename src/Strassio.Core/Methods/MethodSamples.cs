@@ -107,6 +107,13 @@ namespace Strassio.Core.Methods
                     return new MethodSample(BrushStroke(), 3.4, new MethodParameters { GapMm = 0.4, ThinSize = "s" });
                 case MethodKind.F14:
                     return new MethodSample(Circle(11), 2.4, new MethodParameters { GapMm = 0.4, FadeGapMm = 3, FadeTo = MethodChoices.FadeRight });
+                case MethodKind.F15:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters { GapMm = 0.3, RayGapMm = 1.0, CenterHoleMm = 2.5 });
+                case MethodKind.F16:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters
+                    {
+                        GapMm = 0.3, LineGapMm = 0.9, StreakLength = 6, StreakBreak = 2, StreakFade = MethodChoices.FadeDown, Variant = 2,
+                    });
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }

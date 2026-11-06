@@ -40,33 +40,11 @@ namespace Strassio.Core.Placement
             double marginMm, int variant = 1)
         {
             var region = new ShapeRegion(contours, diameterMm);
-            double r = diameterMm / 2;
             double gap = Math.Max(0, gapMm);
             double fade = Math.Max(gap, fadeGapMm);
-            double inner = Math.Max(1e-6, region.MaxDepth - r - marginMm);
-            Point2D min = region.Min, max = region.Max;
-            double w = Math.Max(1e-6, max.X - min.X), h = Math.Max(1e-6, max.Y - min.Y);
+            Func<Point2D, double> fadeAt = FadeMap(region, direction, diameterMm / 2, marginMm);
 
-            double Fade(Point2D p)
-            {
-                switch (direction)
-                {
-                    case FadeDirection.Center:
-                        return Clamp((region.Depth(p) - r - marginMm) / inner);
-                    case FadeDirection.Right:
-                        return Clamp((p.X - min.X) / w);
-                    case FadeDirection.Left:
-                        return Clamp((max.X - p.X) / w);
-                    case FadeDirection.Up:
-                        return Clamp((p.Y - min.Y) / h);
-                    case FadeDirection.Down:
-                        return Clamp((max.Y - p.Y) / h);
-                    default:
-                        return 1 - Clamp((region.Depth(p) - r - marginMm) / inner);
-                }
-            }
-
-            double Gap(Point2D p) => gap + (fade - gap) * Ease(Fade(p));
+            double Gap(Point2D p) => gap + (fade - gap) * Ease(fadeAt(p));
             return FadingHoneycomb(region, diameterMm, gap, Gap, marginMm, variant);
         }
 
@@ -154,7 +132,33 @@ namespace Strassio.Core.Placement
         }
 
         /// <summary>Плавное нарастание: сначала медленно (плотная часть шире), к концу быстрее.</summary>
-        private static double Ease(double t) => t * t * (1.6 - 0.6 * t);
+        /// <summary>
+        /// «Карта растворения»: для каждой точки формы — от 0 (там, где рисунок плотный) до 1 (там, где он
+        /// растворился сильнее всего). Общая для «Растворения» (F14) и «Штрихов» (F16).
+        /// </summary>
+        internal static Func<Point2D, double> FadeMap(ShapeRegion region, FadeDirection direction, double radius, double marginMm)
+        {
+            double inner = Math.Max(1e-6, region.MaxDepth - radius - marginMm);
+            Point2D min = region.Min, max = region.Max;
+            double w = Math.Max(1e-6, max.X - min.X), h = Math.Max(1e-6, max.Y - min.Y);
+            switch (direction)
+            {
+                case FadeDirection.Center:
+                    return p => Clamp((region.Depth(p) - radius - marginMm) / inner);
+                case FadeDirection.Right:
+                    return p => Clamp((p.X - min.X) / w);
+                case FadeDirection.Left:
+                    return p => Clamp((max.X - p.X) / w);
+                case FadeDirection.Up:
+                    return p => Clamp((p.Y - min.Y) / h);
+                case FadeDirection.Down:
+                    return p => Clamp((max.Y - p.Y) / h);
+                default:
+                    return p => 1 - Clamp((region.Depth(p) - radius - marginMm) / inner);
+            }
+        }
+
+        internal static double Ease(double t) => t * t * (1.6 - 0.6 * t);
 
         private static double Clamp(double t) => t < 0 ? 0 : t > 1 ? 1 : t;
 
