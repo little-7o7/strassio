@@ -41,6 +41,12 @@ if (scenario == "site")
     return;
 }
 
+if (scenario == "colors")
+{
+    ColorLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "kant")
 {
     KantLab.Render(FindRepoRoot());

@@ -78,6 +78,60 @@ namespace Strassio.Preview
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Стразы своими цветами на тёмном фоне — как готовый рисунок на чёрной ткани. Для проверки
+        /// перекраски на глаз (не для производства). <paramref name="fills"/> — цвет каждой стразы "#RRGGBB".
+        /// </summary>
+        public static string RenderColored(
+            IReadOnlyList<PlacedStone> stones,
+            IReadOnlyList<string> fills,
+            string background = "#1E1E1E",
+            double marginMm = 3,
+            double pixelsPerMm = 10)
+        {
+            double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+            foreach (PlacedStone s in stones)
+            {
+                double r = s.DiameterMm / 2;
+                if (s.Center.X - r < minX) minX = s.Center.X - r;
+                if (s.Center.Y - r < minY) minY = s.Center.Y - r;
+                if (s.Center.X + r > maxX) maxX = s.Center.X + r;
+                if (s.Center.Y + r > maxY) maxY = s.Center.Y + r;
+            }
+
+            if (stones.Count == 0)
+            {
+                minX = minY = 0;
+                maxX = maxY = 1;
+            }
+
+            minX -= marginMm; minY -= marginMm; maxX += marginMm; maxY += marginMm;
+            var ci = CultureInfo.InvariantCulture;
+            string N(double v) => v.ToString("0.##", ci);
+            double w = (maxX - minX) * pixelsPerMm;
+            double h = (maxY - minY) * pixelsPerMm;
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{N(w)}\" height=\"{N(h)}\" viewBox=\"0 0 {N(w)} {N(h)}\">");
+            sb.AppendLine("<defs><radialGradient id=\"shine\" cx=\"38%\" cy=\"32%\" r=\"70%\">" +
+                "<stop offset=\"0\" stop-color=\"#FFFFFF\" stop-opacity=\"0.55\"/>" +
+                "<stop offset=\"0.6\" stop-color=\"#FFFFFF\" stop-opacity=\"0\"/>" +
+                "<stop offset=\"1\" stop-color=\"#000000\" stop-opacity=\"0.35\"/></radialGradient></defs>");
+            sb.AppendLine($"<rect width=\"100%\" height=\"100%\" fill=\"{background}\"/>");
+            for (int i = 0; i < stones.Count; i++)
+            {
+                PlacedStone s = stones[i];
+                double cx = (s.Center.X - minX) * pixelsPerMm;
+                double cy = (s.Center.Y - minY) * pixelsPerMm;
+                double r = s.DiameterMm / 2 * pixelsPerMm;
+                sb.AppendLine($"<circle cx=\"{N(cx)}\" cy=\"{N(cy)}\" r=\"{N(r)}\" fill=\"{fills[i]}\"/>");
+                sb.AppendLine($"<circle cx=\"{N(cx)}\" cy=\"{N(cy)}\" r=\"{N(r)}\" fill=\"url(#shine)\"/>");
+            }
+
+            sb.AppendLine("</svg>");
+            return sb.ToString();
+        }
+
         public static string RenderMulti(
             IReadOnlyList<(IReadOnlyList<Point2D> Points, string Color)> polylines,
             IReadOnlyList<PlacedStone> stones,
