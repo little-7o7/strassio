@@ -97,6 +97,20 @@ namespace Strassio.Preview
                 File.WriteAllText(path, SvgWriter.RenderColored(mixed.Stones, colors.Select(c => mixColors[c]).ToList()));
                 Console.WriteLine($"{name}: {centers.Count} страз, золото касается золота {ColorMixer.SameColorTouches(centers, diameters, colors, 1)} раз → {path}");
             }
+
+            // Крайние ряды золотом: ромашка «Комбинированной» и сердце сотами — один и два ряда от края.
+            foreach ((string name, Curve shape, MethodKind kind, int rows) in new[]
+            {
+                ("edge-chamomile", flower, MethodKind.F4, 1),
+                ("edge-heart", heart, MethodKind.F2, 2),
+            })
+            {
+                MethodResult made = MethodRunner.Run(kind, new[] { shape }, 2.4, new MethodParameters { GapMm = 0.2, Rings = 2 });
+                int[] row = EdgeRows.Find(made.Stones.Select(s => s.Center).ToList(), made.Stones.Select(s => s.DiameterMm).ToList(), rows);
+                string path = Path.Combine(dir, name + ".svg");
+                File.WriteAllText(path, SvgWriter.RenderColored(made.Stones, row.Select(r => r > 0 ? Palette[2].Rgb : Palette[0].Rgb).ToList()));
+                Console.WriteLine($"{name}: {made.Stones.Count} страз, по краю {row.Count(r => r > 0)} → {path}");
+            }
         }
 
         /// <summary>Лист: две дуги от черешка до кончика, ширина посередине <paramref name="width"/>.</summary>

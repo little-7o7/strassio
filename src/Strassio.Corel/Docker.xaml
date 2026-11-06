@@ -153,7 +153,19 @@
                         ToolTip="{Binding [color.pipette.tooltip]}"/>
                 <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
-                <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+                <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,10"/>
+
+                <!-- Цвет крайних рядов: кант другим цветом у любой раскладки — Docker.EdgeColor.cs -->
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="EdgeRecolorButton" Click="EdgeRecolor_Click" ToolTip="{Binding [color.edge.tooltip]}"/>
+                    <TextBox x:Name="EdgeRowsBox" Grid.Column="2" Text="1" ToolTip="{Binding [color.edge.rows.tooltip]}"/>
+                </Grid>
+                <TextBlock Text="{Binding [color.edge.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
 
                 <!-- Цвет по рисунку: стразы берут цвета фигур рисунка — Docker.Artwork.cs -->
                 <TextBlock Text="{Binding [color.artwork.title]}" Style="{StaticResource Strassio.Section}"/>

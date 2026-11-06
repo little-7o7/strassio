@@ -72,6 +72,7 @@ namespace Strassio.Corel
             string size = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? "—";
             string colorName = (ColorList.SelectedItem as ColorOption)?.Name ?? "—";
             RecolorButton.Content = Loc.Format("color.recolor", colorName);
+            EdgeRecolorButton.Content = Loc.Format("color.edge", colorName);
             SelectSizeButton.Content = Loc.Format("color.selectSize", size);
             SelectColorButton.Content = Loc.Format("color.selectColor", colorName);
             SelectBothButton.Content = Loc.Format("color.selectBoth", size, colorName);
