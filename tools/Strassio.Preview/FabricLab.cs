@@ -40,31 +40,102 @@ namespace Strassio.Preview
             File.WriteAllText(Path.Combine(dir, "streaks-rect.svg"), MotifLab.Svg(new[] { rect }, streaks.Select(s => (s.Center, s.DiameterMm, "#5C6BC0")).ToList()));
             Console.WriteLine($"streaks-rect           {streaks.Count,5} страз");
 
+            // 3. Волны в прямоугольнике, технический вид.
+            List<PlacedStone> waves = Run(MethodKind.F17, rect, 1.4, new MethodParameters { GapMm = 0.25, LineGapMm = 0.8, WaveHeightMm = 2.5, WaveLengthMm = 24 });
+            File.WriteAllText(Path.Combine(dir, "waves-rect.svg"), MotifLab.Svg(new[] { rect }, waves.Select(s => (s.Center, s.DiameterMm, "#26A69A")).ToList()));
+            Console.WriteLine($"waves-rect             {waves.Count,5} страз");
+
+            // 4. Штрихи вокруг мотива-луковки: у мотива гуще, дальше реже.
+            Curve onion = Onion(new Point2D(0, -6), 7, 0);
+            List<PlacedStone> onionStones = Run(MethodKind.F2, onion, 1.6, new MethodParameters { GapMm = 0.2 });
+            List<PlacedStone> around = PatternFills.StreaksAround(new[] { onion }, onionStones, Array.Empty<PlacedStone>(), 1.4, 0.25, 1.0, 90, 10, 4, 16, 5);
+            var aroundTile = new List<(PlacedStone, string)>();
+            Add(aroundTile, onionStones, "#E53935");
+            Add(aroundTile, around, "#E53935");
+            File.WriteAllText(Path.Combine(dir, "streaks-around.svg"), Velvet(aroundTile.Select(t => (t.Item1.Center, t.Item1.DiameterMm, t.Item2)).ToList(), "#141016"));
+            Console.WriteLine($"streaks-around         {around.Count,5} страз вокруг {onionStones.Count} страз мотива");
+
+            // 5. Заливка мотивами: цветочки россыпью в круге.
+            Motif flower = Motif.FromStones("flower", Run(MethodKind.F15, Circle(0, 0, 4.2), 1.4, new MethodParameters { GapMm = 0.2, RayGapMm = 0.4, CenterHoleMm = 0 })
+                .Select(st => new MotifStone(st.Center.X, st.Center.Y, st.DiameterMm, "ss5", "gold", st.Center.Length < 1 ? "#FFB300" : "#F5F5F5")));
+            Curve big = Circle(0, 0, 40);
+            MotifLayout filled = MotifPlacer.Fill(new[] { big }, new[] { flower }, new MotifLayoutOptions { SpacingMm = 2.5, StoneGapMm = 0.2, Rotate = true }, 3);
+            File.WriteAllText(Path.Combine(dir, "motif-fill.svg"), Velvet(filled.Stones.Select(st => (st.Center, st.Source.DiameterMm, st.Source.Rgb)).ToList(), "#1B3A5C"));
+            Console.WriteLine($"motif-fill             {filled.Copies,5} мотивов, {filled.Stones.Count} страз");
+
             Fabric(dir, "fabric-sunflowers", SunflowerTile(), 46, 52, RepeatShift.HalfDrop, 5, 3, "#5EA7DB");
             Fabric(dir, "fabric-ogee", OgeeTile(), 56, 62, RepeatShift.Brick, 4, 3, "#141016");
             Fabric(dir, "fabric-flames", FlameTile(), 30, 60, RepeatShift.HalfDrop, 6, 2, "#2A0A0E");
+
+            // 6. Раппорт из двух мотивов: каждое второе пламя отражено.
+            Fabric(dir, "fabric-flames-mirror", FlameTile(), 30, 60, RepeatShift.None, 6, 2, "#2A0A0E", RepeatAlternate.MirrorX);
+
+            // 7. Штрихи вокруг луковки как плитка ткани, полшага.
+            Fabric(dir, "fabric-ikat", aroundTile, 40, 52, RepeatShift.HalfDrop, 5, 3, "#141016");
+
+            // 8. Лист трафарета без шва из плитки подсолнухов: наибольший лист до 300 × 400 мм.
+            Sheet(dir, SunflowerTile(), new RepeatOptions { StepXMm = 46, StepYMm = 52, Shift = RepeatShift.HalfDrop, GapMm = Gap }, 300, 400, "#5EA7DB");
             Console.WriteLine($"SVG сохранены: {dir}");
         }
 
         /// <summary>Раппорт плитки на ткани: копии сеткой, стыки очищены (<see cref="Repeat"/>).</summary>
         private static void Fabric(
             string dir, string name, List<(PlacedStone Stone, string Rgb)> tile, double stepX, double stepY, RepeatShift shift,
-            int columns, int rows, string background)
+            int columns, int rows, string background, RepeatAlternate alternate = RepeatAlternate.None)
         {
-            var options = new RepeatOptions { StepXMm = stepX, StepYMm = stepY, Shift = shift, Columns = columns, Rows = rows, GapMm = Gap };
+            var options = new RepeatOptions
+            {
+                StepXMm = stepX, StepYMm = stepY, Shift = shift, Columns = columns, Rows = rows, GapMm = Gap, Alternate = alternate,
+            };
+            List<PlacedStone> tileStones = tile.Select(t => t.Stone).ToList();
             var watch = Stopwatch.StartNew();
-            var drop = new HashSet<int>(Repeat.SeamConflicts(tile.Select(t => t.Stone).ToList(), options));
+            var drop = new HashSet<int>(Repeat.SeamConflicts(tileStones, options));
             long ms = watch.ElapsedMilliseconds;
             var clean = tile.Where((t, i) => !drop.Contains(i)).ToList();
             var all = new List<(Point2D P, double D, string Rgb)>();
-            foreach (Point2D offset in Repeat.Offsets(options))
+            Point2D pivot = Repeat.PivotOf(tileStones, options);
+            List<Point2D> offsets = Repeat.Offsets(options);
+            for (int k = 0; k < offsets.Count; k++)
             {
-                all.AddRange(clean.Select(t => (t.Stone.Center + offset, t.Stone.DiameterMm, t.Rgb)));
+                bool second = Repeat.IsAlternate(options, k);
+                Point2D offset = offsets[k];
+                all.AddRange(clean.Select(t => ((second ? Repeat.Transform(alternate, t.Stone.Center, pivot) : t.Stone.Center) + offset, t.Stone.DiameterMm, t.Rgb)));
             }
 
             File.WriteAllText(Path.Combine(dir, name + ".svg"), Velvet(all, background));
             File.WriteAllText(Path.Combine(dir, name + "-tile.svg"), Velvet(tile.Select(t => (t.Stone.Center, t.Stone.DiameterMm, t.Rgb)).ToList(), background));
             Console.WriteLine($"{name,-22} плитка {tile.Count,5}, на стыках убрано {drop.Count,3}, на ткани {all.Count,6} страз, {ms} мс");
+        }
+
+        /// <summary>
+        /// Лист трафарета без шва: наибольший лист из целого числа периодов, плитка повторена с запасом, стразы
+        /// с серединой снаружи листа убраны. Два листа рядом — продолжение узора, видно на картинке «-pair».
+        /// </summary>
+        private static void Sheet(
+            string dir, List<(PlacedStone Stone, string Rgb)> tile, RepeatOptions options, double maxW, double maxH, string background)
+        {
+            List<PlacedStone> tileStones = tile.Select(t => t.Stone).ToList();
+            RepeatSheet sheet = Repeat.SeamlessSheet(options, maxW, maxH);
+            double minX = tileStones.Min(st => st.Center.X), maxY = tileStones.Max(st => st.Center.Y);
+            options.Columns = (int)Math.Ceiling(sheet.WidthMm / options.StepXMm) + 2;
+            options.Rows = (int)Math.Ceiling(sheet.HeightMm / options.StepYMm) + 2;
+            var drop = new HashSet<int>(Repeat.SeamConflicts(tileStones, options));
+            var clean = tile.Where((t, i) => !drop.Contains(i)).ToList();
+            var fabric = new List<(PlacedStone Stone, string Rgb)>();
+            foreach (Point2D offset in Repeat.Offsets(options))
+            {
+                fabric.AddRange(clean.Select(t => (new PlacedStone(t.Stone.Center + offset, t.Stone.DiameterMm, false), t.Rgb)));
+            }
+
+            Curve frame = Rect(minX, maxY - sheet.HeightMm, sheet.WidthMm, sheet.HeightMm);
+            var outside = new HashSet<int>(FrameTrim.Outside(fabric.Select(f => f.Stone).ToList(), new[] { frame }, FrameTrimMode.Center));
+            var onSheet = fabric.Where((f, i) => !outside.Contains(i)).Select(f => (f.Stone.Center, f.Stone.DiameterMm, f.Rgb)).ToList();
+            File.WriteAllText(Path.Combine(dir, "sheet.svg"), Velvet(onSheet, background));
+
+            // Два листа встык по ширине: узор не прерывается.
+            var pair = onSheet.Concat(onSheet.Select(o => (o.Center + new Point2D(sheet.WidthMm, 0), o.DiameterMm, o.Rgb == "#FFC107" ? "#FF7043" : o.Rgb))).ToList();
+            File.WriteAllText(Path.Combine(dir, "sheet-pair.svg"), Velvet(pair, background));
+            Console.WriteLine($"sheet                  {sheet.WidthMm} × {sheet.HeightMm} мм, {onSheet.Count} страз на листе");
         }
 
         /// <summary>Два подсолнуха на стебле с листьями: лучи золотом, середина и листья голубым.</summary>

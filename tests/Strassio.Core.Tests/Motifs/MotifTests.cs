@@ -189,4 +189,32 @@ public class MotifTests
         Assert.All(copies, c => Assert.InRange(c.Center.Length, 9.99, 10.01));
         Assert.Contains(copies, c => Point2D.Distance(c.Center, new Point2D(-10, 0)) < 1e-6);
     }
+
+    [Fact]
+    public void Fill_PlacesWholeMotifsInsideTheShape_WithoutOverlaps()
+    {
+        var options = new MotifLayoutOptions { SpacingMm = 2, StoneGapMm = Gap, Rotate = true };
+        MotifLayout layout = MotifPlacer.Fill(new[] { Circle(40) }, new[] { Flower(), Arrow() }, options, variant: 4);
+
+        Assert.True(layout.Copies >= 20, $"мотивов {layout.Copies}");
+        Assert.Equal(0, layout.Dropped);
+        AssertNoOverlaps(layout, Gap);
+        Assert.All(layout.Stones, s => Assert.True(s.Center.Length <= 40 - s.Source.DiameterMm / 2 + 0.05, $"камень {s.Center} за краем"));
+
+        // Мотивы чередуются: есть и цветочки, и стрелки.
+        Assert.Contains(layout.Stones, s => s.Source.Color == "Розовый");
+        Assert.Contains(layout.Stones, s => s.Source.Color == "B");
+    }
+
+    [Fact]
+    public void Fill_SameVariant_SameLayout_AndCountLimits()
+    {
+        var options = new MotifLayoutOptions { SpacingMm = 1, StoneGapMm = Gap };
+        MotifLayout a = MotifPlacer.Fill(new[] { Circle(30) }, new[] { Flower() }, options, variant: 2);
+        MotifLayout b = MotifPlacer.Fill(new[] { Circle(30) }, new[] { Flower() }, options, variant: 2);
+        Assert.Equal(a.Stones.Select(s => s.Center), b.Stones.Select(s => s.Center));
+
+        options.Count = 5;
+        Assert.Equal(5, MotifPlacer.Fill(new[] { Circle(30) }, new[] { Flower() }, options, variant: 2).Copies);
+    }
 }

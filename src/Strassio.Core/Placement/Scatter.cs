@@ -469,7 +469,7 @@ namespace Strassio.Core.Placement
         }
 
         /// <summary>Стразы дизайна по клеткам: расстояние от точки до края ближайшей (в пределах reach).</summary>
-        private sealed class StoneIndex
+        internal sealed class StoneIndex
         {
             private readonly double cell;
             private readonly double reach;

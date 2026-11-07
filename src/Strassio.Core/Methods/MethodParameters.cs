@@ -202,6 +202,18 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "streakFade")]
         public string StreakFade { get; set; } = MethodChoices.FadeNone;
 
+        /// <summary>F17: высота волны — от середины до гребня, мм.</summary>
+        [DataMember(Name = "waveHeight")]
+        public double WaveHeightMm { get; set; } = 3;
+
+        /// <summary>F17: длина волны — от гребня до гребня, мм.</summary>
+        [DataMember(Name = "waveLength")]
+        public double WaveLengthMm { get; set; } = 20;
+
+        /// <summary>F17: направление волн, градусы (0 — слева направо).</summary>
+        [DataMember(Name = "waveAngle")]
+        public double WaveAngleDeg { get; set; }
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -254,6 +266,9 @@ namespace Strassio.Core.Methods
             StreakLength = 8;
             StreakBreak = 3;
             StreakFade = MethodChoices.FadeNone;
+            WaveHeightMm = 3;
+            WaveLengthMm = 20;
+            WaveAngleDeg = 0;
         }
     }
 

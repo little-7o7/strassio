@@ -114,6 +114,8 @@ namespace Strassio.Core.Methods
                     {
                         GapMm = 0.3, LineGapMm = 0.9, StreakLength = 6, StreakBreak = 2, StreakFade = MethodChoices.FadeDown, Variant = 2,
                     });
+                case MethodKind.F17:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters { GapMm = 0.3, LineGapMm = 0.5, WaveHeightMm = 2, WaveLengthMm = 11 });
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }

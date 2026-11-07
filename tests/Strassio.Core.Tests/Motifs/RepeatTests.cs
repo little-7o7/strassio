@@ -113,4 +113,95 @@ public class RepeatTests
         Assert.Single(Repeat.SeamConflicts(tile, o));
         Assert.Equal(2, Repeat.Tile(tile, o, out _).Count / 3);
     }
+
+    [Theory]
+    [InlineData(RepeatShift.None, RepeatAlternate.Rotate180)]
+    [InlineData(RepeatShift.HalfDrop, RepeatAlternate.MirrorX)]
+    [InlineData(RepeatShift.Brick, RepeatAlternate.MirrorY)]
+    public void SecondCopyTurned_WholeFabricIsClean(RepeatShift shift, RepeatAlternate alternate)
+    {
+        // Несимметричная плитка: соты, к которым справа сверху добавлен «хвостик». У повёрнутой копии
+        // хвостик оказывается с другой стороны, и стыки другие, чем у обычного повтора.
+        List<PlacedStone> tile = Honeycomb(20, 12);
+        tile.Add(new PlacedStone(new Point2D(22.5, 13.5), D, false));
+        var o = new RepeatOptions { StepXMm = 20, StepYMm = 12, Shift = shift, Columns = 4, Rows = 4, GapMm = Gap, Alternate = alternate };
+
+        List<PlacedStone> all = Repeat.Tile(tile, o, out int removed);
+        Assert.True(removed > 0 && removed < tile.Count / 2, $"убрано {removed} из {tile.Count}");
+        Assert.Equal((tile.Count - removed) * 16, all.Count);
+        AssertNoOverlaps(all);
+    }
+
+    [Fact]
+    public void SecondCopy_IsTurnedAroundTheTileMiddle_InCheckerboardOrder()
+    {
+        var tile = new List<PlacedStone> { new(new Point2D(1, 1), D, false) };
+        var o = new RepeatOptions
+        {
+            StepXMm = 10, StepYMm = 10, Columns = 2, Rows = 2, Alternate = RepeatAlternate.Rotate180, Pivot = new Point2D(5, 5),
+        };
+
+        Assert.False(Repeat.IsAlternate(o, 0));
+        Assert.True(Repeat.IsAlternate(o, 1));
+        Assert.True(Repeat.IsAlternate(o, 2));
+        Assert.False(Repeat.IsAlternate(o, 3));
+
+        List<PlacedStone> all = Repeat.Tile(tile, o, out _);
+        Assert.Equal(new Point2D(1, 1), all[0].Center);
+        Assert.Equal(new Point2D(19, 9), all[1].Center);
+        Assert.Equal(new Point2D(9, -1), all[2].Center);
+        Assert.Equal(new Point2D(11, -9), all[3].Center);
+    }
+
+    [Fact]
+    public void SeamlessSheet_IsAWholeNumberOfPatternPeriods()
+    {
+        var o = new RepeatOptions { StepXMm = 70, StepYMm = 90 };
+        RepeatSheet straight = Repeat.SeamlessSheet(o, 300, 400);
+        Assert.Equal((280.0, 360.0, 4, 4), (straight.WidthMm, straight.HeightMm, straight.Across, straight.Down));
+
+        // Полшага: по ширине период — два шага (через столбец всё повторяется как было).
+        o.Shift = RepeatShift.HalfDrop;
+        RepeatSheet halfDrop = Repeat.SeamlessSheet(o, 300, 400);
+        Assert.Equal((280.0, 360.0), (halfDrop.WidthMm, halfDrop.HeightMm));
+        Assert.Equal(2, halfDrop.Across);
+
+        o.Shift = RepeatShift.Brick;
+        Assert.Equal((280.0, 360.0), (Repeat.SeamlessSheet(o, 300, 400).WidthMm, Repeat.SeamlessSheet(o, 300, 400).HeightMm));
+
+        o.Shift = RepeatShift.None;
+        o.Alternate = RepeatAlternate.MirrorX;
+        Assert.Equal((280.0, 360.0), (Repeat.SeamlessSheet(o, 300, 400).WidthMm, Repeat.SeamlessSheet(o, 300, 400).HeightMm));
+        Assert.False(Repeat.SeamlessSheet(o, 100, 400).IsValid);
+    }
+
+    [Fact]
+    public void TilesPerRunningMetre_IsFabricAreaOverTileArea()
+    {
+        var o = new RepeatOptions { StepXMm = 100, StepYMm = 125 };
+        Assert.Equal(120, Repeat.TilesPerRunningMetre(o, 1500), 6);
+        o.Shift = RepeatShift.HalfDrop;
+        Assert.Equal(120, Repeat.TilesPerRunningMetre(o, 1500), 6);
+    }
+
+    [Theory]
+    [InlineData(FrameTrimMode.WholeStone, 3)]
+    [InlineData(FrameTrimMode.Center, 2)]
+    public void FrameTrim_RemovesStonesOutsideTheFrame(FrameTrimMode mode, int removed)
+    {
+        var frame = Curve.FromPolyline(new List<Point2D> { new(0, 0), new(20, 0), new(20, 10), new(0, 10) }, true);
+        var stones = new List<PlacedStone>
+        {
+            new(new Point2D(5, 5), D, false),     // внутри
+            new(new Point2D(19.5, 5), D, false),  // середина внутри, край снаружи
+            new(new Point2D(21, 5), D, false),    // снаружи
+            new(new Point2D(10, -3), D, false),   // снаружи
+        };
+
+        List<int> outside = FrameTrim.Outside(stones, new[] { frame }, mode);
+        Assert.Equal(removed, outside.Count);
+        Assert.DoesNotContain(0, outside);
+        Assert.Contains(2, outside);
+        Assert.Contains(3, outside);
+    }
 }

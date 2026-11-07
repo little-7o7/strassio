@@ -4,7 +4,7 @@ using Strassio.Core.Placement;
 
 namespace Strassio.Core.Tests.Placement;
 
-/// <summary>Узорные заливки для тканей: F15 «Лучи» и F16 «Штрихи» (docs/SPEC.md, раздел 5).</summary>
+/// <summary>Узорные заливки для тканей: F15 «Лучи», F16 «Штрихи», F17 «Волны» и штрихи вокруг мотива (docs/SPEC.md, раздел 5).</summary>
 public class PatternFillTests
 {
     private const double D = 2.0;
@@ -114,5 +114,74 @@ public class PatternFillTests
         {
             Assert.All(line, s => Assert.Equal(line.First().Center.Y, s.Center.Y, 6));
         }
+    }
+
+    [Fact]
+    public void Waves_StonesKeepTheGap_AndFollowTheWave()
+    {
+        List<PlacedStone> stones = PatternFills.Waves(new[] { Rect(60, 40) }, D, Gap, 0.5, 3, 20, 0, 0);
+        Assert.True(stones.Count > 150, $"страз {stones.Count}");
+        AssertNoOverlaps(stones, Gap);
+
+        // На одной волне стразы идут ровно через шаг по прямой; сама волна поднимается и опускается на 2 × высоту.
+        List<PlacedStone> line = stones.GroupBy(s => s.RowId).OrderByDescending(g => g.Count()).First().OrderBy(s => s.Center.X).ToList();
+        for (int i = 1; i < line.Count; i++)
+        {
+            Assert.InRange(Point2D.Distance(line[i - 1].Center, line[i].Center), D + Gap - 0.01, D + Gap + 0.05);
+        }
+
+        Assert.InRange(line.Max(s => s.Center.Y) - line.Min(s => s.Center.Y), 5.0, 6.01);
+    }
+
+    [Fact]
+    public void Waves_ZeroHeight_AreStraightParallelLines()
+    {
+        List<PlacedStone> stones = PatternFills.Waves(new[] { Rect(30, 20) }, D, Gap, 0.5, 0, 20, 0, 0);
+        AssertNoOverlaps(stones, Gap);
+        Assert.All(stones.GroupBy(s => s.RowId), g => Assert.True(g.Max(s => s.Center.Y) - g.Min(s => s.Center.Y) < 1e-6));
+    }
+
+    [Fact]
+    public void StreaksAround_AreDenseAtTheMotif_AndStopAtTheWidth()
+    {
+        // Мотив — круг радиусом 8 мм; штрихи вокруг до 12 мм от его края.
+        IReadOnlyList<Curve> motif = new[] { Circle(8) };
+        List<PlacedStone> stones = PatternFills.StreaksAround(
+            motif, Array.Empty<PlacedStone>(), Array.Empty<PlacedStone>(), D, Gap, 0.8, 90, 8, 3, 12, 1);
+        Assert.True(stones.Count > 40, $"страз {stones.Count}");
+        AssertNoOverlaps(stones, Gap);
+
+        // Ни одной стразы на мотиве и дальше заданной ширины.
+        Assert.All(stones, s => Assert.InRange(s.Center.Length, 8 + D / 2 + Gap - 0.05, 8 + D / 2 + Gap + 12 + 0.3));
+
+        // Ближе к мотиву — гуще: в первой трети ширины страз больше, чем в последней.
+        int near = stones.Count(s => s.Center.Length < 8 + 4 + D);
+        int far = stones.Count(s => s.Center.Length > 8 + 8 + D);
+        Assert.True(near > far, $"у мотива {near}, далеко {far}");
+    }
+
+    [Fact]
+    public void StreaksAround_KeepClearOfMotifStonesAndNeighbours()
+    {
+        var design = new List<PlacedStone> { new(new Point2D(0, 0), 3, false), new(new Point2D(3.5, 0), 3, false) };
+        var neighbour = new List<PlacedStone> { new(new Point2D(0, 6), 2, false) };
+        List<PlacedStone> stones = PatternFills.StreaksAround(
+            Array.Empty<Curve>(), design, neighbour, D, Gap, 0.6, 0, 6, 2, 8, 3);
+        Assert.NotEmpty(stones);
+        AssertNoOverlaps(stones.Concat(design).Concat(neighbour).ToList(), Gap);
+    }
+
+    [Fact]
+    public void Method_F17_UsesItsParameters()
+    {
+        var p = new MethodParameters { GapMm = Gap, LineGapMm = 0.6, WaveHeightMm = 2, WaveLengthMm = 15, WaveAngleDeg = 90 };
+        IReadOnlyList<PlacedStone> stones = MethodRunner.Run(MethodKind.F17, new[] { Rect(30, 30) }, D, p).Stones;
+        Assert.True(stones.Count > 50);
+        AssertNoOverlaps(stones, Gap);
+
+        // 90°: волны идут сверху вниз — на одной волне X меняется в пределах 2 × высоты.
+        List<PlacedStone> line = stones.GroupBy(s => s.RowId).OrderByDescending(g => g.Count()).First().ToList();
+        Assert.True(line.Max(s => s.Center.X) - line.Min(s => s.Center.X) <= 4.01);
+        Assert.True(line.Max(s => s.Center.Y) - line.Min(s => s.Center.Y) > 20);
     }
 }

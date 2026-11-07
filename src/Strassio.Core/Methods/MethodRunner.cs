@@ -152,6 +152,10 @@ namespace Strassio.Core.Methods
                         contours, d, p.GapMm, p.LineGapMm, p.StreakAngleDeg, p.StreakLength, p.StreakBreak,
                         p.StreakFade == MethodChoices.FadeNone ? (FadeDirection?)null : FadeOf(p.StreakFade), p.Variant, p.EdgeMarginMm));
 
+                case MethodKind.F17:
+                    return Plain(PatternFills.Waves(
+                        contours, d, p.GapMm, p.LineGapMm, p.WaveHeightMm, p.WaveLengthMm, p.WaveAngleDeg, p.EdgeMarginMm));
+
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:

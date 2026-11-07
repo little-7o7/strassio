@@ -72,7 +72,8 @@ namespace Strassio.Core.Motifs
 
     /// <summary>
     /// Раскладка мотивов (docs/SPEC.md, раздел 9): по линии (с поворотом и чередованием), по кругу
-    /// (круг — тоже линия: мотив «верхом» наружу даёт розетку), рамкой с отдельными углами, и повтор
+    /// (круг — тоже линия: мотив «верхом» наружу даёт розетку), рамкой с отдельными углами, россыпью
+    /// внутри формы, и повтор
     /// выделенных страз вокруг центра (мандала).
     /// </summary>
     public static class MotifPlacer
@@ -231,6 +232,79 @@ namespace Strassio.Core.Motifs
             }
 
             return copies;
+        }
+
+        /// <summary>
+        /// Заливка мотивами (пункт 7 «тканевых» идей): маленькие мотивы россыпью внутри замкнутой формы —
+        /// целиком внутри и не ближе <see cref="MotifLayoutOptions.SpacingMm"/> друг к другу. Несколько мотивов
+        /// чередуются; с <see cref="MotifLayoutOptions.Rotate"/> каждый повёрнут на случайный угол.
+        /// Count больше нуля — не больше стольких мотивов. Тот же вариант — та же раскладка.
+        /// </summary>
+        public static MotifLayout Fill(IReadOnlyList<Curve> contours, IReadOnlyList<Motif> motifs, MotifLayoutOptions options, int variant)
+        {
+            var layout = new MotifLayout();
+            List<Motif> list = motifs.Where(m => m.Stones.Count > 0).ToList();
+            if (list.Count == 0 || contours.Count == 0)
+            {
+                return layout;
+            }
+
+            var region = new ShapeRegion(contours, list.Min(m => m.Stones.Min(s => s.DiameterMm)));
+            StonePacker packer = Packer(list, options);
+            var random = new Random(unchecked(variant * 7877 + 13));
+
+            // Мотив занимает круг радиуса R вокруг своей середины; середины соседних — не ближе 2R + промежуток.
+            double radius = list.Max(m => m.Stones.Max(s => s.Offset.Length + s.DiameterMm / 2));
+            double spacing = 2 * radius + Math.Max(0, options.SpacingMm);
+            double cell = spacing / Math.Sqrt(2);
+            var centers = new Dictionary<(int, int), Point2D>();
+            (int, int) Key(Point2D p) => ((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Y / cell));
+
+            bool FarEnough(Point2D p)
+            {
+                (int cx, int cy) = Key(p);
+                for (int dx = -2; dx <= 2; dx++)
+                {
+                    for (int dy = -2; dy <= 2; dy++)
+                    {
+                        if (centers.TryGetValue((cx + dx, cy + dy), out Point2D q) && Point2D.Distance(p, q) < spacing - 1e-9)
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                return true;
+            }
+
+            double w = region.Max.X - region.Min.X, h = region.Max.Y - region.Min.Y;
+            int attempts = Math.Min(200000, Math.Max(200, (int)(60 * w * h / (spacing * spacing))));
+            int limit = options.Count > 0 ? options.Count : int.MaxValue;
+            for (int a = 0; a < attempts && layout.Copies < limit; a++)
+            {
+                var p = new Point2D(region.Min.X + random.NextDouble() * w, region.Min.Y + random.NextDouble() * h);
+                double angle = options.Rotate ? random.NextDouble() * 2 * Math.PI : 0;
+                if (region.Depth(p) < radius * 0.25 || !FarEnough(p))
+                {
+                    continue;
+                }
+
+                Motif motif = list[layout.Copies % list.Count];
+                bool fits = motif.Stones.All(s =>
+                {
+                    Point2D offset = options.Flip ? new Point2D(s.X, -s.Y) : s.Offset;
+                    return region.Fits(p + Rotate(offset, angle), s.DiameterMm / 2, 0);
+                });
+                if (!fits)
+                {
+                    continue;
+                }
+
+                centers[Key(p)] = p;
+                Stamp(motif, p, angle, options, packer, layout);
+            }
+
+            return layout;
         }
 
         private static void PlaceOnLine(FlattenedCurve flat, Motif motif, double s, MotifLayoutOptions options, StonePacker packer, MotifLayout layout)

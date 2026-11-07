@@ -79,6 +79,9 @@ namespace Strassio.Core.Methods
 
         /// <summary>Штрихи: прерывистые параллельные полоски (икат, «дождь»).</summary>
         F16,
+
+        /// <summary>Волны: параллельные волнистые линии страз.</summary>
+        F17,
     }
 
     /// <summary>Метод в списке докера: ключ текста, вкладка, нужна ли замкнутая фигура и какие поля показывать.</summary>
@@ -283,6 +286,15 @@ namespace Strassio.Core.Methods
             new[] { MethodChoices.FadeNone, MethodChoices.FadeEdge, MethodChoices.FadeCenter, MethodChoices.FadeRight, MethodChoices.FadeLeft, MethodChoices.FadeUp, MethodChoices.FadeDown },
             p => p.StreakFade, (p, v) => p.StreakFade = v);
 
+        public static readonly MethodField WaveHeight = MethodField.Number(
+            "waveHeight", FieldKind.Length, 0, 500, p => p.WaveHeightMm, (p, v) => p.WaveHeightMm = v);
+
+        public static readonly MethodField WaveLength = MethodField.Number(
+            "waveLength", FieldKind.Length, 1, 2000, p => p.WaveLengthMm, (p, v) => p.WaveLengthMm = v);
+
+        public static readonly MethodField WaveAngle = MethodField.Number(
+            "waveAngle", FieldKind.Angle, -360, 360, p => p.WaveAngleDeg, (p, v) => p.WaveAngleDeg = v);
+
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
@@ -314,6 +326,7 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.F14, isFill: true, needsClosed: true, Gap, FadeGap, FadeTo, Variant, EdgeMargin),
             new MethodInfo(MethodKind.F15, isFill: true, needsClosed: true, Gap, RayGap, CenterHole, EdgeMargin),
             new MethodInfo(MethodKind.F16, isFill: true, needsClosed: true, Gap, LineGap, StreakAngle, StreakLength, StreakBreak, StreakFade, Variant, EdgeMargin),
+            new MethodInfo(MethodKind.F17, isFill: true, needsClosed: true, Gap, LineGap, WaveHeight, WaveLength, WaveAngle, EdgeMargin),
         };
 
         public static MethodInfo Get(MethodKind kind)
