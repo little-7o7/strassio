@@ -109,6 +109,43 @@
                 <Button Content="{Binding [text.make]}" Click="TextMake_Click" Margin="0,0,0,8"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.make.tooltip]}"/>
                 <TextBlock Text="{Binding [text.note]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+
+                <!-- Монограмма: 1–3 буквы в рамке — Docker.Monogram.cs -->
+                <TextBlock Text="{Binding [text.monogram.title]}" Style="{StaticResource Strassio.Section}"/>
+                <TextBlock Text="{Binding [text.monogram.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="6"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="6"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="6"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="{Binding [text.monogram.letters.label]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
+                    <TextBox x:Name="MonogramLettersBox" Grid.Column="1" MaxLength="3"
+                             ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
+                    <TextBlock Grid.Row="2" Text="{Binding [text.monogram.font]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [text.monogram.font.tooltip]}"/>
+                    <ComboBox x:Name="MonogramFontCombo" Grid.Row="2" Grid.Column="1" IsTextSearchEnabled="True"
+                              ToolTip="{Binding [text.monogram.font.tooltip]}"/>
+                    <TextBlock Grid.Row="4" Text="{Binding [text.monogram.frame]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
+                    <ComboBox x:Name="MonogramFrameCombo" Grid.Row="4" Grid.Column="1" DisplayMemberPath="Text"
+                              ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
+                    <TextBlock Grid.Row="6" Text="{Binding [text.monogram.height]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [text.monogram.height.tooltip]}"/>
+                    <TextBox x:Name="MonogramHeightBox" Grid.Row="6" Grid.Column="1" TextChanged="MonogramHeightBox_TextChanged"
+                             ToolTip="{Binding [text.monogram.height.tooltip]}"/>
+                </Grid>
+                <Button Content="{Binding [text.monogram.make]}" Click="Monogram_Click" Margin="0,0,0,8"
+                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.monogram.make.tooltip]}"/>
             </StackPanel>
 
             <!-- «Мотивы» (docs/SPEC.md, раздел 9): библиотека, по линии, рамкой, по кругу — Docker.Motifs.cs -->

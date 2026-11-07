@@ -79,6 +79,7 @@ namespace Strassio.Corel
             EdgeRecolorButton.Content = Loc.Format("color.edge", colorName);
             RebuildMirrorSides();
             RebuildTextModes();
+            RebuildMonogram();
             RebuildMotifs();
             SelectSizeButton.Content = Loc.Format("color.selectSize", size);
             SelectColorButton.Content = Loc.Format("color.selectColor", colorName);
