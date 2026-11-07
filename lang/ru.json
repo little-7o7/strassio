@@ -224,6 +224,7 @@
   "drill.format": "Формат файла",
   "drill.format.tooltip": "Готовые галочки под станок. Поменяете галочку руками — формат станет «свой».",
   "drill.format.artcam": "как ArtCAM .tap (Mach3 и похожие)",
+  "drill.format.ncstudio": "как ArtCAM «G-code (mm) (*.tap)» для NcStudio, файл на фрезу",
   "drill.format.grbl": "GRBL (.nc), файл на сверло",
   "drill.format.plain": "простой, без пояснений (DSP-пульт)",
   "drill.format.custom": "свой",

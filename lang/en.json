@@ -224,6 +224,7 @@
   "drill.format": "File format",
   "drill.format.tooltip": "Ready settings for a machine. Change a tick by hand and the format becomes “custom”.",
   "drill.format.artcam": "like ArtCAM .tap (Mach3 and similar)",
+  "drill.format.ncstudio": "like ArtCAM “G-code (mm) (*.tap)” for NcStudio, one file per cutter",
   "drill.format.grbl": "GRBL (.nc), one file per drill",
   "drill.format.plain": "plain, no comments (DSP controller)",
   "drill.format.custom": "custom",

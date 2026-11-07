@@ -54,7 +54,8 @@ public class GCodeWriterTests
                 {
                     Assert.Equal(expected[i].Tool, run.Holes[i].Tool);
                 }
-                Assert.Equal(expected[i].Mill, run.Holes[i].MillMm, 3);
+                // Координаты в файле округлены до 0,001 мм — у круга фрезы и центра отверстия по отдельности.
+                Assert.InRange(run.Holes[i].MillMm, expected[i].Mill - 0.0015, expected[i].Mill + 0.0015);
             }
 
             total += run.Holes.Count;
@@ -308,5 +309,60 @@ public class GCodeWriterTests
         GCodeFormats.Apply(s, GCodeFormats.Plain);
         Assert.False(s.Comments);
         Assert.Equal(GCodeFormats.Plain, GCodeFormats.Detect(s));
+        GCodeFormats.Apply(s, GCodeFormats.NcStudio);
+        Assert.Equal(GCodeFormats.NcStudio, GCodeFormats.Detect(s));
+        s.Format = GCodeFormats.ArtCam;
+        Assert.Equal(GCodeFormats.NcStudio, GCodeFormats.Detect(s));
+    }
+
+    [Fact]
+    public void NcStudio_LikeArtCamTap_PercentNoCommentsFilePerCutter()
+    {
+        // Станок автора: NcStudio, файлы «G-code (mm) (*.tap)» из ArtCAM, фреза 2,2 для ss6 (2,4 мм).
+        var s = new DrillSettings { FileMode = DrillFileMode.OneFileToolChange, CannedCycle = true };
+        GCodeFormats.Apply(s, GCodeFormats.NcStudio);
+        DrillPlan plan = DrillPlanner.Plan(Design(), s, DrillRack.Of(2.2, 2.9, 4.0));
+        IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, s, "Роза");
+
+        Assert.Equal(3, files.Count);
+        Assert.Equal("Roza_1_D2.2_ss6.tap", files[0].Name);
+        Assert.True(files[0].MillLimitMm > 0);
+        AssertDrillsEverything(plan, files, s);
+        foreach (GCodeFile file in files)
+        {
+            string[] lines = file.Text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+            Assert.Equal("%", lines[0]);
+            Assert.Equal("G21", lines[1]);
+            Assert.Equal("M30", lines[^2]);
+            Assert.Equal("%", lines[^1]);
+            Assert.DoesNotContain("(", file.Text);
+            Assert.DoesNotContain("M6", file.Text);
+            Assert.DoesNotContain("G81", file.Text);
+            Assert.DoesNotContain("G83", file.Text);
+            Assert.DoesNotContain("G2 ", file.Text);
+            Assert.DoesNotContain("G3 ", file.Text);
+            Assert.True(file.Text.All(ch => ch < 128), file.Name);
+        }
+    }
+
+    [Fact]
+    public void EveryFormatAndPathStyle_HasTextInBothLanguages()
+    {
+        // Окно сверления собирает ключи из названий: "drill.format." + формат — общий тест ключей их не видит.
+        string root = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(root, "Strassio.sln")))
+        {
+            root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("Не найден Strassio.sln");
+        }
+
+        var keys = GCodeFormats.All.Select(f => "drill.format." + f)
+            .Concat(Enum.GetNames(typeof(DrillPathStyle)).Select(n => "drill.path." + n.ToLowerInvariant()))
+            .ToList();
+        foreach (string lang in new[] { "ru.json", "en.json" })
+        {
+            IReadOnlyDictionary<string, string> texts = Strassio.Core.Localization.Localizer.Parse(File.ReadAllText(Path.Combine(root, "lang", lang)));
+            string[] missing = keys.Where(k => !texts.ContainsKey(k)).ToArray();
+            Assert.True(missing.Length == 0, lang + ": нет ключей " + string.Join(", ", missing));
+        }
     }
 }

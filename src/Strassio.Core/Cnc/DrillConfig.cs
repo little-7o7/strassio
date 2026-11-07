@@ -168,6 +168,13 @@ namespace Strassio.Core.Cnc
         /// <summary>Как файлы .tap из ArtCAM для Mach3 и похожих: пояснения, без «%», без номеров строк.</summary>
         public const string ArtCam = "artcam";
 
+        /// <summary>
+        /// NcStudio (Weihong), как файл «G-code (mm) (*.tap)» из ArtCAM: «%» в начале и в конце, только
+        /// команды G0/G1 без пояснений (не каждая версия NcStudio понимает скобки), файл на каждую фрезу —
+        /// у таких станков сверло меняют руками.
+        /// </summary>
+        public const string NcStudio = "ncstudio";
+
         /// <summary>GRBL (.nc): нет смены инструмента M6 и циклов G81 — файл на каждое сверло, простые перемещения.</summary>
         public const string Grbl = "grbl";
 
@@ -177,7 +184,7 @@ namespace Strassio.Core.Cnc
         /// <summary>Свои галочки.</summary>
         public const string Custom = "custom";
 
-        public static IReadOnlyList<string> All { get; } = new[] { ArtCam, Grbl, Plain, Custom };
+        public static IReadOnlyList<string> All { get; } = new[] { ArtCam, NcStudio, Grbl, Plain, Custom };
 
         /// <summary>Ставит галочки формата. "custom" и неизвестный — ничего не меняет.</summary>
         public static void Apply(DrillSettings s, string format)
@@ -190,6 +197,14 @@ namespace Strassio.Core.Cnc
                     s.Percent = false;
                     s.LineNumbers = false;
                     s.CannedCycle = false;
+                    break;
+                case NcStudio:
+                    s.Extension = ".tap";
+                    s.Comments = false;
+                    s.Percent = true;
+                    s.LineNumbers = false;
+                    s.CannedCycle = false;
+                    s.FileMode = DrillFileMode.FilePerDrill;
                     break;
                 case Grbl:
                     s.Extension = ".nc";
@@ -216,7 +231,7 @@ namespace Strassio.Core.Cnc
         /// <summary>Какой готовый формат совпадает с галочками (иначе "custom").</summary>
         public static string Detect(DrillSettings s)
         {
-            foreach (string id in new[] { s.Format, ArtCam, Grbl, Plain })
+            foreach (string id in new[] { s.Format, ArtCam, NcStudio, Grbl, Plain })
             {
                 if (id == null || id == Custom || !All.Contains(id))
                 {
