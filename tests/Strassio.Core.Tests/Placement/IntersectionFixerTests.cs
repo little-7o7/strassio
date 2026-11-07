@@ -117,6 +117,21 @@ public class IntersectionFixerTests
     }
 
     [Fact]
+    public void EveryOtherStoneOverlaps_RowBecomesSparse_NotEmpty()
+    {
+        // Ряд, где каждая страза налезает на следующую (так было на мелком круге): первый проход убирает
+        // каждую вторую, и все оставшиеся — «одиночки». Раньше проход одиночек стирал весь ряд.
+        var row = Enumerable.Range(0, 10)
+            .Select(i => new PlacedStone(new Point2D(i * 1.5, 0), 2.4, false, rowId: 0))
+            .ToList();
+
+        List<PlacedStone> result = IntersectionFixer.RemoveOverlaps(row);
+
+        Assert.Equal(5, result.Count);
+        Assert.False(HasAnyOverlap(result));
+    }
+
+    [Fact]
     public void RingStar_ThreeRows_NoOverlapsAnywhereAfterFix()
     {
         // Тот самый сценарий из Preview (ring-star), где автор заметил наложение рядов у острых
