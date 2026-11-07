@@ -22,7 +22,7 @@ namespace Strassio.Core.Placement
             for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
             {
                 RowSpec row = rows[rowIndex];
-                Curve rowCurve = curve;
+                var rowCurves = new List<Curve> { curve };
 
                 if (System.Math.Abs(row.OffsetMm) > 1e-9)
                 {
@@ -31,8 +31,13 @@ namespace Strassio.Core.Placement
                         flat, row.OffsetMm, row.ScatterOptions.FlattenToleranceMm,
                         roundOuterCorners: row.CornerStyle == CornerStyle.Round);
 
-                    bool isValid = IsValidRing(
-                        offsetPoints, flat.IsClosed, originalArea, row.ScatterOptions.StoneDiameterMm);
+                    // Внутри острых впадин и на тугих изгибах смещённая линия делает петлю — её вырезаем,
+                    // иначе стразы ряда ложатся кашей поверх соседнего ряда (ямка сердца, щель буквы V).
+                    List<(List<Point2D> Points, bool Closed)> pieces =
+                        OffsetLoopTrimmer.Trim(offsetPoints, flat, row.OffsetMm, flat.IsClosed);
+
+                    bool isValid = pieces.Count > 0 && (pieces.Count > 1 || !pieces[0].Closed || IsValidRing(
+                        pieces[0].Points, true, originalArea, row.ScatterOptions.StoneDiameterMm));
 
                     // Смещение внутрь больше половины меньшей стороны исходной фигуры — линии смещения
                     // пересекаются "зеркально" и образуют геометрически опрятный, но бессмысленный
@@ -47,7 +52,7 @@ namespace Strassio.Core.Placement
                         isValid = false;
                     }
 
-                    if (flat.IsClosed && !isValid)
+                    if (!isValid)
                     {
                         // Смещение больше, чем позволяет размер самой формы — контур схлопнулся или
                         // вывернулся наизнанку (например, смещение внутрь больше половины ширины
@@ -56,12 +61,15 @@ namespace Strassio.Core.Placement
                         continue;
                     }
 
-                    rowCurve = Curve.FromPolyline(offsetPoints, flat.IsClosed);
+                    rowCurves = pieces.ConvertAll(piece => Curve.FromPolyline(piece.Points, piece.Closed));
                 }
 
-                foreach (PlacedStone s in LineScatterer.Scatter(rowCurve, row.ScatterOptions))
+                foreach (Curve rowCurve in rowCurves)
                 {
-                    result.Add(new PlacedStone(s.Center, s.DiameterMm, s.IsCorner, rowIndex));
+                    foreach (PlacedStone s in LineScatterer.Scatter(rowCurve, row.ScatterOptions))
+                    {
+                        result.Add(new PlacedStone(s.Center, s.DiameterMm, s.IsCorner, rowIndex));
+                    }
                 }
             }
 

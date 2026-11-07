@@ -144,4 +144,49 @@ public class RingScattererTests
         Assert.DoesNotContain(stones, s => s.RowId == 0);
         Assert.Contains(stones, s => s.RowId == 1);
     }
+
+    private static double DistanceToCurve(FlattenedCurve flat, Point2D p)
+    {
+        double best = double.MaxValue;
+        for (int i = 0; i + 1 < flat.Points.Count; i++)
+        {
+            Point2D a = flat.Points[i].Position, b = flat.Points[i + 1].Position, ab = b - a;
+            double len2 = ab.X * ab.X + ab.Y * ab.Y;
+            double t = len2 < 1e-18 ? 0 : System.Math.Clamp(((p - a).X * ab.X + (p - a).Y * ab.Y) / len2, 0, 1);
+            best = System.Math.Min(best, Point2D.Distance(p, a + ab * t));
+        }
+
+        return best;
+    }
+
+    [Theory]
+    [InlineData(3.2)]
+    [InlineData(-3.2)]
+    [InlineData(5.8)]
+    public void OffsetRow_InHeartDip_HasNoLoop_EveryStoneKeepsTheOffsetDistance(double offset)
+    {
+        // Ямка сердца — острая впадина с кривыми сторонами. Смещённые стороны там перехлёстывались
+        // петлёй, и стразы ряда ложились ближе к линии, чем задано (каша в ямке).
+        var heart = new Curve(new[]
+        {
+            CurveSegment.Cubic(new Point2D(0, -25), new Point2D(-12, -12), new Point2D(-28, 0), new Point2D(-22, 12)),
+            CurveSegment.Cubic(new Point2D(-22, 12), new Point2D(-17, 24), new Point2D(-3, 22), new Point2D(0, 13)),
+            CurveSegment.Cubic(new Point2D(0, 13), new Point2D(3, 22), new Point2D(17, 24), new Point2D(22, 12)),
+            CurveSegment.Cubic(new Point2D(22, 12), new Point2D(28, 0), new Point2D(12, -12), new Point2D(0, -25)),
+        }, true);
+        var spec = new RowSpec
+        {
+            OffsetMm = offset,
+            CornerStyle = CornerStyle.Sharp,
+            ScatterOptions = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2 },
+        };
+
+        IReadOnlyList<PlacedStone> stones = RingScatterer.Scatter(heart, new[] { spec });
+
+        FlattenedCurve flat = CurveFlattener.Flatten(heart);
+        Assert.True(stones.Count > 30, $"страз {stones.Count}");
+        Assert.All(stones, s => Assert.True(DistanceToCurve(flat, s.Center) >= System.Math.Abs(offset) - 0.05,
+            $"страза {s.Center} ближе к линии, чем {System.Math.Abs(offset)} мм"));
+        Assert.DoesNotContain(true, IntersectionFixer.FindIndicesToRemove(stones, 0.1));
+    }
 }
