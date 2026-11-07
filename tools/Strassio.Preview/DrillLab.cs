@@ -36,6 +36,10 @@ namespace Strassio.Preview
             var settings = new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } };
             Scenario(dir, "heart", heart, settings);
 
+            // 1б. Ноль в левом верхнем углу доски 160 × 120 мм (страница), рисунок сдвинут вправо-вниз.
+            var page = new DrillBoard(new Point2D(-60, -70), 160, 120);
+            Scenario(dir, "heart-board", heart, new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 }, Origin = DrillOrigin.Board, Home = BoardCorner.UpperLeft }, page);
+
             // 2. Тот же дизайн, но шаблон на каждый цвет и G81 — для проверки вариантов.
             Scenario(dir, "heart-colors", heart, new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 }, SplitByColor = true, CannedCycle = true });
 
@@ -55,12 +59,12 @@ namespace Strassio.Preview
             Console.WriteLine($"SVG и .tap сохранены: {dir}");
         }
 
-        private static void Scenario(string dir, string name, List<DrillHole> holes, DrillSettings settings)
+        private static void Scenario(string dir, string name, List<DrillHole> holes, DrillSettings settings, DrillBoard? page = null)
         {
             var clock = Stopwatch.StartNew();
-            DrillPlan plan = DrillPlanner.Plan(holes, settings);
+            DrillPlan plan = DrillPlanner.Plan(holes, settings, page: page);
             long ms = clock.ElapsedMilliseconds;
-            DrillPlan plain = DrillPlanner.Plan(holes, settings, optimize: false);
+            DrillPlan plain = DrillPlanner.Plan(holes, settings, optimize: false, page: page);
             IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, settings, name);
 
             var runs = new List<(GCodeFile File, GCodeRun Run)>();
@@ -73,7 +77,7 @@ namespace Strassio.Preview
             double travel = plan.Jobs.Sum(j => j.TravelMm), travelPlain = plain.Jobs.Sum(j => j.TravelMm);
             Console.WriteLine($"{name,-13} {plan.Holes,6} отв., {plan.Jobs.Count} свёрл, {files.Count} файлов, план {ms} мс; " +
                 $"путь {travel / 1000:0.00} м (без улучшения {travelPlain / 1000:0.00} м, −{100 * (1 - travel / Math.Max(travelPlain, 1e-9)):0}%), " +
-                $"≈ {plan.Seconds / 60:0} мин, повторов {plan.Duplicates}");
+                $"≈ {plan.Seconds / 60:0} мин, повторов {plan.Duplicates}, за доской {plan.OutsideBoard}");
             foreach ((GCodeFile file, GCodeRun run) in runs)
             {
                 string problems = run.Problems.Count == 0 ? "проверка: ок" : "ПРОБЛЕМЫ: " + string.Join("; ", run.Problems.Take(3));
@@ -86,8 +90,9 @@ namespace Strassio.Preview
         /// <summary>Отверстия цветом сверла, путь сверла тонкой линией по файлу, ноль станка крестиком, подписи.</summary>
         private static string Svg(DrillPlan plan, List<(GCodeFile File, GCodeRun Run)> runs, DrillSettings settings)
         {
-            double minX = Math.Min(plan.Min.X, 0) - 6, minY = Math.Min(plan.Min.Y, 0) - 6;
-            double maxX = Math.Max(plan.Max.X, 0) + 6, maxY = Math.Max(plan.Max.Y, 0) + 6;
+            Point2D lo = plan.Board?.LowerLeft ?? plan.Min, hi = plan.Board?.UpperRight ?? plan.Max;
+            double minX = Math.Min(Math.Min(plan.Min.X, lo.X), 0) - 6, minY = Math.Min(Math.Min(plan.Min.Y, lo.Y), 0) - 6;
+            double maxX = Math.Max(Math.Max(plan.Max.X, hi.X), 0) + 6, maxY = Math.Max(Math.Max(plan.Max.Y, hi.Y), 0) + 6;
             double k = Math.Min(8, 1600 / Math.Max(maxX - minX, maxY - minY));
             int legend = 26 * plan.Jobs.Count + 40;
             CultureInfo ci = CultureInfo.InvariantCulture;
@@ -98,6 +103,11 @@ namespace Strassio.Preview
             var sb = new StringBuilder();
             sb.Append($"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width.ToString("0", ci)}\" height=\"{height.ToString("0", ci)}\" font-family=\"Arial, sans-serif\">");
             sb.Append("<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>");
+            if (plan.Board.HasValue)
+            {
+                sb.Append($"<rect x=\"{X(lo.X)}\" y=\"{Y(hi.Y)}\" width=\"{((hi.X - lo.X) * k).ToString("0.#", ci)}\" height=\"{((hi.Y - lo.Y) * k).ToString("0.#", ci)}\" fill=\"#f3efe6\" stroke=\"#8d6e63\" stroke-width=\"2\"/>");
+            }
+
             sb.Append($"<rect x=\"{X(plan.Min.X)}\" y=\"{Y(plan.Max.Y)}\" width=\"{(plan.WidthMm * k).ToString("0.#", ci)}\" height=\"{(plan.HeightMm * k).ToString("0.#", ci)}\" fill=\"#fafafa\" stroke=\"#bdbdbd\" stroke-dasharray=\"6 4\"/>");
 
             // Каждый файл — свой цвет у каждого сверла; путь от нуля по отверстиям в порядке файла.

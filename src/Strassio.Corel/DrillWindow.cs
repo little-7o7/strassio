@@ -47,6 +47,11 @@ namespace Strassio.Corel
         private readonly TextBox peckBox;
         private readonly TextBox rpmBox;
         private readonly ComboBox originCombo;
+        private readonly TextBox boardWidthBox;
+        private readonly TextBox boardHeightBox;
+        private readonly Grid boardRow;
+        private readonly TextBlock boardHint;
+        private readonly DrillBoard? page;
         private readonly ComboBox fileModeCombo;
         private readonly CheckBox colorBox;
         private readonly CheckBox cycleBox;
@@ -60,9 +65,11 @@ namespace Strassio.Corel
         private readonly Button saveButton;
         private readonly Button drawButton;
 
-        public DrillWindow(CorelApplication? app, IReadOnlyList<DrillHole> holes, DrillSettings settings, bool fromSelection, string baseName, string documentFolder)
+        /// <param name="page">Страница CorelDRAW (мм, координаты документа) — доска, если ноль станка на доске.</param>
+        public DrillWindow(CorelApplication? app, IReadOnlyList<DrillHole> holes, DrillSettings settings, bool fromSelection, string baseName, string documentFolder, DrillBoard? page)
         {
             this.holes = holes;
+            this.page = page;
             this.baseName = baseName;
             this.documentFolder = documentFolder;
             Settings = settings.Clone();
@@ -169,10 +176,51 @@ namespace Strassio.Corel
             root.Children.Add(Row(loc["drill.peck"], peckBox));
             root.Children.Add(Row(loc["drill.rpm"], rpmBox));
 
+            // Ноль станка (home) — как при создании модели в ArtCAM: угол или центр доски; или место на рисунке.
             originCombo = Combo(
-                new[] { (DrillOrigin.DesignLowerLeft, "drill.origin.lowerLeft"), (DrillOrigin.DesignCenter, "drill.origin.center"), (DrillOrigin.Document, "drill.origin.document") },
-                Settings.Origin, "drill.origin.tooltip");
+                new[]
+                {
+                    ((DrillOrigin.Board, BoardCorner.LowerLeft), "drill.home.lowerLeft"),
+                    ((DrillOrigin.Board, BoardCorner.UpperLeft), "drill.home.upperLeft"),
+                    ((DrillOrigin.Board, BoardCorner.LowerRight), "drill.home.lowerRight"),
+                    ((DrillOrigin.Board, BoardCorner.UpperRight), "drill.home.upperRight"),
+                    ((DrillOrigin.Board, BoardCorner.Center), "drill.home.center"),
+                    ((DrillOrigin.DesignLowerLeft, BoardCorner.LowerLeft), "drill.origin.lowerLeft"),
+                    ((DrillOrigin.DesignCenter, BoardCorner.LowerLeft), "drill.origin.center"),
+                    ((DrillOrigin.Document, BoardCorner.LowerLeft), "drill.origin.document"),
+                },
+                (Settings.Origin, Settings.Origin == DrillOrigin.Board ? Settings.Home : BoardCorner.LowerLeft),
+                "drill.origin.tooltip");
             root.Children.Add(Row(loc["drill.origin"], originCombo));
+
+            // Размер доски: пусто — как страница CorelDRAW.
+            boardWidthBox = new TextBox { Text = Settings.BoardWidthMm > 0 ? DrillText.Format(Settings.BoardWidthMm, culture) : string.Empty, ToolTip = loc["drill.board.tooltip"] };
+            boardHeightBox = new TextBox { Text = Settings.BoardHeightMm > 0 ? DrillText.Format(Settings.BoardHeightMm, culture) : string.Empty, ToolTip = loc["drill.board.tooltip"], Margin = new Thickness(6, 0, 0, 0) };
+            var asPage = new Button { Content = loc["drill.board.page"], ToolTip = loc["drill.board.page.tooltip"], Margin = new Thickness(6, 0, 0, 0), Padding = new Thickness(8, 2, 8, 2) };
+            asPage.Click += (s, e) =>
+            {
+                if (this.page.HasValue)
+                {
+                    boardWidthBox.Text = DrillText.Format(this.page.Value.WidthMm, culture);
+                    boardHeightBox.Text = DrillText.Format(this.page.Value.HeightMm, culture);
+                }
+            };
+            asPage.IsEnabled = page.HasValue;
+            var sizeGrid = new Grid();
+            sizeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            sizeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            sizeGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(boardHeightBox, 1);
+            Grid.SetColumn(asPage, 2);
+            sizeGrid.Children.Add(boardWidthBox);
+            sizeGrid.Children.Add(boardHeightBox);
+            sizeGrid.Children.Add(asPage);
+            boardRow = Row(loc["drill.board"], sizeGrid);
+            root.Children.Add(boardRow);
+            boardHint = Muted(page.HasValue
+                ? loc.Format("drill.board.hint", Mm(page.Value.WidthMm), Mm(page.Value.HeightMm))
+                : loc["drill.board.hintNoPage"], 8);
+            root.Children.Add(boardHint);
 
             // Файлы.
             root.Children.Add(Section("drill.section.files"));
@@ -225,7 +273,7 @@ namespace Strassio.Corel
                 timer.Stop();
                 Recalculate();
             };
-            foreach (TextBox box in new[] { drillsBox, depthBox, retractBox, clearanceBox, feedBox, peckBox, rpmBox }.Concat(sizeRows.Select(r => r.Box)))
+            foreach (TextBox box in new[] { drillsBox, depthBox, retractBox, clearanceBox, feedBox, peckBox, rpmBox, boardWidthBox, boardHeightBox }.Concat(sizeRows.Select(r => r.Box)))
             {
                 box.TextChanged += (s, e) => Schedule();
             }
@@ -318,7 +366,31 @@ namespace Strassio.Corel
                 s.Rules.Add(new DrillRule { Size = size.Name, DrillMm = drill });
             }
 
-            s.Origin = (DrillOrigin)((Option)originCombo.SelectedItem).Value;
+            var home = ((DrillOrigin Origin, BoardCorner Home))((Option)originCombo.SelectedItem).Value;
+            s.Origin = home.Origin;
+            if (home.Origin == DrillOrigin.Board)
+            {
+                s.Home = home.Home;
+            }
+
+            // Размер доски: пустое поле — 0, то есть как страница.
+            foreach ((TextBox box, Action<double> set) in new (TextBox, Action<double>)[]
+            {
+                (boardWidthBox, v => s.BoardWidthMm = v),
+                (boardHeightBox, v => s.BoardHeightMm = v),
+            })
+            {
+                string text = box.Text.Trim();
+                double value = 0;
+                if (text.Length > 0 && (!DrillText.TryParseMm(text, out value) || value < 0))
+                {
+                    error = loc["drill.error.board"];
+                    return null;
+                }
+
+                set(value);
+            }
+
             s.FileMode = (DrillFileMode)((Option)fileModeCombo.SelectedItem).Value;
             s.SplitByColor = colorBox.IsChecked == true;
             s.CannedCycle = cycleBox.IsChecked == true;
@@ -330,6 +402,9 @@ namespace Strassio.Corel
 
         private void Recalculate()
         {
+            bool board = originCombo.SelectedItem is Option o && (((DrillOrigin Origin, BoardCorner Home))o.Value).Origin == DrillOrigin.Board;
+            boardRow.IsEnabled = board;
+            boardHint.Visibility = board ? Visibility.Visible : Visibility.Collapsed;
             DrillSettings? s = ReadSettings(out string error);
             IReadOnlyList<string> problems = s?.Problems() ?? Array.Empty<string>();
             if (s == null || problems.Count > 0)
@@ -350,12 +425,16 @@ namespace Strassio.Corel
                 size.Auto.Text = loc.Format(own ? "drill.sizes.own" : "drill.sizes.auto", Mm(drill));
             }
 
-            DrillPlan plan = DrillPlanner.Plan(holes, s);
+            DrillPlan plan = DrillPlanner.Plan(holes, s, page: page);
             Plan = plan;
             int files = s.FileMode == DrillFileMode.FilePerDrill ? plan.Jobs.Count : Math.Max(1, plan.Colors.Count);
             summary.Text = loc.Format(
                 "drill.summary",
                 plan.Holes.ToString("N0", culture), Mm(plan.WidthMm), Mm(plan.HeightMm), plan.Jobs.Count, files, Minutes(plan.Seconds));
+            if (plan.Board.HasValue)
+            {
+                summary.Text += "\n" + loc.Format("drill.summary.board", Mm(plan.Board.Value.WidthMm), Mm(plan.Board.Value.HeightMm), loc[OriginKey(s)]);
+            }
 
             jobsPanel.Children.Clear();
             foreach (DrillJob job in plan.Jobs)
@@ -386,8 +465,39 @@ namespace Strassio.Corel
                 notes.Add(loc["drill.warn.noDrills"]);
             }
 
+            // Отверстия за доской — сверло ушло бы за край или в прижимы: сохранить нельзя, путь показать можно.
+            bool outside = plan.OutsideBoard > 0;
+            if (outside)
+            {
+                notes.Insert(0, loc.Format("drill.warn.outside", plan.OutsideBoard.ToString("N0", culture), Mm(Math.Round(plan.OverhangMm, 1))));
+            }
+
             warnings.Text = string.Join("\n", notes);
-            saveButton.IsEnabled = drawButton.IsEnabled = !plan.IsEmpty;
+            saveButton.IsEnabled = !plan.IsEmpty && !outside;
+            drawButton.IsEnabled = !plan.IsEmpty;
+        }
+
+        /// <summary>Ключ текста «где ноль станка» для настроек.</summary>
+        public static string OriginKey(DrillSettings s)
+        {
+            switch (s.Origin)
+            {
+                case DrillOrigin.Board:
+                    return s.Home switch
+                    {
+                        BoardCorner.UpperLeft => "drill.home.upperLeft",
+                        BoardCorner.LowerRight => "drill.home.lowerRight",
+                        BoardCorner.UpperRight => "drill.home.upperRight",
+                        BoardCorner.Center => "drill.home.center",
+                        _ => "drill.home.lowerLeft",
+                    };
+                case DrillOrigin.DesignCenter:
+                    return "drill.origin.center";
+                case DrillOrigin.Document:
+                    return "drill.origin.document";
+                default:
+                    return "drill.origin.lowerLeft";
+            }
         }
 
         /// <summary>Выбор файла, самопроверка каждого файла, запись. Имя из окна — основа для имён по свёрлам.</summary>
@@ -396,7 +506,7 @@ namespace Strassio.Corel
             timer.Stop();
             Recalculate();
             DrillPlan? plan = Plan;
-            if (plan == null || plan.IsEmpty)
+            if (plan == null || plan.IsEmpty || plan.OutsideBoard > 0)
             {
                 return;
             }

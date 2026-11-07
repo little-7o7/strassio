@@ -58,7 +58,7 @@ namespace Strassio.UiShots
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
                     SnapWindow(outDir, "license" + theme, Make("Strassio.Corel.LicenseWindow", new object?[] { null }));
-                    SnapWindow(outDir, "drill" + theme, Make("Strassio.Corel.DrillWindow", null, DrillSample(), new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } }, false, "rose", string.Empty));
+                    SnapWindow(outDir, "drill" + theme, Make("Strassio.Corel.DrillWindow", null, DrillSample(), new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } }, false, "rose", string.Empty, new DrillBoard(Point2D.Zero, 600, 400)));
                 }
 
                 Console.WriteLine("Снимки: " + outDir);

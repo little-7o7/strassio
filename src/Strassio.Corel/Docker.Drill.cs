@@ -26,6 +26,7 @@ namespace Strassio.Corel
             bool fromSelection = false;
             string name = string.Empty;
             string folder = string.Empty;
+            DrillBoard? page = null;
             RunInDocument(null, doc =>
             {
                 StoneSelection selection = StoneShapes.FromSelection(doc, KnownSizes);
@@ -39,6 +40,7 @@ namespace Strassio.Corel
 
                 holes = stones.Select(s => new DrillHole(s.Stone.Center, s.Stone.DiameterMm, s.Size, s.Color)).ToList();
                 (name, folder) = DocumentName(doc);
+                page = PageBoard(doc.ActivePage);
             });
 
             if (holes == null)
@@ -47,7 +49,7 @@ namespace Strassio.Corel
             }
 
             DrillSettings settings = LoadDrillSettings();
-            var window = new DrillWindow(app, holes, settings, fromSelection, name, folder);
+            var window = new DrillWindow(app, holes, settings, fromSelection, name, folder, page);
             window.ShowDialog();
             SaveDrillSettings(window.Settings);
 
@@ -82,6 +84,20 @@ namespace Strassio.Corel
             catch (Exception)
             {
                 // Не сохранилось (папка только для чтения) — в следующий раз будут прежние значения.
+            }
+        }
+
+        /// <summary>Страница как доска: левый нижний угол и размер, мм (единицы документа — мм, см. RunInDocument).</summary>
+        private static DrillBoard? PageBoard(Page page)
+        {
+            try
+            {
+                double w = page.SizeWidth, h = page.SizeHeight;
+                return w > 0 && h > 0 ? new DrillBoard(new Point2D(page.CenterX - w / 2, page.CenterY - h / 2), w, h) : (DrillBoard?)null;
+            }
+            catch (Exception)
+            {
+                return null;
             }
         }
 
@@ -127,9 +143,7 @@ namespace Strassio.Corel
                     .Append(Loc.Format("drill.report.file", drills, file.Holes.ToString("N0", culture))).Append('\n');
             }
 
-            string origin = settings.Origin == DrillOrigin.DesignCenter ? "drill.origin.center"
-                : settings.Origin == DrillOrigin.Document ? "drill.origin.document" : "drill.origin.lowerLeft";
-            text.Append('\n').Append(Loc.Format("drill.report.zero", Loc[origin], DrillText.Format(settings.DepthMm, culture)));
+            text.Append('\n').Append(Loc.Format("drill.report.zero", Loc[DrillWindow.OriginKey(settings)], DrillText.Format(settings.DepthMm, culture)));
             if (settings.FileMode == DrillFileMode.FilePerDrill && files.Count > 1)
             {
                 text.Append("\n\n").Append(Loc["drill.report.order"]);
@@ -184,6 +198,21 @@ namespace Strassio.Corel
                     range.SetOutlineProperties(Width: 0.15, Color: app!.CreateRGBColor(c[0], c[1], c[2]));
                     range.MoveToLayer(layer);
                     created.Add(shape);
+                }
+
+                // Рамка доски — проверить, что рисунок стоит на доске там, где нужно.
+                if (plan.Board.HasValue)
+                {
+                    Point2D lo = plan.Board.Value.LowerLeft + plan.Origin, hi = plan.Board.Value.UpperRight + plan.Origin;
+                    CoreCurve frame = CoreCurve.FromPolyline(new[] { lo, new Point2D(hi.X, lo.Y), hi, new Point2D(lo.X, hi.Y) }, isClosed: true);
+                    Shape boardShape = CreateCurveShape(doc, new[] { frame }, null);
+                    boardShape.Name = Loc["drill.boardName"];
+                    object[] boardArr = { boardShape };
+                    ShapeRange boardRange = doc.CreateShapeRangeFromArray(ref boardArr);
+                    boardRange.ApplyNoFill();
+                    boardRange.SetOutlineProperties(Width: 0.3, Color: app!.CreateRGBColor(120, 120, 120));
+                    boardRange.MoveToLayer(layer);
+                    created.Add(boardShape);
                 }
 
                 // Крестик в нуле станка.
