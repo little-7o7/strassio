@@ -288,9 +288,12 @@ export const ADMIN_PAGE = `<!doctype html>
 
     <section data-page="updates" hidden>
       <h2>Опубликовать обновление</h2>
-      <p class="muted">Установщик сначала выложите в GitHub Releases, затем вставьте сюда ссылку и SHA-256 файла.</p>
+      <p class="muted">Нажмите «Заполнить из GitHub»: версия, ссылка, SHA-256 и «что нового» подставятся из последнего выпуска в strassio-releases (SHA-256 сервер считает сам по скачанному файлу). Проверьте и нажмите «Опубликовать».</p>
       <div class="row">
         <label>Канал<select id="uChannel"><option>stable</option><option>beta</option></select></label>
+        <button id="uFill" onclick="fillFromGithub()">Заполнить из GitHub</button>
+      </div>
+      <div class="row">
         <label>Версия<input id="uVersion" placeholder="0.6.0" style="width:90px"></label>
         <label>Мин. версия<input id="uMin" style="width:90px"></label>
         <label style="flex:1">Ссылка на установщик<input id="uUrl" placeholder="https://github.com/..."></label>
@@ -321,7 +324,7 @@ async function api(method, path, body) {
   });
   const data = await res.json().catch(() => ({ ok: false, error: "bad_response" }));
   if (res.status === 401) { logout(); }
-  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля", bad_client: "Проверьте почту, день рождения и Telegram (4–32 латинских букв, цифр или _)" }[data.error] || data.error);
+  if (!data.ok) throw new Error({ unauthorized: "Неверный пароль", too_many_requests: "Слишком много попыток, подождите", admin_disabled: "Админка выключена: не задан ADMIN_PASSWORD (8+ знаков)", not_found: "Не найдено", bad_request: "Проверьте поля", bad_client: "Проверьте почту, день рождения и Telegram (4–32 латинских букв, цифр или _)", github_unavailable: "GitHub не отвечает или выпуска нет — попробуйте через минуту", installer_not_found: "В выпуске нет файла Strassio-Setup-<версия>.exe", installer_too_big: "Установщик слишком большой", bad_tag: "Тег выпуска не похож на версию vX.Y.Z", bad_url: "Ссылка ведёт не в strassio-releases", digest_mismatch: "SHA-256 файла не совпал с GitHub — не публикуйте, напишите разработчику" }[data.error] || data.error);
   return data;
 }
 
@@ -554,6 +557,18 @@ async function offline() {
     const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "strassio-license.json"; a.click();
     say("Файл лицензии скачан — отправьте его клиенту");
   });
+}
+
+async function fillFromGithub() {
+  $("uFill").disabled = true;
+  say("Скачиваю установщик и считаю SHA-256…");
+  await run(async () => {
+    const data = await api("GET", "release?channel=" + encodeURIComponent($("uChannel").value));
+    const r = data.release;
+    $("uVersion").value = r.version; $("uUrl").value = r.url; $("uSha").value = r.sha256; $("uRu").value = r.notesRu;
+    say("Заполнено из выпуска " + r.tag + ". Проверьте и нажмите «Опубликовать»");
+  });
+  $("uFill").disabled = false;
 }
 
 async function publishUpdate() {

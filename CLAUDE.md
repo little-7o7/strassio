@@ -94,7 +94,8 @@ Strassio/
   текст выпуска в `docs/releases/vX.Y.Z.md` (первая строка `# Strassio X.Y.Z — …`), затем
   `git tag vX.Y.Z && git push origin master vX.Y.Z` — GitHub сам соберёт установщик и выложит выпуск
   в публичный `little-7o7/strassio-releases` (секрет `RELEASES_TOKEN`). Тег с дефисом (`v1.0.0-beta.1`) —
-  пробный выпуск. Ссылку и SHA-256 для админки («Обновление») GitHub пишет в Summary запуска.
+  пробный выпуск. Затем админка → «Обновления» → «Заполнить из GitHub» → «Опубликовать» (сервер сам берёт
+  ссылку и считает SHA-256 по файлу выпуска, `server/core/githubRelease.ts`; они же — в Summary запуска).
 - Список проверки для автора начинается с «скачайте Strassio-Setup-X.Y.Z.exe со страницы
   https://github.com/little-7o7/strassio-releases/releases».
 - Код Strassio закрыт перед продажей (решение автора, 2026-11-06): в публичный strassio-releases идут

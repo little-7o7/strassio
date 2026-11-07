@@ -187,3 +187,24 @@ test("сайт: подбор почты к чужому ключу упирае�
   const owner = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "owner@example.com" }, undefined, "5.5.5.5"));
   assert.equal(owner.status, 200);
 });
+
+test("админка: «Заполнить из GitHub» и пробная версия в «Опубликовать»", async () => {
+  const draft = { tag: "v0.9.0", version: "0.9.0", url: "https://github.com/x/y/releases/download/v0.9.0/a.exe", sha256: "a".repeat(64), notesRu: "• новое" };
+  const channels: string[] = [];
+  const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey)), PASSWORD, undefined, undefined, undefined, undefined, async (channel) => {
+    channels.push(channel);
+    return channel === "beta" ? { ok: false, error: "github_unavailable" } : { ok: true, release: draft };
+  });
+
+  assert.equal((await app.handle(req("GET", "/api/admin/release"))).status, 401);
+  const filled = await app.handle(req("GET", "/api/admin/release?channel=stable", undefined, PASSWORD));
+  assert.equal(filled.status, 200);
+  assert.deepEqual((filled.json as { release: unknown }).release, draft);
+  assert.equal((await app.handle(req("GET", "/api/admin/release?channel=beta", undefined, PASSWORD))).status, 502);
+  assert.deepEqual(channels, ["stable", "beta"]);
+
+  const beta = { channel: "beta", version: "1.0.0-beta.1", url: draft.url, sha256: draft.sha256 };
+  assert.equal((await app.handle(req("POST", "/api/admin/update", beta, PASSWORD))).status, 200);
+  assert.equal((await app.handle(req("GET", "/api/update/latest?channel=beta"))).status, 200);
+  assert.equal((await app.handle(req("POST", "/api/admin/update", { ...beta, version: "1.0" }, PASSWORD))).status, 400);
+});

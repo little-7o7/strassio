@@ -2,6 +2,7 @@
 // переводит свой запрос в HttpRequest и отдаёт HttpResponse как есть.
 import { createHash, timingSafeEqual } from "node:crypto";
 import { ADMIN_PAGE } from "./adminPage.js";
+import { latestRelease, type ReleaseResult, VERSION_PATTERN } from "./githubRelease.js";
 import type { LicenseService } from "./service.js";
 import { parseClient } from "./service.js";
 
@@ -84,6 +85,7 @@ export class App {
     private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
     private readonly lookupFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly requestLimiter = new RateLimiter(5, 60 * 60_000),
+    private readonly fetchRelease: (channel: string) => Promise<ReleaseResult> = (channel) => latestRelease(channel),
   ) {
     // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
     this.adminPassword = adminPassword?.trim();
@@ -234,7 +236,7 @@ export class App {
         const version = String(body.version ?? "").trim();
         const url = String(body.url ?? "").trim();
         const sha256 = String(body.sha256 ?? "").trim().toLowerCase();
-        if (!/^\d+\.\d+\.\d+$/.test(version) || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
+        if (!VERSION_PATTERN.test(version) || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
           return { status: 400, json: { ok: false, error: "bad_request" } };
         }
 
@@ -248,6 +250,11 @@ export class App {
           minVersion: String(body.minVersion ?? ""),
         });
         return ok({});
+      }
+      // «Заполнить из GitHub»: версия, ссылка, SHA-256 (сервер считает сам) и «что нового» последнего выпуска.
+      case "GET release": {
+        const result = await this.fetchRelease(req.query.get("channel") === "beta" ? "beta" : "stable");
+        return result.ok ? ok({ release: result.release }) : { status: 502, json: result };
       }
       case "GET audit":
         return ok({ log: await s.auditLog() });
