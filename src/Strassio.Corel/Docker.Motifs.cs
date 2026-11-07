@@ -49,6 +49,7 @@ namespace Strassio.Corel
             MotifModeCombo.ItemsSource = modes;
             MotifModeCombo.SelectedItem = modes.FirstOrDefault(m => m.Value == mode) ?? modes[0];
 
+            EnsureStarterMotifs();
             try
             {
                 motifs = MotifStore.LoadAll();
