@@ -126,6 +126,10 @@ namespace Strassio.Core.Cnc
         [DataMember(Name = "extension")]
         public string Extension { get; set; } = ".tap";
 
+        /// <summary>Куда сохраняли в прошлый раз (пусто — папка документа).</summary>
+        [DataMember(Name = "lastFolder")]
+        public string LastFolder { get; set; } = string.Empty;
+
         [DataMember(Name = "origin")]
         private string OriginText
         {
@@ -227,6 +231,7 @@ namespace Strassio.Core.Cnc
             RapidFeed = 5000;
             MaxMismatchMm = 0.2;
             Extension = ".tap";
+            LastFolder = string.Empty;
         }
     }
 }

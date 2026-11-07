@@ -417,6 +417,9 @@
                 </Grid>
                 <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"
                         ToolTip="{Binding [prod.clean.tooltip]}"/>
+                <!-- Сверление шаблона на станке: G-code (.tap) по свёрлам — Docker.Drill.cs -->
+                <Button Content="{Binding [drill.open]}" Click="DrillExport_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [drill.open.tooltip]}"/>
             </StackPanel>
 
             <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска и выделение по размеру/цвету — Docker.Edit.cs -->

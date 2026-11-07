@@ -119,3 +119,42 @@ public class DrillPlannerTests
         Assert.True(DrillPlanner.Plan(Array.Empty<DrillHole>(), new DrillSettings()).IsEmpty);
     }
 }
+
+/// <summary>Ввод чисел в окне «Сверление»: запятая и точка, список свёрл через «;», пробелы или «, ».</summary>
+public class DrillTextTests
+{
+    [Theory]
+    [InlineData("2,4", 2.4)]
+    [InlineData(" 2.4 ", 2.4)]
+    [InlineData("3 мм", 3)]
+    [InlineData("1.5mm", 1.5)]
+    public void ParsesMm(string text, double expected)
+    {
+        Assert.True(DrillText.TryParseMm(text, out double v));
+        Assert.Equal(expected, v, 9);
+    }
+
+    [Theory]
+    [InlineData("2,4; 2,8; 3", new[] { 2.4, 2.8, 3 })]
+    [InlineData("2.4, 2.8, 3", new[] { 2.4, 2.8, 3 })]
+    [InlineData("2,4 2,8 3", new[] { 2.4, 2.8, 3 })]
+    [InlineData("2.4;3;", new[] { 2.4, 3 })]
+    [InlineData("", new double[0])]
+    public void ParsesDrillList(string text, double[] expected)
+    {
+        Assert.Equal(expected, DrillText.ParseList(text));
+    }
+
+    [Fact]
+    public void BadListIsNull()
+    {
+        Assert.Null(DrillText.ParseList("2,4; abc"));
+        Assert.Null(DrillText.ParseList("2,4; -1"));
+    }
+
+    [Fact]
+    public void FormatsInUserCulture()
+    {
+        Assert.Equal("2,4; 3; 4,25", DrillText.FormatList(new[] { 2.4, 3, 4.25 }, new System.Globalization.CultureInfo("ru-RU")));
+    }
+}

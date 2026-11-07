@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -6,6 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Strassio.Core.Cnc;
+using Strassio.Core.Geometry;
 using Strassio.Core.Settings;
 
 namespace Strassio.UiShots
@@ -55,6 +58,7 @@ namespace Strassio.UiShots
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
                     SnapWindow(outDir, "license" + theme, Make("Strassio.Corel.LicenseWindow", new object?[] { null }));
+                    SnapWindow(outDir, "drill" + theme, Make("Strassio.Corel.DrillWindow", null, DrillSample(), new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } }, false, "rose", string.Empty));
                 }
 
                 Console.WriteLine("Снимки: " + outDir);
@@ -93,6 +97,28 @@ namespace Strassio.UiShots
         {
             Settings.Theme = dark ? ThemeMode.Dark : ThemeMode.Light;
             Addon.GetType("Strassio.Corel.Themes.ThemeManager").GetMethod("Refresh").Invoke(null, null);
+        }
+
+        /// <summary>Отверстия для окна «Сверление»: три размера камней в два цвета.</summary>
+        private static List<DrillHole> DrillSample()
+        {
+            var holes = new List<DrillHole>();
+            for (int i = 0; i < 160; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + (i % 20) * 3, 10 + (i / 20) * 3), 2.4, "ss6", i % 2 == 0 ? "Crystal" : "Rose"));
+            }
+
+            for (int i = 0; i < 40; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + i * 3.4, 40), 2.9, "ss10", "Crystal"));
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + i * 5, 46), 4.0, "ss16", "Crystal"));
+            }
+
+            return holes;
         }
 
         private static Window Make(string typeName, params object?[] args) =>
