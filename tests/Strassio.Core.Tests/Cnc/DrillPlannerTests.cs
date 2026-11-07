@@ -1,0 +1,121 @@
+using Strassio.Core.Cnc;
+using Strassio.Core.Geometry;
+
+namespace Strassio.Core.Tests.Cnc;
+
+/// <summary>Свёрла по размерам камней, общий ноль, повторы, предупреждения.</summary>
+public class DrillPlannerTests
+{
+    private static DrillHole Hole(double x, double y, double d, string size, string color = "Кристалл") =>
+        new DrillHole(new Point2D(x, y), d, size, color);
+
+    [Fact]
+    public void ChooseDrill_RuleThenNearestThenHole()
+    {
+        var s = new DrillSettings { DrillsMm = new List<double> { 2.0, 2.5, 3.0 } };
+        s.Rules.Add(new DrillRule { Size = "SS10", DrillMm = 3.2 });
+
+        Assert.Equal(3.2, DrillPlanner.ChooseDrill("ss10", 2.9, s));
+        Assert.Equal(2.5, DrillPlanner.ChooseDrill("ss6", 2.4, s));
+        // Ровно посередине — большее: камень должен пролезть.
+        Assert.Equal(3.0, DrillPlanner.ChooseDrill("ss8", 2.75, s));
+        Assert.Equal(2.42, DrillPlanner.ChooseDrill("ss6", 2.4213, new DrillSettings()));
+    }
+
+    [Fact]
+    public void GroupsByDrill_SmallFirst_ToolNumbersFromRack()
+    {
+        var s = new DrillSettings { DrillsMm = new List<double> { 3.0, 2.4 } };
+        var holes = new[]
+        {
+            Hole(10, 10, 2.9, "ss10"), Hole(20, 10, 2.4, "ss6"), Hole(30, 10, 2.4, "ss6"), Hole(40, 10, 2.5, "ss8"),
+        };
+
+        DrillPlan plan = DrillPlanner.Plan(holes, s);
+
+        Assert.Equal(2, plan.Jobs.Count);
+        Assert.Equal(2.4, plan.Jobs[0].DrillMm);
+        Assert.Equal(2, plan.Jobs[0].Tool);
+        Assert.Equal(new[] { "ss6", "ss8" }, plan.Jobs[0].Sizes);
+        Assert.Equal(3, plan.Jobs[0].Points.Count);
+        Assert.Equal(3.0, plan.Jobs[1].DrillMm);
+        Assert.Equal(1, plan.Jobs[1].Tool);
+        Assert.Equal(4, plan.Holes);
+    }
+
+    [Fact]
+    public void Origin_LowerLeftByHoleEdge_SharedByAllDrills()
+    {
+        var holes = new[] { Hole(10, 20, 2, "ss6"), Hole(50, 80, 4, "ss16") };
+        DrillPlan plan = DrillPlanner.Plan(holes, new DrillSettings());
+
+        Assert.Equal(new Point2D(9, 19), plan.Origin);
+        Assert.Equal(0, plan.Min.X, 9);
+        Assert.Equal(0, plan.Min.Y, 9);
+        Assert.Equal(43, plan.WidthMm, 9);
+        Assert.Equal(63, plan.HeightMm, 9);
+        Assert.Equal(new Point2D(1, 1), plan.Jobs[0].Points[0]);
+        Assert.Equal(new Point2D(41, 61), plan.Jobs[1].Points[0]);
+    }
+
+    [Fact]
+    public void Origin_CenterAndDocument()
+    {
+        var holes = new[] { Hole(10, 10, 2, "ss6"), Hole(30, 50, 2, "ss6") };
+
+        DrillPlan center = DrillPlanner.Plan(holes, new DrillSettings { Origin = DrillOrigin.DesignCenter });
+        Assert.Equal(new Point2D(20, 30), center.Origin);
+        Assert.Contains(new Point2D(-10, -20), center.Jobs[0].Points);
+
+        DrillPlan doc = DrillPlanner.Plan(holes, new DrillSettings { Origin = DrillOrigin.Document });
+        Assert.Contains(new Point2D(30, 50), doc.Jobs[0].Points);
+    }
+
+    [Fact]
+    public void SameHoleTwice_IsDrilledOnce()
+    {
+        var holes = new[] { Hole(10, 10, 2.4, "ss6"), Hole(10.01, 10, 2.4, "ss6"), Hole(20, 10, 2.4, "ss6") };
+        DrillPlan plan = DrillPlanner.Plan(holes, new DrillSettings());
+        Assert.Equal(2, plan.Holes);
+        Assert.Equal(1, plan.Duplicates);
+    }
+
+    [Fact]
+    public void Mismatch_WhenDrillFarFromHole()
+    {
+        var s = new DrillSettings { DrillsMm = new List<double> { 2.0, 4.0 } };
+        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(0, 0, 2.9, "ss10"), Hole(5, 0, 2.1, "ss5") }, s);
+        DrillMismatch m = Assert.Single(plan.Mismatches);
+        Assert.Equal("ss10", m.Size);
+        Assert.Equal(2.0, m.DrillMm);
+    }
+
+    [Fact]
+    public void SplitByColor_SeparateTemplates_SameOrigin()
+    {
+        var s = new DrillSettings { SplitByColor = true };
+        var holes = new[] { Hole(10, 10, 2.4, "ss6", "Розовый"), Hole(30, 10, 2.4, "ss6", "Кристалл"), Hole(50, 10, 2.9, "ss10", "Розовый") };
+        DrillPlan plan = DrillPlanner.Plan(holes, s);
+
+        Assert.Equal(3, plan.Jobs.Count);
+        Assert.Equal(new[] { "Кристалл", "Розовый" }, plan.Colors);
+        Assert.Equal(new Point2D(8.8, 8.55), new Point2D(Math.Round(plan.Origin.X, 6), Math.Round(plan.Origin.Y, 6)));
+    }
+
+    [Fact]
+    public void Estimate_GrowsWithHolesAndTravel()
+    {
+        var s = new DrillSettings();
+        double a = DrillPlanner.Estimate(100, 1000, s);
+        double b = DrillPlanner.Estimate(200, 1000, s);
+        double c = DrillPlanner.Estimate(100, 5000, s);
+        Assert.True(b > a && c > a);
+        Assert.InRange(a, 30, 600);
+    }
+
+    [Fact]
+    public void Empty_PlanIsEmpty()
+    {
+        Assert.True(DrillPlanner.Plan(Array.Empty<DrillHole>(), new DrillSettings()).IsEmpty);
+    }
+}

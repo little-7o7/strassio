@@ -46,7 +46,14 @@ namespace Strassio.Core.Settings
         /// <summary>Папка пресетов (раздел 12): presets\*.json.</summary>
         public string PresetsDirectory => Path.Combine(Directory, "presets");
 
+        /// <summary>Станок и свёрла для G-code (раздел 11.1) — отдельным файлом, чтобы переносить его с машины на машину.</summary>
+        public string DrillPath => Path.Combine(Directory, "drill.json");
+
         public PluginSettings LoadSettings() => Load<PluginSettings>(SettingsPath) ?? new PluginSettings();
+
+        public Cnc.DrillSettings LoadDrill() => Load<Cnc.DrillSettings>(DrillPath) ?? new Cnc.DrillSettings();
+
+        public void SaveDrill(Cnc.DrillSettings settings) => Save(DrillPath, settings);
 
         public void SaveSettings(PluginSettings settings) => Save(SettingsPath, settings);
 
