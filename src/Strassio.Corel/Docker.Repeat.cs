@@ -303,10 +303,10 @@ namespace Strassio.Corel
                     copy.Rotate(180);
                     break;
                 case RepeatAlternate.MirrorX:
-                    copy.Flip(cdrFlipDirection.cdrFlipHorizontal);
+                    copy.Flip(cdrFlipAxes.cdrFlipHorizontal);
                     break;
                 case RepeatAlternate.MirrorY:
-                    copy.Flip(cdrFlipDirection.cdrFlipVertical);
+                    copy.Flip(cdrFlipAxes.cdrFlipVertical);
                     break;
                 default:
                     return;
