@@ -71,6 +71,49 @@ public class DrillPlannerTests
         Assert.Contains(new Point2D(30, 50), doc.Jobs[0].Points);
     }
 
+    [Theory]
+    [InlineData(BoardCorner.LowerLeft, 110, 70)]
+    [InlineData(BoardCorner.UpperLeft, 110, -330)]
+    [InlineData(BoardCorner.LowerRight, -490, 70)]
+    [InlineData(BoardCorner.UpperRight, -490, -330)]
+    [InlineData(BoardCorner.Center, -190, -130)]
+    public void Board_HomeCorner_LikeArtCamModel(BoardCorner home, double x, double y)
+    {
+        // Страница 600 × 400 с левым нижним углом в (−10, −20); камень в (100, 50) — на доске в (110, 70) от левого нижнего угла.
+        var page = new DrillBoard(new Point2D(-10, -20), 600, 400);
+        var s = new DrillSettings { Origin = DrillOrigin.Board, Home = home };
+        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(100, 50, 2.4, "ss6") }, s, page: page);
+
+        Assert.Equal(x, plan.Jobs[0].Points[0].X, 6);
+        Assert.Equal(y, plan.Jobs[0].Points[0].Y, 6);
+        Assert.Equal(600, plan.Board!.Value.WidthMm);
+        Assert.Equal(0, plan.OutsideBoard);
+    }
+
+    [Fact]
+    public void Board_SizeFromSettings_AnchoredAtPageLowerLeft_AndOutsideIsCounted()
+    {
+        var page = new DrillBoard(new Point2D(0, 0), 600, 400);
+        var s = new DrillSettings { Origin = DrillOrigin.Board, Home = BoardCorner.UpperLeft, BoardWidthMm = 300, BoardHeightMm = 200 };
+        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(100, 50, 2, "ss6"), Hole(299.5, 50, 2, "ss6"), Hole(50, 250, 2, "ss6") }, s, page: page);
+
+        // Ноль — левый верхний угол доски 300 × 200, то есть (0, 200) на странице.
+        Assert.Equal(new Point2D(0, 200), plan.Origin);
+        Assert.Contains(new Point2D(100, -150), plan.Jobs[0].Points);
+        Assert.Equal(2, plan.OutsideBoard);
+        Assert.Equal(51, plan.OverhangMm, 6);
+        Assert.Equal(new Point2D(0, -200), plan.Board!.Value.LowerLeft);
+    }
+
+    [Fact]
+    public void Board_WithoutPageOrSize_IsTheDesignFrame()
+    {
+        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(10, 20, 2, "ss6"), Hole(50, 80, 4, "ss16") }, new DrillSettings());
+        Assert.Equal(DrillOrigin.Board, new DrillSettings().Origin);
+        Assert.Equal(new Point2D(9, 19), plan.Origin);
+        Assert.Equal(0, plan.OutsideBoard);
+    }
+
     [Fact]
     public void SameHoleTwice_IsDrilledOnce()
     {

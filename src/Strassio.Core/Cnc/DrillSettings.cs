@@ -5,9 +5,15 @@ using System.Runtime.Serialization;
 
 namespace Strassio.Core.Cnc
 {
-    /// <summary>Где ноль станка (X0 Y0) относительно рисунка.</summary>
+    /// <summary>Где ноль станка (X0 Y0): угол доски или место на рисунке.</summary>
     public enum DrillOrigin
     {
+        /// <summary>
+        /// Угол (или центр) доски — как модель в ArtCAM: размер доски и где на ней ноль. Доска — это
+        /// страница CorelDRAW (её левый нижний угол), рисунок стоит на доске там же, где на странице.
+        /// </summary>
+        Board,
+
         /// <summary>Левый нижний угол рисунка — по краю крайних отверстий (как модель в ArtCAM).</summary>
         DesignLowerLeft,
 
@@ -16,6 +22,16 @@ namespace Strassio.Core.Cnc
 
         /// <summary>Ноль документа CorelDRAW (обычно левый нижний угол страницы).</summary>
         Document,
+    }
+
+    /// <summary>Где на доске ноль станка (home). Оси обычные: X вправо, Y вверх (от себя).</summary>
+    public enum BoardCorner
+    {
+        LowerLeft,
+        UpperLeft,
+        LowerRight,
+        UpperRight,
+        Center,
     }
 
     /// <summary>Как раскладывать свёрла по файлам.</summary>
@@ -91,6 +107,18 @@ namespace Strassio.Core.Cnc
         [IgnoreDataMember]
         public DrillOrigin Origin { get; set; }
 
+        /// <summary>Где на доске ноль станка (при <see cref="DrillOrigin.Board"/>).</summary>
+        [IgnoreDataMember]
+        public BoardCorner Home { get; set; }
+
+        /// <summary>Ширина доски (по X), мм; 0 — как страница CorelDRAW.</summary>
+        [DataMember(Name = "boardWidthMm")]
+        public double BoardWidthMm { get; set; }
+
+        /// <summary>Высота доски (по Y), мм; 0 — как страница CorelDRAW.</summary>
+        [DataMember(Name = "boardHeightMm")]
+        public double BoardHeightMm { get; set; }
+
         [IgnoreDataMember]
         public DrillFileMode FileMode { get; set; }
 
@@ -133,8 +161,29 @@ namespace Strassio.Core.Cnc
         [DataMember(Name = "origin")]
         private string OriginText
         {
-            get => Origin == DrillOrigin.DesignCenter ? "center" : Origin == DrillOrigin.Document ? "document" : "lowerLeft";
-            set => Origin = value == "center" ? DrillOrigin.DesignCenter : value == "document" ? DrillOrigin.Document : DrillOrigin.DesignLowerLeft;
+            get => Origin == DrillOrigin.Board ? "board" : Origin == DrillOrigin.DesignCenter ? "center" : Origin == DrillOrigin.Document ? "document" : "lowerLeft";
+            set => Origin = value == "board" ? DrillOrigin.Board : value == "center" ? DrillOrigin.DesignCenter : value == "document" ? DrillOrigin.Document : DrillOrigin.DesignLowerLeft;
+        }
+
+        [DataMember(Name = "home")]
+        private string HomeText
+        {
+            get => Home switch
+            {
+                BoardCorner.UpperLeft => "upperLeft",
+                BoardCorner.LowerRight => "lowerRight",
+                BoardCorner.UpperRight => "upperRight",
+                BoardCorner.Center => "center",
+                _ => "lowerLeft",
+            };
+            set => Home = value switch
+            {
+                "upperLeft" => BoardCorner.UpperLeft,
+                "lowerRight" => BoardCorner.LowerRight,
+                "upperRight" => BoardCorner.UpperRight,
+                "center" => BoardCorner.Center,
+                _ => BoardCorner.LowerLeft,
+            };
         }
 
         [DataMember(Name = "fileMode")]
@@ -183,6 +232,11 @@ namespace Strassio.Core.Cnc
                 problems.Add("drill.problem.peck");
             }
 
+            if (BoardWidthMm < 0 || BoardHeightMm < 0 || BoardWidthMm > 10000 || BoardHeightMm > 10000 || double.IsNaN(BoardWidthMm) || double.IsNaN(BoardHeightMm))
+            {
+                problems.Add("drill.problem.board");
+            }
+
             if (SpindleRpm < 0 || SpindleRpm > 100000)
             {
                 problems.Add("drill.problem.rpm");
@@ -221,7 +275,10 @@ namespace Strassio.Core.Cnc
             PlungeFeed = 500;
             PeckMm = 0;
             SpindleRpm = 18000;
-            Origin = DrillOrigin.DesignLowerLeft;
+            Origin = DrillOrigin.Board;
+            Home = BoardCorner.LowerLeft;
+            BoardWidthMm = 0;
+            BoardHeightMm = 0;
             FileMode = DrillFileMode.FilePerDrill;
             CannedCycle = false;
             LineNumbers = false;

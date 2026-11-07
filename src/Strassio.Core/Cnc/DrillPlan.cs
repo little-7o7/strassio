@@ -25,6 +25,27 @@ namespace Strassio.Core.Cnc
         public string Color { get; }
     }
 
+    /// <summary>Прямоугольник доски в координатах документа (мм): левый нижний угол и размер.</summary>
+    public readonly struct DrillBoard
+    {
+        public DrillBoard(Point2D lowerLeft, double widthMm, double heightMm)
+        {
+            LowerLeft = lowerLeft;
+            WidthMm = widthMm;
+            HeightMm = heightMm;
+        }
+
+        public Point2D LowerLeft { get; }
+
+        public double WidthMm { get; }
+
+        public double HeightMm { get; }
+
+        public bool IsValid => WidthMm > 0 && HeightMm > 0;
+
+        public Point2D UpperRight => LowerLeft + new Point2D(WidthMm, HeightMm);
+    }
+
     /// <summary>Одно сверло: какие размеры камней им сверлятся и в каком порядке обходить отверстия.</summary>
     public sealed class DrillJob
     {
@@ -92,6 +113,15 @@ namespace Strassio.Core.Cnc
             Duplicates = duplicates;
             Mismatches = mismatches;
         }
+
+        /// <summary>Доска в координатах станка (только когда ноль — на доске).</summary>
+        public DrillBoard? Board { get; internal set; }
+
+        /// <summary>Отверстий, которые хоть краем выходят за доску (их нельзя сверлить — там прижимы или край).</summary>
+        public int OutsideBoard { get; internal set; }
+
+        /// <summary>Насколько рисунок выходит за доску, мм (0 — помещается).</summary>
+        public double OverhangMm { get; internal set; }
 
         public IReadOnlyList<DrillJob> Jobs { get; }
 
@@ -162,7 +192,12 @@ namespace Strassio.Core.Cnc
             return best;
         }
 
-        public static DrillPlan Plan(IEnumerable<DrillHole> holes, DrillSettings settings, bool optimize = true)
+        /// <param name="page">
+        /// Страница CorelDRAW в координатах документа — это доска, если ноль на доске. Размер доски из
+        /// настроек (если задан) откладывается от левого нижнего угла страницы. Нет ни того, ни другого —
+        /// доской считается рамка рисунка.
+        /// </param>
+        public static DrillPlan Plan(IEnumerable<DrillHole> holes, DrillSettings settings, bool optimize = true, DrillBoard? page = null)
         {
             List<DrillHole> all = holes.Where(h => h.DiameterMm > 0 && !double.IsNaN(h.Center.X) && !double.IsNaN(h.Center.Y)).ToList();
             if (all.Count == 0)
@@ -174,8 +209,10 @@ namespace Strassio.Core.Cnc
             double minY = all.Min(h => h.Center.Y - h.DiameterMm / 2);
             double maxX = all.Max(h => h.Center.X + h.DiameterMm / 2);
             double maxY = all.Max(h => h.Center.Y + h.DiameterMm / 2);
+            DrillBoard? board = settings.Origin == DrillOrigin.Board ? BoardOf(settings, page, minX, minY, maxX, maxY) : null;
             Point2D origin = settings.Origin switch
             {
+                DrillOrigin.Board => Corner(board!.Value, settings.Home),
                 DrillOrigin.DesignCenter => new Point2D((minX + maxX) / 2, (minY + maxY) / 2),
                 DrillOrigin.Document => Point2D.Zero,
                 _ => new Point2D(minX, minY),
@@ -248,7 +285,43 @@ namespace Strassio.Core.Cnc
                 }
             }
 
-            return new DrillPlan(jobs, origin, new Point2D(minX, minY) - origin, new Point2D(maxX, maxY) - origin, duplicates, mismatches);
+            var plan = new DrillPlan(jobs, origin, new Point2D(minX, minY) - origin, new Point2D(maxX, maxY) - origin, duplicates, mismatches);
+            if (board.HasValue)
+            {
+                DrillBoard b = board.Value;
+                plan.Board = new DrillBoard(b.LowerLeft - origin, b.WidthMm, b.HeightMm);
+                const double eps = 0.01;
+                Point2D lo = b.LowerLeft, hi = b.UpperRight;
+                plan.OutsideBoard = all.Count(h =>
+                    h.Center.X - h.DiameterMm / 2 < lo.X - eps || h.Center.Y - h.DiameterMm / 2 < lo.Y - eps ||
+                    h.Center.X + h.DiameterMm / 2 > hi.X + eps || h.Center.Y + h.DiameterMm / 2 > hi.Y + eps);
+                plan.OverhangMm = Math.Max(0, new[] { lo.X - minX, lo.Y - minY, maxX - hi.X, maxY - hi.Y }.Max());
+            }
+
+            return plan;
+        }
+
+        /// <summary>Доска: размер из настроек, иначе страница; угол — левый нижний угол страницы (или рисунка).</summary>
+        private static DrillBoard BoardOf(DrillSettings s, DrillBoard? page, double minX, double minY, double maxX, double maxY)
+        {
+            Point2D lowerLeft = page.HasValue && page.Value.IsValid ? page.Value.LowerLeft : new Point2D(minX, minY);
+            double w = s.BoardWidthMm > 0 ? s.BoardWidthMm : page.HasValue && page.Value.IsValid ? page.Value.WidthMm : maxX - minX;
+            double h = s.BoardHeightMm > 0 ? s.BoardHeightMm : page.HasValue && page.Value.IsValid ? page.Value.HeightMm : maxY - minY;
+            return new DrillBoard(lowerLeft, Math.Max(w, 1e-6), Math.Max(h, 1e-6));
+        }
+
+        /// <summary>Ноль станка на доске, в координатах документа.</summary>
+        public static Point2D Corner(DrillBoard board, BoardCorner home)
+        {
+            Point2D lo = board.LowerLeft, hi = board.UpperRight;
+            return home switch
+            {
+                BoardCorner.UpperLeft => new Point2D(lo.X, hi.Y),
+                BoardCorner.LowerRight => new Point2D(hi.X, lo.Y),
+                BoardCorner.UpperRight => hi,
+                BoardCorner.Center => (lo + hi) / 2,
+                _ => lo,
+            };
         }
 
         /// <summary>

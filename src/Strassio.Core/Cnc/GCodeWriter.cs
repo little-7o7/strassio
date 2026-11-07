@@ -112,7 +112,7 @@ namespace Strassio.Core.Cnc
                 int holes = jobs.Sum(j => j.Points.Count);
                 w.Comment("Strassio: " + holes.ToString(CultureInfo.InvariantCulture) + " holes, "
                     + jobs.Count.ToString(CultureInfo.InvariantCulture) + (jobs.Count == 1 ? " drill" : " drills"));
-                w.Comment("X0 Y0: " + OriginText(s.Origin) + ". Z0: top of material");
+                w.Comment("X0 Y0: " + OriginText(s, plan) + ". Z0: top of material");
                 w.Comment("Design " + Num(plan.WidthMm, "0.0") + " x " + Num(plan.HeightMm, "0.0") + " mm, from X"
                     + Num(plan.Min.X, "0.0") + " Y" + Num(plan.Min.Y, "0.0") + " to X" + Num(plan.Max.X, "0.0") + " Y" + Num(plan.Max.Y, "0.0"));
                 w.Comment("Depth " + Num(s.DepthMm, "0.###") + " mm, retract " + Num(s.RetractMm, "0.###")
@@ -249,12 +249,29 @@ namespace Strassio.Core.Cnc
             return levels;
         }
 
-        private static string OriginText(DrillOrigin origin) => origin switch
+        private static string OriginText(DrillSettings s, DrillPlan plan)
         {
-            DrillOrigin.DesignCenter => "center of design",
-            DrillOrigin.Document => "CorelDRAW document origin",
-            _ => "lower left corner of design",
-        };
+            switch (s.Origin)
+            {
+                case DrillOrigin.Board:
+                    string corner = s.Home switch
+                    {
+                        BoardCorner.UpperLeft => "upper left corner",
+                        BoardCorner.LowerRight => "lower right corner",
+                        BoardCorner.UpperRight => "upper right corner",
+                        BoardCorner.Center => "center",
+                        _ => "lower left corner",
+                    };
+                    string size = plan.Board.HasValue ? " " + Num(plan.Board.Value.WidthMm, "0.#") + " x " + Num(plan.Board.Value.HeightMm, "0.#") + " mm" : string.Empty;
+                    return corner + " of board" + size;
+                case DrillOrigin.DesignCenter:
+                    return "center of design";
+                case DrillOrigin.Document:
+                    return "CorelDRAW document origin";
+                default:
+                    return "lower left corner of design";
+            }
+        }
 
         private static string ColorPart(string color)
         {

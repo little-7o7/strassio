@@ -176,6 +176,17 @@ public class GCodeWriterTests
     }
 
     [Fact]
+    public void Board_UpperLeftHome_NegativeY_AndComment()
+    {
+        var s = new DrillSettings { Origin = DrillOrigin.Board, Home = BoardCorner.UpperLeft, BoardWidthMm = 600, BoardHeightMm = 400 };
+        DrillPlan plan = DrillPlanner.Plan(Design(), s, page: new DrillBoard(Point2D.Zero, 600, 400));
+        IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, s, "board");
+        AssertDrillsEverything(plan, files, s);
+        Assert.Contains("(X0 Y0: upper left corner of board 600 x 400 mm. Z0: top of material)", files[0].Text);
+        Assert.All(GCodeCheck.Run(files[0].Text).Holes, h => Assert.True(h.At.Y < 0 && h.At.X > 0));
+    }
+
+    [Fact]
     public void Check_FindsDangerousPrograms()
     {
         Assert.Contains(GCodeCheck.Run("G21\nG90\nG0 Z5\nM3 S1000\nG0 X1 Y1\nG1 Z-1 F100\nG0 X5 Y5\nG0 Z5\nM5\nM30").Problems, p => p.Contains("X/Y move"));
@@ -206,6 +217,7 @@ public class GCodeWriterTests
             Assert.Equal(2, back.DepthMm);
             Assert.Equal(DrillOrigin.DesignCenter, back.Origin);
             Assert.Equal(DrillFileMode.OneFileToolChange, back.FileMode);
+            Assert.Equal(BoardCorner.LowerLeft, back.Home);
             Assert.Equal(new[] { 2.4 }, back.DrillsMm);
             Assert.Equal(3, back.RuleFor("SS10"));
             Assert.Equal(1.0, back.RetractMm);
@@ -221,5 +233,26 @@ public class GCodeWriterTests
 
         Assert.Contains("drill.problem.depth", new DrillSettings { DepthMm = 0 }.Problems());
         Assert.Contains("drill.problem.clearance", new DrillSettings { ClearanceMm = 0.5 }.Problems());
+        Assert.Contains("drill.problem.board", new DrillSettings { BoardWidthMm = -1 }.Problems());
+
+        // Угол доски и размер сохраняются словами и числами.
+        string dir2 = Path.Combine(Path.GetTempPath(), "strassio-drill-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var store = new SettingsStore(dir2);
+            store.SaveDrill(new DrillSettings { Home = BoardCorner.UpperRight, BoardWidthMm = 1200, BoardHeightMm = 800 });
+            Assert.Contains("\"upperRight\"", File.ReadAllText(store.DrillPath));
+            DrillSettings back2 = store.LoadDrill();
+            Assert.Equal(BoardCorner.UpperRight, back2.Home);
+            Assert.Equal(1200, back2.BoardWidthMm);
+            Assert.Equal(DrillOrigin.Board, back2.Origin);
+        }
+        finally
+        {
+            if (Directory.Exists(dir2))
+            {
+                Directory.Delete(dir2, true);
+            }
+        }
     }
 }
