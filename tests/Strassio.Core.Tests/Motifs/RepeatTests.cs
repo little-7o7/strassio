@@ -175,6 +175,47 @@ public class RepeatTests
         Assert.False(Repeat.SeamlessSheet(o, 100, 400).IsValid);
     }
 
+    [Theory]
+    [InlineData(RepeatShift.None, RepeatAlternate.None)]
+    [InlineData(RepeatShift.HalfDrop, RepeatAlternate.None)]
+    [InlineData(RepeatShift.Brick, RepeatAlternate.None)]
+    [InlineData(RepeatShift.None, RepeatAlternate.Rotate180)]
+    [InlineData(RepeatShift.HalfDrop, RepeatAlternate.MirrorX)]
+    [InlineData(RepeatShift.Brick, RepeatAlternate.MirrorY)]
+    public void FillSheet_SheetsSideBySide_AreTheSameFabric_WithoutSeams(RepeatShift shift, RepeatAlternate alternate)
+    {
+        List<PlacedStone> tile = Honeycomb(20, 12);
+        tile.Add(new PlacedStone(new Point2D(22.5, 13.5), D, false));
+        var o = new RepeatOptions { StepXMm = 20, StepYMm = 12, Shift = shift, GapMm = Gap, Alternate = alternate };
+        RepeatSheet sheet = Repeat.SeamlessSheet(o, 130, 100);
+        Assert.True(sheet.IsValid);
+        var topLeft = new Point2D(-3.7, 8.2);
+
+        List<SheetStone> first = Repeat.FillSheet(tile, o, sheet, topLeft, out int removed);
+        Assert.True(first.Count > 100, $"страз на листе {first.Count}");
+        Assert.True(removed > 0);
+        Assert.All(first, s => Assert.True(
+            s.Center.X >= topLeft.X - 1e-6 && s.Center.X < topLeft.X + sheet.WidthMm && s.Center.Y <= topLeft.Y + 1e-6 && s.Center.Y > topLeft.Y - sheet.HeightMm,
+            $"страза {s.Center} вне листа"));
+
+        // Соседний лист справа и снизу — тот же лист, сдвинутый на его ширину и высоту: шва нет.
+        foreach (Point2D shiftBy in new[] { new Point2D(sheet.WidthMm, 0), new Point2D(0, -sheet.HeightMm) })
+        {
+            List<SheetStone> next = Repeat.FillSheet(tile, o, sheet, topLeft + shiftBy, out _);
+            Assert.Equal(first.Count, next.Count);
+            var expected = first.Select(s => (s.Source, s.Center + shiftBy)).OrderBy(t => Math.Round(t.Item2.X, 4)).ThenBy(t => Math.Round(t.Item2.Y, 4)).ToList();
+            var actual = next.Select(s => (s.Source, s.Center)).OrderBy(t => Math.Round(t.Center.X, 4)).ThenBy(t => Math.Round(t.Center.Y, 4)).ToList();
+            for (int i = 0; i < expected.Count; i++)
+            {
+                Assert.Equal(expected[i].Item1, actual[i].Source);
+                Assert.True(Point2D.Distance(expected[i].Item2, actual[i].Center) < 1e-6, $"{expected[i].Item2} и {actual[i].Center}");
+            }
+
+            // И два листа рядом — без наложений на стыке.
+            AssertNoOverlaps(first.Concat(next).Select(s => new PlacedStone(s.Center, D, false)).ToList());
+        }
+    }
+
     [Fact]
     public void TilesPerRunningMetre_IsFabricAreaOverTileArea()
     {

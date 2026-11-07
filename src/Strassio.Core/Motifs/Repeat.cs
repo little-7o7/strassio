@@ -59,6 +59,21 @@ namespace Strassio.Core.Motifs
         public bool IsValid => Across > 0 && Down > 0;
     }
 
+    /// <summary>Страза на листе без шва: какая это страза плитки и где она стоит.</summary>
+    public readonly struct SheetStone
+    {
+        public SheetStone(int source, Point2D center)
+        {
+            Source = source;
+            Center = center;
+        }
+
+        /// <summary>Номер стразы в плитке (размер и цвет берутся у неё).</summary>
+        public int Source { get; }
+
+        public Point2D Center { get; }
+    }
+
     /// <summary>Настройки раппорта (docs/SPEC.md, раздел 9, «Раппорт»).</summary>
     public sealed class RepeatOptions
     {
@@ -156,6 +171,70 @@ namespace Strassio.Core.Motifs
             int down = (int)Math.Floor(maxHeightMm / py + 1e-9);
             return across > 0 && down > 0 ? new RepeatSheet(across * px, down * py, across, down) : default;
         }
+
+        /// <summary>
+        /// Все стразы листа без шва. Плитка (без страз со стыков, <see cref="SeamConflicts"/>) повторяется по
+        /// всему листу, и на листе остаются стразы, центр которых внутри листа: от <paramref name="topLeft"/>
+        /// вправо на ширину листа и вниз на его высоту. Страза на самом краю достаётся ровно одному листу
+        /// (левый и верхний край — свои, правый и нижний — соседа), поэтому листы встык дают ту же ткань:
+        /// ни дыр, ни двойных страз. <paramref name="removed"/> — сколько страз плитки убрано со стыков.
+        /// </summary>
+        public static List<SheetStone> FillSheet(
+            IReadOnlyList<PlacedStone> tile, RepeatOptions options, RepeatSheet sheet, Point2D topLeft, out int removed)
+        {
+            var result = new List<SheetStone>();
+            removed = 0;
+            if (tile.Count == 0 || !sheet.IsValid || options.StepXMm <= 0 || options.StepYMm <= 0)
+            {
+                return result;
+            }
+
+            var drop = new HashSet<int>(SeamConflicts(tile, options));
+            removed = drop.Count;
+            Point2D pivot = PivotOf(tile, options);
+            var keep = Enumerable.Range(0, tile.Count).Where(i => !drop.Contains(i)).ToList();
+            if (keep.Count == 0)
+            {
+                return result;
+            }
+
+            Point2D[] plain = keep.Select(i => tile[i].Center).ToArray();
+            Point2D[] turned = keep.Select(i => Transform(options.Alternate, tile[i].Center, pivot)).ToArray();
+            double minX = Math.Min(plain.Min(p => p.X), turned.Min(p => p.X));
+            double maxX = Math.Max(plain.Max(p => p.X), turned.Max(p => p.X));
+            double minY = Math.Min(plain.Min(p => p.Y), turned.Min(p => p.Y));
+            double maxY = Math.Max(plain.Max(p => p.Y), turned.Max(p => p.Y));
+
+            double left = topLeft.X, right = topLeft.X + sheet.WidthMm;
+            double top = topLeft.Y, bottom = topLeft.Y - sheet.HeightMm;
+            int c0 = (int)Math.Floor((left - maxX) / options.StepXMm) - 2;
+            int c1 = (int)Math.Ceiling((right - minX) / options.StepXMm) + 2;
+            int r0 = (int)Math.Floor((minY - top) / options.StepYMm) - 2;
+            int r1 = (int)Math.Ceiling((maxY - bottom) / options.StepYMm) + 2;
+
+            // Край листа — полуоткрытый: левый и верхний свои, правый и нижний чужие (сдвиг на Edge — чтобы
+            // страза ровно на краю не попала из-за округления на оба листа или ни на один).
+            for (int r = r0; r <= r1; r++)
+            {
+                for (int c = c0; c <= c1; c++)
+                {
+                    Point2D offset = Offset(options, c, r);
+                    Point2D[] centers = options.Alternate != RepeatAlternate.None && ((c + r) & 1) != 0 ? turned : plain;
+                    for (int k = 0; k < keep.Count; k++)
+                    {
+                        Point2D p = centers[k] + offset;
+                        if (p.X >= left - Edge && p.X < right - Edge && p.Y <= top + Edge && p.Y > bottom + Edge)
+                        {
+                            result.Add(new SheetStone(keep[k], p));
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private const double Edge = 1e-6;
 
         /// <summary>
         /// Сколько плиток уходит на погонный метр ткани шириной <paramref name="fabricWidthMm"/>: площадь

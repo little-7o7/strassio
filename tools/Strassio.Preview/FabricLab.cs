@@ -117,19 +117,8 @@ namespace Strassio.Preview
             List<PlacedStone> tileStones = tile.Select(t => t.Stone).ToList();
             RepeatSheet sheet = Repeat.SeamlessSheet(options, maxW, maxH);
             double minX = tileStones.Min(st => st.Center.X), maxY = tileStones.Max(st => st.Center.Y);
-            options.Columns = (int)Math.Ceiling(sheet.WidthMm / options.StepXMm) + 2;
-            options.Rows = (int)Math.Ceiling(sheet.HeightMm / options.StepYMm) + 2;
-            var drop = new HashSet<int>(Repeat.SeamConflicts(tileStones, options));
-            var clean = tile.Where((t, i) => !drop.Contains(i)).ToList();
-            var fabric = new List<(PlacedStone Stone, string Rgb)>();
-            foreach (Point2D offset in Repeat.Offsets(options))
-            {
-                fabric.AddRange(clean.Select(t => (new PlacedStone(t.Stone.Center + offset, t.Stone.DiameterMm, false), t.Rgb)));
-            }
-
-            Curve frame = Rect(minX, maxY - sheet.HeightMm, sheet.WidthMm, sheet.HeightMm);
-            var outside = new HashSet<int>(FrameTrim.Outside(fabric.Select(f => f.Stone).ToList(), new[] { frame }, FrameTrimMode.Center));
-            var onSheet = fabric.Where((f, i) => !outside.Contains(i)).Select(f => (f.Stone.Center, f.Stone.DiameterMm, f.Rgb)).ToList();
+            List<SheetStone> placed = Repeat.FillSheet(tileStones, options, sheet, new Point2D(minX, maxY), out _);
+            var onSheet = placed.Select(p => (p.Center, tile[p.Source].Stone.DiameterMm, tile[p.Source].Rgb)).ToList();
             File.WriteAllText(Path.Combine(dir, "sheet.svg"), Velvet(onSheet, background));
 
             // Два листа встык по ширине: узор не прерывается.

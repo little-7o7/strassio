@@ -88,6 +88,16 @@ namespace Strassio.Core.Stones
         }
 
         /// <summary>
+        /// Тот же подсчёт, умноженный на <paramref name="factor"/> (например, на число плиток в метре ткани).
+        /// Дробное число камней округляется вверх — камней лучше заказать с запасом, чем не хватит.
+        /// </summary>
+        public StoneCount Times(double factor)
+        {
+            double k = Math.Max(0, factor);
+            return new StoneCount(Rows.Select(r => new StoneCountRow(r.Size, r.Color, (int)Math.Ceiling(r.Count * k - 1e-9))).ToList());
+        }
+
+        /// <summary>
         /// Таблица для Excel: столбцы через табуляцию, строки размер · цвет · штук, внизу итог.
         /// Вставляется в Excel или Google Таблицы как есть.
         /// </summary>

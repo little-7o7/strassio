@@ -61,6 +61,18 @@ public class StoneCountTests
     }
 
     [Fact]
+    public void Times_ScalesEveryRow_AndRoundsUp()
+    {
+        StoneCount tile = StoneCount.Of(Many("ss6", "Кристалл", 10).Concat(Many("ss10", "Золото", 3)), Table);
+
+        // 2,5 плитки на метр: 10 × 2,5 = 25 ровно, 3 × 2,5 = 7,5 → 8 (с запасом).
+        StoneCount metre = tile.Times(2.5);
+
+        Assert.Equal(new[] { ("ss6", "Кристалл", 25), ("ss10", "Золото", 8) }, metre.Rows.Select(r => (r.Size, r.Color, r.Count)));
+        Assert.Equal(33, metre.Total);
+    }
+
+    [Fact]
     public void TenThousandStones_Fast()
     {
         var stones = Enumerable.Range(0, 10000).Select(i => (Table[i % 3], "Цвет " + (i % 7)));
