@@ -197,12 +197,16 @@
                     <TextBox x:Name="SplashWidthBox" Grid.Column="2" TextChanged="SplashWidthBox_TextChanged"
                              ToolTip="{Binding [motif.splash.width.tooltip]}"/>
                 </Grid>
+                <Button Content="{Binding [motif.streaks.make]}" Click="StreaksAround_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [motif.streaks.make.tooltip]}"/>
 
                 <!-- Раппорт: повтор плитки по ткани без наложений на стыках — Docker.Repeat.cs -->
                 <TextBlock Text="{Binding [motif.repeat]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
                 <TextBlock Text="{Binding [motif.repeat.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
                 <ComboBox x:Name="RepeatShiftCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
                           ToolTip="{Binding [motif.repeat.shift.tooltip]}"/>
+                <ComboBox x:Name="RepeatAlternateCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
+                          ToolTip="{Binding [motif.repeat.alternate.tooltip]}"/>
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -235,6 +239,50 @@
                 </Grid>
                 <Button Content="{Binding [motif.repeat.make]}" Click="Repeat_Click" Margin="0,0,0,8"
                         Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.repeat.make.tooltip]}"/>
+
+                <!-- Лист без шва и камней на метр — та же плитка и те же настройки повтора — Docker.Repeat.cs -->
+                <TextBlock Text="{Binding [motif.sheet]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding [motif.sheet.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="{Binding [motif.sheet.width]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                    <TextBox x:Name="SheetWidthBox" Grid.Column="1" TextChanged="SheetWidthBox_TextChanged"
+                             ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                    <TextBlock Grid.Column="3" Text="{Binding [motif.sheet.height]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                    <TextBox x:Name="SheetHeightBox" Grid.Column="4" TextChanged="SheetHeightBox_TextChanged"
+                             ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                </Grid>
+                <Button Content="{Binding [motif.sheet.make]}" Click="Sheet_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [motif.sheet.make.tooltip]}"/>
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="60"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [motif.metre.make]}" Click="PerMetre_Click" ToolTip="{Binding [motif.metre.make.tooltip]}"/>
+                    <TextBlock Grid.Column="2" Text="{Binding [motif.metre.width]}" Style="{StaticResource Strassio.Caption}"
+                               ToolTip="{Binding [motif.metre.width.tooltip]}"/>
+                    <TextBox x:Name="FabricWidthBox" Grid.Column="3" TextChanged="FabricWidthBox_TextChanged"
+                             ToolTip="{Binding [motif.metre.width.tooltip]}"/>
+                </Grid>
+
+                <!-- Обрезать по рамке: стразы за рамкой убираются — Docker.Repeat.cs -->
+                <TextBlock Text="{Binding [motif.trim]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
+                <TextBlock Text="{Binding [motif.trim.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                <ComboBox x:Name="TrimModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
+                          ToolTip="{Binding [motif.trim.mode.tooltip]}"/>
+                <Button Content="{Binding [motif.trim.make]}" Click="TrimFrame_Click" Margin="0,0,0,8"
+                        ToolTip="{Binding [motif.trim.make.tooltip]}"/>
             </StackPanel>
 
             <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->

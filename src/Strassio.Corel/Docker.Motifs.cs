@@ -19,8 +19,9 @@ namespace Strassio.Corel
 {
     /// <summary>
     /// Вкладка «Мотивы» (docs/SPEC.md, раздел 9; пункт 12 прокачки): выделенные стразы сохраняются как мотив
-    /// (цветок, листик, завиток) и потом раскладываются по линии, по кругу (розетка) или рамкой с отдельными
-    /// углами. «Повторить по кругу» размножает выделенные стразы вокруг центра — мандала.
+    /// (цветок, листик, завиток) и потом раскладываются по линии, по кругу (розетка), рамкой с отдельными
+    /// углами или россыпью внутри фигуры. «Повторить по кругу» размножает выделенные стразы вокруг центра —
+    /// мандала. Вокруг готового дизайна — россыпь камней или штрихи.
     /// Мотивы лежат файлами в папке настроек: %APPDATA%\Strassio\motifs.
     /// </summary>
     public partial class Docker
@@ -33,6 +34,8 @@ namespace Strassio.Corel
 
         private bool IsFrameMode => (MotifModeCombo.SelectedItem as ChoiceOption)?.Value == "frame";
 
+        private bool IsFillMode => (MotifModeCombo.SelectedItem as ChoiceOption)?.Value == "fill";
+
         /// <summary>Списки вкладки на текущем языке; мотивы перечитываются из папки.</summary>
         private void RebuildMotifs()
         {
@@ -40,6 +43,7 @@ namespace Strassio.Corel
             {
                 new ChoiceOption("line", Loc["motif.mode.line"]),
                 new ChoiceOption("frame", Loc["motif.mode.frame"]),
+                new ChoiceOption("fill", Loc["motif.mode.fill"]),
             };
             string? mode = (MotifModeCombo.SelectedItem as ChoiceOption)?.Value;
             MotifModeCombo.ItemsSource = modes;
@@ -86,7 +90,7 @@ namespace Strassio.Corel
         private void UpdateMotifModeHint()
         {
             bool frame = IsFrameMode;
-            MotifModeHint.Text = Loc[frame ? "motif.mode.frame.hint" : "motif.mode.line.hint"];
+            MotifModeHint.Text = Loc[frame ? "motif.mode.frame.hint" : IsFillMode ? "motif.mode.fill.hint" : "motif.mode.line.hint"];
             MotifSecondCaption.Text = Loc[frame ? "motif.second.corner" : "motif.second.alternate"];
         }
 
@@ -207,7 +211,8 @@ namespace Strassio.Corel
             }
 
             Motif? second = SelectedMotif(MotifSecondCombo);
-            bool frame = IsFrameMode;
+            bool frame = IsFrameMode, fill = IsFillMode;
+            int variant = Environment.TickCount & 0x7FFFFFFF;
             var options = new MotifLayoutOptions
             {
                 Count = ReadCount(MotifCountBox, 0, 1000, 0),
@@ -221,14 +226,29 @@ namespace Strassio.Corel
             RunInDocument(null, doc =>
             {
                 List<CoreCurve> paths = ToolCurves(StoneShapes.FromSelection(doc, KnownSizes).Tools);
+                if (fill)
+                {
+                    paths = paths.Where(c => c.IsClosed).ToList();
+                }
+
                 if (paths.Count == 0)
                 {
-                    SetStatus("motif.selectPath");
+                    SetStatus(fill ? "motif.selectShape" : "motif.selectPath");
                     return;
                 }
 
                 var placed = new List<MotifPlacement>();
                 int copies = 0, dropped = 0;
+                if (fill)
+                {
+                    // Все замкнутые фигуры — одна область (дырки в ней пустые). Каждое нажатие — новая россыпь.
+                    MotifLayout layout = MotifPlacer.Fill(paths, second == null ? new[] { motif } : new[] { motif, second }, options, variant);
+                    placed.AddRange(layout.Stones);
+                    copies = layout.Copies;
+                    dropped = layout.Dropped;
+                    paths.Clear();
+                }
+
                 foreach (CoreCurve path in paths)
                 {
                     MotifLayout layout = frame
@@ -429,20 +449,10 @@ namespace Strassio.Corel
             string caption = Loc.Format("undo.splash", size.Size.Name, color.Name);
             RunInDocument(null, doc =>
             {
-                StoneSelection selection = StoneShapes.FromSelection(doc, KnownSizes);
-                List<PlacedStone> design = selection.Stones.Select(s => new PlacedStone(s.Stone.Center, s.Stone.DiameterMm, false)).ToList();
-                List<CoreCurve> shapes = ToolCurves(selection.Tools).Where(c => c.IsClosed).ToList();
-                if (design.Count == 0 && shapes.Count == 0)
+                if (!ReadDesignAround(doc, width + d, "motif.splash.select", out List<PlacedStone> design, out List<CoreCurve> shapes, out List<PlacedStone> obstacles))
                 {
-                    SetStatus("motif.splash.select");
                     return;
                 }
-
-                IEnumerable<Point2D> points = design.Select(s => s.Center)
-                    .Concat(shapes.SelectMany(c => CurveFlattener.Flatten(c).Points.Select(p => p.Position)));
-                double minX = points.Min(p => p.X) - width - d, maxX = points.Max(p => p.X) + width + d;
-                double minY = points.Min(p => p.Y) - width - d, maxY = points.Max(p => p.Y) + width + d;
-                List<PlacedStone> obstacles = StoneShapes.ObstaclesNear(doc.ActivePage, KnownSizes, minX, minY, maxX, maxY);
 
                 List<PlacedStone> stones = Scatter.Splash(shapes, design, obstacles, sizes, gap, width, fadeGap, variant);
                 if (stones.Count == 0)
@@ -451,21 +461,89 @@ namespace Strassio.Corel
                     return;
                 }
 
-                color.Color.TryGetRgb(out byte red, out byte green, out byte blue);
-                doc.BeginCommandGroup(caption);
-                try
-                {
-                    Shape group = CreateStoneGroup(doc, stones, size.Size, color.Name, red, green, blue, Array.Empty<int>(), caption);
-                    doc.ClearSelection();
-                    group.CreateSelection();
-                }
-                finally
-                {
-                    doc.EndCommandGroup();
-                }
-
+                CreateAroundGroup(doc, stones, size, color, caption);
                 SetStatus("motif.splash.done", stones.Count);
             });
+        }
+
+        /// <summary>
+        /// Штрихи вокруг выделенного дизайна: прерывистые полоски выбранным камнем — у дизайна длинные и
+        /// частые, дальше короче и реже, на ширине россыпи сходят на нет. Длина штрихов, разрывы, угол и
+        /// расстояние между полосками — как у способа «Штрихи» в настройках. Каждое нажатие — новый узор.
+        /// </summary>
+        private void StreaksAround_Click(object sender, RoutedEventArgs e)
+        {
+            if (!(SizeCombo.SelectedItem is SizeOption size) || !(ColorList.SelectedItem is ColorOption color))
+            {
+                SetStatus("status.noStone");
+                return;
+            }
+
+            double d = size.Size.DiameterMm;
+            double width = SplashWidthMm;
+            Strassio.Core.Methods.MethodParameters p = Params;
+            int variant = Environment.TickCount & 0x7FFFFFFF;
+            string caption = Loc.Format("undo.streaksAround", size.Size.Name, color.Name);
+            RunInDocument(null, doc =>
+            {
+                if (!ReadDesignAround(doc, width + d, "motif.streaks.select", out List<PlacedStone> design, out List<CoreCurve> shapes, out List<PlacedStone> obstacles))
+                {
+                    return;
+                }
+
+                List<PlacedStone> stones = PatternFills.StreaksAround(
+                    shapes, design, obstacles, d, p.GapMm, p.LineGapMm, p.StreakAngleDeg, p.StreakLength, p.StreakBreak, width, variant);
+                if (stones.Count == 0)
+                {
+                    SetStatus("motif.streaks.none");
+                    return;
+                }
+
+                CreateAroundGroup(doc, stones, size, color, caption);
+                SetStatus("motif.streaks.done", stones.Count);
+            });
+        }
+
+        /// <summary>
+        /// Выделенный дизайн для россыпи и штрихов: его стразы, его замкнутые фигуры и готовые стразы на
+        /// странице рядом (на них новые камни не налезают). Ничего не выделено — сообщение и false.
+        /// </summary>
+        private bool ReadDesignAround(
+            Document doc, double reach, string selectKey, out List<PlacedStone> design, out List<CoreCurve> shapes, out List<PlacedStone> obstacles)
+        {
+            StoneSelection selection = StoneShapes.FromSelection(doc, KnownSizes);
+            design = selection.Stones.Select(s => new PlacedStone(s.Stone.Center, s.Stone.DiameterMm, false)).ToList();
+            shapes = ToolCurves(selection.Tools).Where(c => c.IsClosed).ToList();
+            obstacles = new List<PlacedStone>();
+            if (design.Count == 0 && shapes.Count == 0)
+            {
+                SetStatus(selectKey);
+                return false;
+            }
+
+            IEnumerable<Point2D> points = design.Select(s => s.Center)
+                .Concat(shapes.SelectMany(c => CurveFlattener.Flatten(c).Points.Select(pt => pt.Position)));
+            double minX = points.Min(pt => pt.X) - reach, maxX = points.Max(pt => pt.X) + reach;
+            double minY = points.Min(pt => pt.Y) - reach, maxY = points.Max(pt => pt.Y) + reach;
+            obstacles = StoneShapes.ObstaclesNear(doc.ActivePage, KnownSizes, minX, minY, maxX, maxY);
+            return true;
+        }
+
+        /// <summary>Новые камни вокруг дизайна — одной группой выбранного размера и цвета, одним шагом отмены.</summary>
+        private void CreateAroundGroup(Document doc, List<PlacedStone> stones, SizeOption size, ColorOption color, string caption)
+        {
+            color.Color.TryGetRgb(out byte red, out byte green, out byte blue);
+            doc.BeginCommandGroup(caption);
+            try
+            {
+                Shape group = CreateStoneGroup(doc, stones, size.Size, color.Name, red, green, blue, Array.Empty<int>(), caption);
+                doc.ClearSelection();
+                group.CreateSelection();
+            }
+            finally
+            {
+                doc.EndCommandGroup();
+            }
         }
     }
 }
