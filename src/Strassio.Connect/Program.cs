@@ -11,6 +11,7 @@ namespace Strassio.Connect
     /// попадает под запрет. Эта программа — не CorelDRAW, поэтому её запрос проходит.
     ///
     /// Вызов: Strassio.Connect.exe GET|POST &lt;url&gt;; тело POST — в stdin (UTF-8).
+    /// Автообновление: Strassio.Connect.exe UPDATE &lt;url&gt; &lt;sha256&gt; &lt;версия&gt; &lt;папка&gt; (см. Updater).
     /// Ответ в stdout (UTF-8): первая строка — код HTTP, дальше тело. Сетевая ошибка — строка
     /// «ERR &lt;описание&gt;» и код выхода 2. Ходит только на https (и http://localhost для проверки).
     /// </summary>
@@ -18,6 +19,12 @@ namespace Strassio.Connect
     {
         private static int Main(string[] args)
         {
+            if (args.Length == 5 && args[0] == "UPDATE")
+            {
+                EnableModernTls();
+                return Updater.Run(args[1], args[2], args[3], args[4]);
+            }
+
             try
             {
                 if (args.Length != 2 || !(args[0] == "GET" || args[0] == "POST") || !Uri.TryCreate(args[1], UriKind.Absolute, out Uri? uri) || !Allowed(uri))

@@ -105,9 +105,26 @@ namespace Strassio.Corel
         /// Перестраивает выделенные группы Strassio по их рецепту: исходную линию или форму поправили —
         /// стразы встают по новой, тем же методом, камнем и параметрами. Всё — одной отменой.
         /// </summary>
-        private void UpdateLive_Click(object sender, RoutedEventArgs e)
+        private void UpdateLive_Click(object sender, RoutedEventArgs e) => UpdateLiveGroups(null);
+
+        /// <summary>
+        /// Тот же дизайн другим камнем: выделенные группы Strassio перестраиваются по рецепту, но камнем,
+        /// выбранным вверху докера (ss10 → ss6 одной кнопкой). Цвет — прежний, если он есть у нового размера.
+        /// </summary>
+        private void ResizeLive_Click(object sender, RoutedEventArgs e)
         {
-            RunInDocument("undo.live", doc =>
+            if (!(SizeCombo.SelectedItem is SizeOption size))
+            {
+                SetStatus("status.noStone");
+                return;
+            }
+
+            UpdateLiveGroups(size.Size);
+        }
+
+        private void UpdateLiveGroups(StoneSize? newSize)
+        {
+            RunInDocument(newSize == null ? "undo.live" : "undo.liveResize", doc =>
             {
                 var groups = new List<(Shape Group, LiveRecipe Recipe)>();
                 ShapeRange selection = doc.SelectionRange;
@@ -138,7 +155,7 @@ namespace Strassio.Corel
                 int missing = 0;
                 foreach ((Shape group, LiveRecipe recipe) in groups)
                 {
-                    if (RebuildLive(doc, group, recipe))
+                    if (RebuildLive(doc, group, recipe, newSize))
                     {
                         updated++;
                     }
@@ -148,7 +165,14 @@ namespace Strassio.Corel
                     }
                 }
 
-                SetStatus(missing == 0 ? "live.updated" : "live.partly", updated, missing);
+                if (newSize != null && missing == 0)
+                {
+                    SetStatus("live.resized", updated, newSize.Name);
+                }
+                else
+                {
+                    SetStatus(missing == 0 ? "live.updated" : "live.partly", updated, missing);
+                }
             });
         }
 
@@ -164,7 +188,7 @@ namespace Strassio.Corel
             }
         }
 
-        private bool RebuildLive(Document doc, Shape oldGroup, LiveRecipe recipe)
+        private bool RebuildLive(Document doc, Shape oldGroup, LiveRecipe recipe, StoneSize? newSize = null)
         {
             if (!recipe.TryGetKind(out MethodKind kind))
             {
@@ -198,8 +222,15 @@ namespace Strassio.Corel
 
             List<CoreCurve>? guides = info.NeedsGuide && read.Count > 1 ? new List<CoreCurve> { MethodRunner.OuterContour(read[1]) } : null;
 
-            // Камень: из таблицы по имени; нет в таблице — размер как у старых камней группы.
-            StoneSize size = ActiveSet?.Sizes.FirstOrDefault(s => string.Equals(s.Name, recipe.Size, StringComparison.OrdinalIgnoreCase))
+            // Камень: новый (кнопка «Другим камнем») или из таблицы по имени; нет в таблице — размер как у
+            // старых камней группы.
+            if (newSize != null)
+            {
+                recipe.Size = newSize.Name;
+            }
+
+            StoneSize size = newSize
+                ?? ActiveSet?.Sizes.FirstOrDefault(s => string.Equals(s.Name, recipe.Size, StringComparison.OrdinalIgnoreCase))
                 ?? new StoneSize { Name = recipe.Size, DiameterMm = FirstStoneDiameter(oldGroup) };
             (byte r, byte g, byte b) = ColorOf(recipe, size, oldGroup);
 
@@ -300,8 +331,13 @@ namespace Strassio.Corel
 
             var modes = new List<ChoiceOption>
             {
+                new ChoiceOption("even", Loc["color.mix.even"]),
                 new ChoiceOption("random", Loc["color.mix.random"]),
                 new ChoiceOption("sequence", Loc["color.mix.sequence"]),
+                new ChoiceOption("ombreX", Loc["color.mix.ombreX"]),
+                new ChoiceOption("ombreY", Loc["color.mix.ombreY"]),
+                new ChoiceOption("ombreCenter", Loc["color.mix.ombreCenter"]),
+                new ChoiceOption("ombreLine", Loc["color.mix.ombreLine"]),
             };
             string? mode = (MixModeCombo.SelectedItem as ChoiceOption)?.Value;
             MixModeCombo.ItemsSource = modes;
@@ -339,7 +375,7 @@ namespace Strassio.Corel
                 return;
             }
 
-            bool sequence = (MixModeCombo.SelectedItem as ChoiceOption)?.Value == "sequence";
+            string mixMode = (MixModeCombo.SelectedItem as ChoiceOption)?.Value ?? "even";
             string fallbackSize = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? string.Empty;
             RunInDocument("undo.mix", doc =>
             {
@@ -350,9 +386,17 @@ namespace Strassio.Corel
                     return;
                 }
 
-                int[] assignment = sequence
+                List<double> shares = parts.Select(p => (double)p.Value).ToList();
+                ColorMixer.OmbreDirection? ombre = OmbreDirectionOf(mixMode);
+                int[] assignment = ombre != null
+                    ? ColorMixer.Ombre(
+                        stones.Select(st => st.Stone.Center).ToList(), stones.Select(st => st.Stone.DiameterMm).ToList(), parts.Count, ombre.Value, Environment.TickCount)
+                    : mixMode == "sequence"
                     ? ColorMixer.Sequence(stones.Count, parts.Select(p => p.Value).ToList())
-                    : ColorMixer.Random(stones.Count, parts.Select(p => (double)p.Value).ToList(), Environment.TickCount);
+                    : mixMode == "random"
+                        ? ColorMixer.Random(stones.Count, shares, Environment.TickCount)
+                        : ColorMixer.Even(
+                            stones.Select(st => st.Stone.Center).ToList(), stones.Select(st => st.Stone.DiameterMm).ToList(), shares, Environment.TickCount);
 
                 for (int c = 0; c < parts.Count; c++)
                 {
@@ -373,6 +417,24 @@ namespace Strassio.Corel
 
                 SetStatus("color.mixed", stones.Count, parts.Count);
             });
+        }
+
+        /// <summary>Омбре (пункт 7 прокачки): цвета 1 → 2 → 3 плавно перетекают в выбранном направлении.</summary>
+        private static ColorMixer.OmbreDirection? OmbreDirectionOf(string mode)
+        {
+            switch (mode)
+            {
+                case "ombreX":
+                    return ColorMixer.OmbreDirection.LeftToRight;
+                case "ombreY":
+                    return ColorMixer.OmbreDirection.TopToBottom;
+                case "ombreCenter":
+                    return ColorMixer.OmbreDirection.CenterOut;
+                case "ombreLine":
+                    return ColorMixer.OmbreDirection.AlongLine;
+                default:
+                    return null;
+            }
         }
 
         // ---- Цвет: палитра документа -----------------------------------------------------------

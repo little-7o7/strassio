@@ -138,6 +138,30 @@ namespace Strassio.Core.Editing
 
         public (Point2D Center, double Radius) this[int index] => items[index];
 
+        /// <summary>Переносит круг на новое место (номер тот же).</summary>
+        public void Move(int index, Point2D center)
+        {
+            Remove(index);
+            items[index] = (center, items[index].Radius);
+            (int, int) key = Key(center);
+            if (!cells.TryGetValue(key, out List<int>? list))
+            {
+                list = new List<int>();
+                cells[key] = list;
+            }
+
+            list.Add(index);
+        }
+
+        /// <summary>Убирает круг из поиска соседей (номер остаётся занят).</summary>
+        public void Remove(int index)
+        {
+            if (cells.TryGetValue(Key(items[index].Center), out List<int>? list))
+            {
+                list.Remove(index);
+            }
+        }
+
         private (int, int) Key(Point2D p) => ((int)Math.Floor(p.X / cell), (int)Math.Floor(p.Y / cell));
     }
 }

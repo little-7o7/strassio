@@ -4,7 +4,9 @@
 # - тег vX.Y.Z: то же + выпуск с установщиком в публичном little-7o7/strassio-releases (код там не лежит).
 #   Тег с дефисом (v1.0.0-beta.1) — пробный выпуск (pre-release).
 #   Заголовок и текст выпуска — из docs/releases/vX.Y.Z.md (первая строка «# …» — заголовок).
-# - вручную: Actions → «Сборка установщика» → Run workflow.
+# - вручную: Actions → «Сборка установщика» → Run workflow. С галочкой «Выпустить» (только на master) — то же,
+#   что тег: тег vX.Y.Z по версии из проекта ставится сам. Так выпуск делается и без git на компьютере
+#   (облачные сессии Claude не могут отправлять теги).
 
 name: Сборка установщика
 
@@ -15,6 +17,11 @@ on:
     # Только сервер или документы — собирать нечего (к тегам эти фильтры не применяются).
     paths-ignore: ['server/**', 'docs/**', '**/*.md', '.claude/**']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Выпустить: тег vX.Y.Z по версии из проекта и выпуск в strassio-releases (только с master)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write # создать выпуск по тегу (запасной путь — в этом же репозитории)
@@ -68,13 +75,21 @@ jobs:
         shell: pwsh
         env:
           REF_TYPE: ${{ github.ref_type }}
+          REF: ${{ github.ref }}
           TAG: ${{ github.ref_name }}
+          RELEASE: ${{ inputs.release }}
         run: |
           $csproj = (Select-Xml -Path src/Strassio.Corel/Strassio.Corel.csproj -XPath '//Version').Node.InnerText.Trim()
           $iss = [regex]::Match((Get-Content installer/Strassio.iss -Raw), '#define AppVersion "([^"]+)"').Groups[1].Value
           if ($csproj -ne $iss) { throw "Версии не совпадают: Strassio.Corel.csproj $csproj, Strassio.iss $iss" }
           if ($env:REF_TYPE -eq 'tag' -and $env:TAG -ne "v$iss") { throw "Тег $env:TAG, а версия в проекте $iss" }
+          if ($env:RELEASE -eq 'true' -and $env:REF -ne 'refs/heads/master') { throw "Выпуск вручную — только с master, а не с $env:REF" }
           "version=$iss" >> $env:GITHUB_OUTPUT
+          if ($env:REF_TYPE -eq 'tag') {
+            "release=true`ntag=$env:TAG" >> $env:GITHUB_OUTPUT
+          } elseif ($env:RELEASE -eq 'true') {
+            "release=true`ntag=v$iss`nnew_tag=true" >> $env:GITHUB_OUTPUT
+          }
 
       - name: Тесты ядра
         run: dotnet test tests/Strassio.Core.Tests -c Release --nologo
@@ -109,16 +124,25 @@ jobs:
           retention-days: 30
 
       - name: Выпуск на GitHub
-        if: github.ref_type == 'tag'
+        if: steps.version.outputs.release == 'true'
         shell: pwsh
         env:
           RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
           OWN_TOKEN: ${{ github.token }}
           OWN_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ steps.version.outputs.tag }}
+          NEW_TAG: ${{ steps.version.outputs.new_tag }}
           VERSION: ${{ steps.version.outputs.version }}
           EXE: ${{ steps.hash.outputs.exe }}
         run: |
+          # Выпуск вручную: тег ставится здесь (тег от GITHUB_TOKEN не запускает сборку второй раз).
+          # Такой тег уже есть — ошибка: версию не выпускают дважды, поднимите номер.
+          if ($env:NEW_TAG -eq 'true') {
+            git tag $env:TAG
+            git push origin "refs/tags/$($env:TAG)"
+            if ($LASTEXITCODE -ne 0) { throw "Не удалось поставить тег $env:TAG (уже есть?)" }
+          }
+
           if ($env:RELEASES_TOKEN) {
             $env:GH_TOKEN = $env:RELEASES_TOKEN; $repo = $env:RELEASES_REPO; $verify = @()
           } else {

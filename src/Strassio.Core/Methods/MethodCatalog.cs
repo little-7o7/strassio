@@ -67,6 +67,21 @@ namespace Strassio.Core.Methods
 
         /// <summary>Добивка щелей мелкими камнями.</summary>
         F12,
+
+        /// <summary>По толщине штриха: один ряд по середине, размер камня следует ширине.</summary>
+        F13,
+
+        /// <summary>Растворение: плотные соты, которые плавно редеют к краю или в сторону.</summary>
+        F14,
+
+        /// <summary>Лучи: линии страз от середины к краю (подсолнух, веер).</summary>
+        F15,
+
+        /// <summary>Штрихи: прерывистые параллельные полоски (икат, «дождь»).</summary>
+        F16,
+
+        /// <summary>Волны: параллельные волнистые линии страз.</summary>
+        F17,
     }
 
     /// <summary>Метод в списке докера: ключ текста, вкладка, нужна ли замкнутая фигура и какие поля показывать.</summary>
@@ -237,6 +252,49 @@ namespace Strassio.Core.Methods
         public static readonly MethodField FillSize = MethodField.SizeChoice(
             "fillSize", allowSame: false, p => p.FillSize, (p, v) => p.FillSize = v, smallest: true);
 
+        public static readonly MethodField FadeGap = MethodField.Number(
+            "fadeGap", FieldKind.Length, 0, 100, p => p.FadeGapMm, (p, v) => p.FadeGapMm = v);
+
+        public static readonly MethodField FadeTo = MethodField.Choice(
+            "fadeTo",
+            new[] { MethodChoices.FadeEdge, MethodChoices.FadeCenter, MethodChoices.FadeRight, MethodChoices.FadeLeft, MethodChoices.FadeUp, MethodChoices.FadeDown },
+            p => p.FadeTo, (p, v) => p.FadeTo = v);
+
+        public static readonly MethodField ThinSize = MethodField.SizeChoice(
+            "thinSize", allowSame: false, p => p.ThinSize, (p, v) => p.ThinSize = v, smallest: true);
+
+        public static readonly MethodField RayGap = MethodField.Number(
+            "rayGap", FieldKind.Length, 0, 20, p => p.RayGapMm, (p, v) => p.RayGapMm = v);
+
+        public static readonly MethodField CenterHole = MethodField.Number(
+            "centerHole", FieldKind.Length, 0, 200, p => p.CenterHoleMm, (p, v) => p.CenterHoleMm = v);
+
+        public static readonly MethodField LineGap = MethodField.Number(
+            "lineGap", FieldKind.Length, 0, 50, p => p.LineGapMm, (p, v) => p.LineGapMm = v);
+
+        public static readonly MethodField StreakAngle = MethodField.Number(
+            "streakAngle", FieldKind.Angle, -360, 360, p => p.StreakAngleDeg, (p, v) => p.StreakAngleDeg = v);
+
+        public static readonly MethodField StreakLength = MethodField.Number(
+            "streakLength", FieldKind.Integer, 1, 500, p => p.StreakLength, (p, v) => p.StreakLength = (int)v);
+
+        public static readonly MethodField StreakBreak = MethodField.Number(
+            "streakBreak", FieldKind.Integer, 1, 100, p => p.StreakBreak, (p, v) => p.StreakBreak = (int)v);
+
+        public static readonly MethodField StreakFade = MethodField.Choice(
+            "streakFade",
+            new[] { MethodChoices.FadeNone, MethodChoices.FadeEdge, MethodChoices.FadeCenter, MethodChoices.FadeRight, MethodChoices.FadeLeft, MethodChoices.FadeUp, MethodChoices.FadeDown },
+            p => p.StreakFade, (p, v) => p.StreakFade = v);
+
+        public static readonly MethodField WaveHeight = MethodField.Number(
+            "waveHeight", FieldKind.Length, 0, 500, p => p.WaveHeightMm, (p, v) => p.WaveHeightMm = v);
+
+        public static readonly MethodField WaveLength = MethodField.Number(
+            "waveLength", FieldKind.Length, 1, 2000, p => p.WaveLengthMm, (p, v) => p.WaveLengthMm = v);
+
+        public static readonly MethodField WaveAngle = MethodField.Number(
+            "waveAngle", FieldKind.Angle, -360, 360, p => p.WaveAngleDeg, (p, v) => p.WaveAngleDeg = v);
+
         public static readonly IReadOnlyList<MethodInfo> All = new[]
         {
             new MethodInfo(MethodKind.L1, isFill: false, needsClosed: false,
@@ -264,6 +322,11 @@ namespace Strassio.Core.Methods
             new MethodInfo(MethodKind.F10, isFill: true, needsClosed: true, Gap, MixSizes, Variant, EdgeMargin),
             new MethodInfo(MethodKind.F11, isFill: true, needsClosed: true, Gap, FromSize, ToSize, GradientDirection, EdgeMargin),
             new MethodInfo(MethodKind.F12, isFill: true, needsClosed: true, Gap, FillSize, EdgeMargin),
+            new MethodInfo(MethodKind.F13, isFill: true, needsClosed: true, Gap, ThinSize, EdgeMargin),
+            new MethodInfo(MethodKind.F14, isFill: true, needsClosed: true, Gap, FadeGap, FadeTo, Variant, EdgeMargin),
+            new MethodInfo(MethodKind.F15, isFill: true, needsClosed: true, Gap, RayGap, CenterHole, EdgeMargin),
+            new MethodInfo(MethodKind.F16, isFill: true, needsClosed: true, Gap, LineGap, StreakAngle, StreakLength, StreakBreak, StreakFade, Variant, EdgeMargin),
+            new MethodInfo(MethodKind.F17, isFill: true, needsClosed: true, Gap, LineGap, WaveHeight, WaveLength, WaveAngle, EdgeMargin),
         };
 
         public static MethodInfo Get(MethodKind kind)

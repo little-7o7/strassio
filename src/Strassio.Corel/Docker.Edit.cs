@@ -42,12 +42,18 @@ namespace Strassio.Corel
             bool edit = MethodTabs.SelectedItem == EditTab;
             bool color = MethodTabs.SelectedItem == ColorTab;
             bool vector = MethodTabs.SelectedItem == VectorTab;
-            bool method = !edit && !color && !vector;
+            bool text = MethodTabs.SelectedItem == TextTab;
+            bool motif = MethodTabs.SelectedItem == MotifTab;
+            bool method = !edit && !color && !vector && !text && !motif;
             VectorPanel.Visibility = vector ? Visibility.Visible : Visibility.Collapsed;
+            TextPanel.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
+            MotifPanel.Visibility = motif ? Visibility.Visible : Visibility.Collapsed;
 
             MethodPanel.Visibility = method ? Visibility.Visible : Visibility.Collapsed;
             CreateRow.Visibility = MethodPanel.Visibility;
             LivePreviewBox.Visibility = MethodPanel.Visibility;
+            AvoidExistingBox.Visibility = MethodPanel.Visibility;
+            ColorFromShapeBox.Visibility = MethodPanel.Visibility;
             EditPanel.Visibility = edit ? Visibility.Visible : Visibility.Collapsed;
             ColorPanel.Visibility = color ? Visibility.Visible : Visibility.Collapsed;
             if (!method)
@@ -70,6 +76,11 @@ namespace Strassio.Corel
             string size = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? "—";
             string colorName = (ColorList.SelectedItem as ColorOption)?.Name ?? "—";
             RecolorButton.Content = Loc.Format("color.recolor", colorName);
+            EdgeRecolorButton.Content = Loc.Format("color.edge", colorName);
+            RebuildMirrorSides();
+            RebuildTextModes();
+            RebuildMonogram();
+            RebuildMotifs();
             SelectSizeButton.Content = Loc.Format("color.selectSize", size);
             SelectColorButton.Content = Loc.Format("color.selectColor", colorName);
             SelectBothButton.Content = Loc.Format("color.selectBoth", size, colorName);

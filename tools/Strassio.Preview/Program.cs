@@ -41,6 +41,78 @@ if (scenario == "site")
     return;
 }
 
+if (scenario == "colors")
+{
+    ColorLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "gaps")
+{
+    GapLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "scatter")
+{
+    ScatterLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "lines")
+{
+    LineLab.Render(FindRepoRoot(), args.Length > 1 ? args[1] : null);
+    return;
+}
+
+if (scenario == "drill")
+{
+    DrillLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "fabric")
+{
+    FabricLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "motif")
+{
+    MotifLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "seam")
+{
+    SeamLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "text")
+{
+    TextLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
+if (scenario == "starter")
+{
+    StarterLab.Render(FindRepoRoot());
+    return;
+}
+
+if (scenario == "monogram")
+{
+    MonogramLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
+if (scenario == "stroke")
+{
+    StrokeLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
 if (scenario == "kant")
 {
     KantLab.Render(FindRepoRoot());

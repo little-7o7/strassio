@@ -117,6 +117,21 @@ public class IntersectionFixerTests
     }
 
     [Fact]
+    public void EveryOtherStoneOverlaps_RowBecomesSparse_NotEmpty()
+    {
+        // Ряд, где каждая страза налезает на следующую (так было на мелком круге): первый проход убирает
+        // каждую вторую, и все оставшиеся — «одиночки». Раньше проход одиночек стирал весь ряд.
+        var row = Enumerable.Range(0, 10)
+            .Select(i => new PlacedStone(new Point2D(i * 1.5, 0), 2.4, false, rowId: 0))
+            .ToList();
+
+        List<PlacedStone> result = IntersectionFixer.RemoveOverlaps(row);
+
+        Assert.Equal(5, result.Count);
+        Assert.False(HasAnyOverlap(result));
+    }
+
+    [Fact]
     public void RingStar_ThreeRows_NoOverlapsAnywhereAfterFix()
     {
         // Тот самый сценарий из Preview (ring-star), где автор заметил наложение рядов у острых
@@ -154,17 +169,16 @@ public class IntersectionFixerTests
         };
 
         var beforeFix = RingScatterer.Scatter(star, rows);
-        Assert.True(HasAnyOverlap(beforeFix), "Сценарий должен воспроизводить исходную проблему — иначе тест ничего не проверяет.");
+
+        // Раньше смещённые ряды у внутренних углов звезды делали петли и налезали друг на друга — их
+        // убирала только проверка наложений. Теперь петли вырезаются при смещении, и ряды чистые сразу.
+        Assert.False(HasAnyOverlap(beforeFix), "Смещённые ряды не должны налезать друг на друга.");
+        Assert.True(beforeFix.Count > 150, $"страз {beforeFix.Count}");
 
         var afterFix = IntersectionFixer.RemoveOverlaps(beforeFix);
 
         Assert.False(HasAnyOverlap(afterFix), "После исправления пересечений наложений быть не должно.");
-        // У этой звезды угол в острие ~37°, три ряда с шагом 3,4 мм — три ряда физически не
-        // помещаются различимо у самых острых концов, так что заметная доля страз там неизбежно
-        // убирается (проверено визуально на Preview — выглядит чисто). Проверяем только, что вообще
-        // что-то осталось и хоть что-то убралось, без произвольного точного порога.
-        Assert.True(afterFix.Count < beforeFix.Count, "Часть страз должна была быть убрана.");
-        Assert.True(afterFix.Count > beforeFix.Count / 2, "Убрано подозрительно много страз — больше половины.");
+        Assert.Equal(beforeFix.Count, afterFix.Count);
     }
 
     [Fact]

@@ -14,7 +14,7 @@
 ; Сборка: installer\build-installer.ps1  (или ISCC.exe installer\Strassio.iss)
 
 #define AppName "Strassio"
-#define AppVersion "0.9.0"
+#define AppVersion "0.9.1"
 #define AppPublisher "Strassio"
 #define BuildConfig "Release"
 #define BuildDir "..\src\Strassio.Corel\bin\" + BuildConfig + "\net48"
@@ -162,12 +162,14 @@ begin
   end;
 end;
 
+{ SuppressibleMsgBox с ответом IDCANCEL: при /SUPPRESSMSGBOXES окна нет, и обычный MsgBox
+  отвечал бы «Повторить» без конца — установщик зависал бы, пока открыт CorelDRAW. }
 function WaitUntilCorelClosed: Boolean;
 begin
   Result := True;
   while IsCorelRunning do
   begin
-    if MsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL) = IDCANCEL then
+    if SuppressibleMsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL, IDCANCEL) = IDCANCEL then
     begin
       Result := False;
       Exit;
@@ -286,9 +288,26 @@ begin
   Result := WaitUntilCorelClosed;
 end;
 
-procedure InitializeWizard;
+{ Версии CorelDRAW, куда Strassio поставили в прошлый раз (пусто — первая установка). }
+function PreviousTargets: TStringList;
 var
   I: Integer;
+  Count: Cardinal;
+  Dir: string;
+begin
+  Result := TStringList.Create;
+  if not RegQueryDWordValue(HKLM, 'Software\Strassio', 'TargetCount', Count) then
+    Exit;
+
+  for I := 0 to Integer(Count) - 1 do
+    if RegQueryStringValue(HKLM, 'Software\Strassio', 'Target' + IntToStr(I), Dir) then
+      Result.Add(Dir);
+end;
+
+procedure InitializeWizard;
+var
+  I, Matched: Integer;
+  Previous: TStringList;
 begin
   FindCorelInstallations;
 
@@ -304,6 +323,22 @@ begin
   begin
     CorelPage.Add(CorelTitles[I]);
     CorelPage.Values[I] := True;
+  end;
+
+  { Обновление (и автообновление из плагина, где мастер не показывается) ставит в те же версии,
+    что и в прошлый раз. Ни одна прошлая не нашлась — отмечены все, как при первой установке. }
+  Previous := PreviousTargets;
+  try
+    Matched := 0;
+    for I := 0 to CorelAddonDirs.Count - 1 do
+      if Previous.IndexOf(CorelAddonDirs[I]) >= 0 then
+        Matched := Matched + 1;
+
+    if Matched > 0 then
+      for I := 0 to CorelAddonDirs.Count - 1 do
+        CorelPage.Values[I] := Previous.IndexOf(CorelAddonDirs[I]) >= 0;
+  finally
+    Previous.Free;
   end;
 
   if CorelTitles.Count = 0 then
@@ -459,7 +494,7 @@ begin
   if CurUninstallStep = usUninstall then
   begin
     while IsCorelRunning do
-      if MsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL) = IDCANCEL then
+      if SuppressibleMsgBox(CustomMessage('CorelIsRunning'), mbError, MB_RETRYCANCEL, IDCANCEL) = IDCANCEL then
         Abort;
 
     { Переустановка не должна стоить мастеру его таблицы камней и повторной активации.

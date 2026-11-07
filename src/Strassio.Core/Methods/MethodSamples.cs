@@ -103,6 +103,19 @@ namespace Strassio.Core.Methods
                     return new MethodSample(Circle(11), 2.4, new MethodParameters { GapMm = 0.5, FromSize = "l", ToSize = "m" });
                 case MethodKind.F12:
                     return new MethodSample(Circle(11), 3.4, new MethodParameters { GapMm = 0.4, FillSize = "s" });
+                case MethodKind.F13:
+                    return new MethodSample(BrushStroke(), 3.4, new MethodParameters { GapMm = 0.4, ThinSize = "s" });
+                case MethodKind.F14:
+                    return new MethodSample(Circle(11), 2.4, new MethodParameters { GapMm = 0.4, FadeGapMm = 3, FadeTo = MethodChoices.FadeRight });
+                case MethodKind.F15:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters { GapMm = 0.3, RayGapMm = 1.0, CenterHoleMm = 2.5 });
+                case MethodKind.F16:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters
+                    {
+                        GapMm = 0.3, LineGapMm = 0.9, StreakLength = 6, StreakBreak = 2, StreakFade = MethodChoices.FadeDown, Variant = 2,
+                    });
+                case MethodKind.F17:
+                    return new MethodSample(Circle(11), 2.0, new MethodParameters { GapMm = 0.3, LineGapMm = 0.5, WaveHeightMm = 2, WaveLengthMm = 11 });
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
             }
@@ -144,6 +157,27 @@ namespace Strassio.Core.Methods
             }
 
             return Curve.FromPolyline(points, isClosed: true);
+        }
+
+        /// <summary>Мазок кистью по дуге: тонкие кончики, толстая середина — для «по толщине штриха».</summary>
+        private static Curve BrushStroke()
+        {
+            const int n = 40;
+            var left = new List<Point2D>();
+            var right = new List<Point2D>();
+            for (int i = 0; i <= n; i++)
+            {
+                double t = (double)i / n;
+                double a = Math.PI * (1.15 - 0.8 * t);
+                var center = new Point2D(12 + 11 * Math.Cos(a), 2 + 15 * Math.Sin(a));
+                var normal = new Point2D(Math.Cos(a), Math.Sin(a));
+                double half = 0.5 + 2.6 * Math.Sin(Math.PI * t);
+                left.Add(center + normal * half);
+                right.Add(center - normal * half);
+            }
+
+            right.Reverse();
+            return Curve.FromPolyline(left.Concat(right.Skip(1).Take(right.Count - 2)).ToList(), isClosed: true);
         }
 
         /// <summary>Зигзаг с острыми углами — для «акцентов» в углах.</summary>

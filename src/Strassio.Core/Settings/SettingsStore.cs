@@ -46,7 +46,41 @@ namespace Strassio.Core.Settings
         /// <summary>Папка пресетов (раздел 12): presets\*.json.</summary>
         public string PresetsDirectory => Path.Combine(Directory, "presets");
 
+        /// <summary>Станок и свёрла для G-code (раздел 11.1) — отдельным файлом, чтобы переносить его с машины на машину.</summary>
+        public string DrillPath => Path.Combine(Directory, "drill.json");
+
         public PluginSettings LoadSettings() => Load<PluginSettings>(SettingsPath) ?? new PluginSettings();
+
+        /// <summary>Профили станков. Старый drill.json (один профиль) читается как единственный профиль.</summary>
+        public Cnc.DrillConfig LoadDrill()
+        {
+            if (!File.Exists(DrillPath))
+            {
+                return new Cnc.DrillConfig();
+            }
+
+            try
+            {
+                Cnc.DrillConfig config = Cnc.DrillConfig.FromJson(File.ReadAllText(DrillPath, Encoding.UTF8));
+                if (config.Profiles.Count > 0)
+                {
+                    return config;
+                }
+            }
+            catch (Exception)
+            {
+                // Ниже: испорченный файл откладывается в сторону, как у остальных настроек.
+            }
+
+            File.Move(DrillPath, DrillPath + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            return new Cnc.DrillConfig();
+        }
+
+        public void SaveDrill(Cnc.DrillConfig config)
+        {
+            config.Profile();
+            Save(DrillPath, config);
+        }
 
         public void SaveSettings(PluginSettings settings) => Save(SettingsPath, settings);
 

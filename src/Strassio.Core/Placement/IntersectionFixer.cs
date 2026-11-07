@@ -155,6 +155,7 @@ namespace Strassio.Core.Placement
                 .Select(g => g.ToArray())
                 .ToArray();
 
+            var before = (bool[])removed.Clone();
             bool changed = true;
             while (changed)
             {
@@ -187,6 +188,22 @@ namespace Strassio.Core.Placement
                             removed[idx] = true;
                             changed = true;
                         }
+                    }
+                }
+            }
+
+            // Если первый проход убрал каждую вторую стразу по всему ряду (тугой изгиб, мелкий круг), то
+            // «одиночки» — весь ряд, и он исчезал целиком. Ровный редкий ряд лучше пустого места: если
+            // одиночек больше половины уцелевших, ряд оставляем как после первого прохода.
+            foreach (int[] row in rows)
+            {
+                int survived = row.Count(i => !before[i]);
+                int lonely = row.Count(i => !before[i] && removed[i]);
+                if (lonely > 0 && lonely * 2 > survived)
+                {
+                    foreach (int i in row)
+                    {
+                        removed[i] = before[i];
                     }
                 }
             }
