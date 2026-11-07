@@ -10,6 +10,7 @@ using Strassio.Core.Geometry;
 using Strassio.Core.Methods;
 using Strassio.Core.Motifs;
 using Strassio.Core.Placement;
+using Strassio.Core.Stones;
 
 namespace Strassio.Preview
 {
@@ -33,15 +34,36 @@ namespace Strassio.Preview
             heart.AddRange(Stones(MethodKind.L1, outline, 2.9, new MethodParameters { GapMm = 0.4 }).Select(s => new DrillHole(s.Center, s.DiameterMm, "ss10", "Кристалл")));
             heart.AddRange(Stones(MethodKind.F2, Heart(1.38), 2.4, new MethodParameters { GapMm = 0.35 }).Select(s => new DrillHole(s.Center, s.DiameterMm, "ss6", "Розовый")));
             heart.AddRange(Stones(MethodKind.L1, Circle(0, 2, 40), 4.0, new MethodParameters { GapMm = 1.2 }).Select(s => new DrillHole(s.Center, s.DiameterMm, "ss16", "Кристалл")));
-            var settings = new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } };
-            Scenario(dir, "heart", heart, settings);
+            DrillRack rack = DrillRack.Of(2.4, 3.0, 4.0);
+            Scenario(dir, "heart", heart, new DrillSettings(), rack);
 
             // 1б. Ноль в левом верхнем углу доски 160 × 120 мм (страница), рисунок сдвинут вправо-вниз.
             var page = new DrillBoard(new Point2D(-60, -70), 160, 120);
-            Scenario(dir, "heart-board", heart, new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 }, Origin = DrillOrigin.Board, Home = BoardCorner.UpperLeft }, page);
+            Scenario(dir, "heart-board", heart, new DrillSettings { Origin = DrillOrigin.Board, Home = BoardCorner.UpperLeft }, rack, page);
 
             // 2. Тот же дизайн, но шаблон на каждый цвет и G81 — для проверки вариантов.
-            Scenario(dir, "heart-colors", heart, new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 }, SplitByColor = true, CannedCycle = true });
+            Scenario(dir, "heart-colors", heart, new DrillSettings { SplitByColor = true, CannedCycle = true }, rack);
+
+            // 2б. Каталог автора: ss6 (2,4) — фрезой 2,2 с дофрезеровкой по кругу, ss10 — 2,8, ss16 — 4.
+            // Две копии на доске 240 × 120 мм, метки совмещения в 10 мм от рисунка, змейкой.
+            var catalog = new StoneTable();
+            catalog.Sets.Add(new StoneSet { Name = "Основной", Sizes = { new StoneSize { Name = "ss6", DiameterMm = 2.4, DrillMm = 2.2 } } });
+            catalog.Drills.Add(new DrillTool { DiameterMm = 2.2, Name = "фреза", Rpm = 20000 });
+            catalog.Drills.Add(new DrillTool { DiameterMm = 2.8 });
+            catalog.Drills.Add(new DrillTool { DiameterMm = 4.0, Tool = 7, Feed = 300 });
+            var board = new DrillBoard(new Point2D(-60, -60), 240, 120);
+            Scenario(dir, "heart-catalog", heart, new DrillSettings
+            {
+                Origin = DrillOrigin.Board, Home = BoardCorner.LowerLeft, Marks = true, MarksOffsetMm = 10, RepeatX = 2, RepeatGapMm = 6,
+                PathStyle = DrillPathStyle.Snake,
+            }, DrillRack.Of(catalog, null), board);
+
+            // 2в. Порядок обхода: одно сверло, заливка сердца — шесть способов.
+            List<DrillHole> fill = heart.Where(h => h.Size == "ss6").ToList();
+            foreach (DrillPathStyle style in Enum.GetValues(typeof(DrillPathStyle)))
+            {
+                Scenario(dir, "path-" + style.ToString().ToLowerInvariant(), fill, new DrillSettings { PathStyle = style }, rack);
+            }
 
             // 3. Лист трафарета без шва 300 × 400 мм из плитки подсолнухов — тысячи отверстий.
             List<(PlacedStone Stone, string Rgb)> tile = FabricLab.SunflowerTile();
@@ -54,30 +76,31 @@ namespace Strassio.Preview
                 double d = tile[p.Source].Stone.DiameterMm;
                 return new DrillHole(p.Center, d, d < 1.5 ? "ss3" : "ss4", "Золото");
             }).ToList();
-            Scenario(dir, "sheet", sheetHoles, new DrillSettings { DrillsMm = new List<double> { 1.4, 1.6 }, DepthMm = 1.2 });
+            Scenario(dir, "sheet", sheetHoles, new DrillSettings { DepthMm = 1.2 }, DrillRack.Of(1.4, 1.6));
 
             Console.WriteLine($"SVG и .tap сохранены: {dir}");
         }
 
-        private static void Scenario(string dir, string name, List<DrillHole> holes, DrillSettings settings, DrillBoard? page = null)
+        private static void Scenario(string dir, string name, List<DrillHole> holes, DrillSettings settings, DrillRack rack, DrillBoard? page = null)
         {
             var clock = Stopwatch.StartNew();
-            DrillPlan plan = DrillPlanner.Plan(holes, settings, page: page);
+            DrillPlan plan = DrillPlanner.Plan(holes, settings, rack, page: page);
             long ms = clock.ElapsedMilliseconds;
-            DrillPlan plain = DrillPlanner.Plan(holes, settings, optimize: false, page: page);
+            DrillPlan plain = DrillPlanner.Plan(holes, settings, rack, optimize: false, page: page);
             IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, settings, name);
 
             var runs = new List<(GCodeFile File, GCodeRun Run)>();
             foreach (GCodeFile file in files)
             {
                 File.WriteAllText(Path.Combine(dir, file.Name), file.Text);
-                runs.Add((file, GCodeCheck.Run(file.Text)));
+                runs.Add((file, GCodeCheck.Run(file.Text, file.MillLimitMm)));
             }
 
             double travel = plan.Jobs.Sum(j => j.TravelMm), travelPlain = plain.Jobs.Sum(j => j.TravelMm);
             Console.WriteLine($"{name,-13} {plan.Holes,6} отв., {plan.Jobs.Count} свёрл, {files.Count} файлов, план {ms} мс; " +
                 $"путь {travel / 1000:0.00} м (без улучшения {travelPlain / 1000:0.00} м, −{100 * (1 - travel / Math.Max(travelPlain, 1e-9)):0}%), " +
-                $"≈ {plan.Seconds / 60:0} мин, повторов {plan.Duplicates}, за доской {plan.OutsideBoard}");
+                $"≈ {plan.Seconds / 60:0} мин, повторов {plan.Duplicates}, за доской {plan.OutsideBoard}, " +
+                $"фрезеровка {plan.Milled}, метки {plan.MarkHoles}, тонких перемычек {plan.Bridges.Count}");
             foreach ((GCodeFile file, GCodeRun run) in runs)
             {
                 string problems = run.Problems.Count == 0 ? "проверка: ок" : "ПРОБЛЕМЫ: " + string.Join("; ", run.Problems.Take(3));
@@ -130,12 +153,24 @@ namespace Strassio.Preview
                     sb.Append($"<path d=\"{path}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{Math.Max(0.6, k * 0.12).ToString("0.##", ci)}\" stroke-opacity=\"0.75\"/>");
                     for (int i = 0; i < job.Points.Count; i++)
                     {
+                        // Отверстие таким, каким его вырежет станок: сверло плюс круг дофрезеровки из файла.
                         Point2D at = run.Holes[offset + i].At;
-                        sb.Append($"<circle cx=\"{X(at.X)}\" cy=\"{Y(at.Y)}\" r=\"{(job.DrillMm / 2 * k).ToString("0.##", ci)}\" fill=\"{color}\" fill-opacity=\"0.35\" stroke=\"{color}\" stroke-width=\"0.6\"/>");
+                        double r = job.DrillMm / 2 + run.Holes[offset + i].MillMm;
+                        sb.Append($"<circle cx=\"{X(at.X)}\" cy=\"{Y(at.Y)}\" r=\"{(r * k).ToString("0.##", ci)}\" fill=\"{color}\" fill-opacity=\"0.35\" stroke=\"{color}\" stroke-width=\"0.6\"/>");
+                    }
+
+                    foreach (Point2D m in job.Marks)
+                    {
+                        sb.Append($"<circle cx=\"{X(m.X)}\" cy=\"{Y(m.Y)}\" r=\"{(job.DrillMm * 1.6 * k).ToString("0.##", ci)}\" fill=\"none\" stroke=\"#212121\" stroke-width=\"1.5\"/>");
                     }
 
                     offset += job.Points.Count;
                 }
+            }
+
+            foreach (Point2D b in plan.Bridges.Spots)
+            {
+                sb.Append($"<circle cx=\"{X(b.X)}\" cy=\"{Y(b.Y)}\" r=\"3\" fill=\"#D50000\"/>");
             }
 
             // Ноль станка.

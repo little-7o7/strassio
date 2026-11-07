@@ -9,6 +9,7 @@ using System.Windows;
 using Corel.Interop.VGCore;
 using Strassio.Core.Cnc;
 using Strassio.Core.Geometry;
+using Strassio.Core.Stones;
 using CoreCurve = Strassio.Core.Geometry.Curve;
 
 namespace Strassio.Corel
@@ -48,10 +49,25 @@ namespace Strassio.Corel
                 return;
             }
 
-            DrillSettings settings = LoadDrillSettings();
-            var window = new DrillWindow(app, holes, settings, fromSelection, name, folder, page);
+            DrillConfig.DefaultName = Loc["drill.profile.default"];
+            DrillConfig config = LoadDrillConfig();
+            string setName = context.Settings.ActiveSet;
+
+            // Свёрла из окна сверления до каталога — один раз переносятся в каталог страз и свёрл.
+            StoneTable catalog = StoneTableRules.Clone(context.Stones);
+            if (DrillCatalog.ImportLegacy(catalog, config.Profile(), setName))
+            {
+                context.ReplaceStones(StoneTableRules.Clone(catalog));
+                SaveDrillConfig(config);
+            }
+
+            var window = new DrillWindow(app, holes, config, catalog, setName, fromSelection, name, folder, page, OpenCatalog);
             window.ShowDialog();
-            SaveDrillSettings(window.Settings);
+            SaveDrillConfig(window.Config);
+            if (window.CatalogChanged)
+            {
+                context.ReplaceStones(StoneTableRules.Clone(window.Catalog));
+            }
 
             if (window.Result == DrillWindowResult.Saved)
             {
@@ -63,7 +79,17 @@ namespace Strassio.Corel
             }
         }
 
-        private DrillSettings LoadDrillSettings()
+        /// <summary>
+        /// Каталог страз и свёрл поверх окна сверления (на вкладке «Свёрла»): правит то, что в окне сверления
+        /// сейчас, и по «ОК» сохраняет. Возвращает сохранённый каталог или null (отмена).
+        /// </summary>
+        private StoneTable? OpenCatalog(System.Windows.Window owner, StoneTable current)
+        {
+            var window = new StonesWindow(app, null, drillsTab: true, source: current, owner: owner);
+            return window.ShowDialog() == true ? StoneTableRules.Clone(context.Stones) : null;
+        }
+
+        private DrillConfig LoadDrillConfig()
         {
             try
             {
@@ -71,15 +97,15 @@ namespace Strassio.Corel
             }
             catch (Exception)
             {
-                return new DrillSettings();
+                return new DrillConfig();
             }
         }
 
-        private void SaveDrillSettings(DrillSettings settings)
+        private void SaveDrillConfig(DrillConfig config)
         {
             try
             {
-                context.Store.SaveDrill(settings);
+                context.Store.SaveDrill(config);
             }
             catch (Exception)
             {
@@ -147,6 +173,18 @@ namespace Strassio.Corel
             if (settings.FileMode == DrillFileMode.FilePerDrill && files.Count > 1)
             {
                 text.Append("\n\n").Append(Loc["drill.report.order"]);
+            }
+
+            int marks = files.Sum(f => f.Jobs.Sum(j => j.Marks.Count));
+            if (marks > 0)
+            {
+                text.Append("\n\n").Append(Loc.Format("drill.report.marks", marks));
+            }
+
+            int milled = files.Sum(f => f.Jobs.Sum(j => j.Milled));
+            if (milled > 0)
+            {
+                text.Append("\n\n").Append(Loc.Format("drill.report.milled", milled.ToString("N0", culture)));
             }
 
             MessageBox.Show(text.ToString(), Loc["drill.title"], MessageBoxButton.OK, MessageBoxImage.Information);
