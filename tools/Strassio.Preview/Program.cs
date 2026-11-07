@@ -89,6 +89,12 @@ if (scenario == "text")
     return;
 }
 
+if (scenario == "monogram")
+{
+    MonogramLab.Render(FindRepoRoot(), args.Skip(1).ToList());
+    return;
+}
+
 if (scenario == "stroke")
 {
     StrokeLab.Render(FindRepoRoot(), args.Skip(1).ToList());
