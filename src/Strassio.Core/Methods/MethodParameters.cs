@@ -162,6 +162,58 @@ namespace Strassio.Core.Methods
         [DataMember(Name = "fillSize")]
         public string FillSize { get; set; } = string.Empty;
 
+        /// <summary>F13: самый мелкий камень для тонких мест штриха (крупный — основной камень).</summary>
+        [DataMember(Name = "thinSize")]
+        public string ThinSize { get; set; } = string.Empty;
+
+        /// <summary>F14: просвет между камнями там, где заливка растворилась сильнее всего, мм.</summary>
+        [DataMember(Name = "fadeGap")]
+        public double FadeGapMm { get; set; } = 3;
+
+        /// <summary>F14: куда камни редеют — к краю, к середине, вправо, влево, вверх, вниз.</summary>
+        [DataMember(Name = "fadeTo")]
+        public string FadeTo { get; set; } = MethodChoices.FadeEdge;
+
+        /// <summary>F15: просвет между соседними лучами (край в край), мм. Больше — лучи видны отдельными линиями.</summary>
+        [DataMember(Name = "rayGap")]
+        public double RayGapMm { get; set; } = 1.2;
+
+        /// <summary>F15: радиус пустой середины, мм (0 — в середине одна страза).</summary>
+        [DataMember(Name = "centerHole")]
+        public double CenterHoleMm { get; set; } = 3;
+
+        /// <summary>F16: просвет между соседними линиями штрихов (край в край), мм.</summary>
+        [DataMember(Name = "lineGap")]
+        public double LineGapMm { get; set; } = 0.8;
+
+        /// <summary>F16: направление штрихов, градусы (90 — сверху вниз).</summary>
+        [DataMember(Name = "streakAngle")]
+        public double StreakAngleDeg { get; set; } = 90;
+
+        /// <summary>F16: самый длинный штрих, страз.</summary>
+        [DataMember(Name = "streakLength")]
+        public int StreakLength { get; set; } = 8;
+
+        /// <summary>F16: самый длинный разрыв между штрихами, пустых мест.</summary>
+        [DataMember(Name = "streakBreak")]
+        public int StreakBreak { get; set; } = 3;
+
+        /// <summary>F16: куда штрихи редеют (none — ровно везде).</summary>
+        [DataMember(Name = "streakFade")]
+        public string StreakFade { get; set; } = MethodChoices.FadeNone;
+
+        /// <summary>F17: высота волны — от середины до гребня, мм.</summary>
+        [DataMember(Name = "waveHeight")]
+        public double WaveHeightMm { get; set; } = 3;
+
+        /// <summary>F17: длина волны — от гребня до гребня, мм.</summary>
+        [DataMember(Name = "waveLength")]
+        public double WaveLengthMm { get; set; } = 20;
+
+        /// <summary>F17: направление волн, градусы (0 — слева направо).</summary>
+        [DataMember(Name = "waveAngle")]
+        public double WaveAngleDeg { get; set; }
+
         public MethodParameters Clone() => (MethodParameters)MemberwiseClone();
 
         [OnDeserializing]
@@ -204,6 +256,19 @@ namespace Strassio.Core.Methods
             MixSizes = string.Empty;
             GradientDirection = MethodChoices.GradientCenter;
             FillSize = string.Empty;
+            ThinSize = string.Empty;
+            FadeGapMm = 3;
+            FadeTo = MethodChoices.FadeEdge;
+            RayGapMm = 1.2;
+            CenterHoleMm = 3;
+            LineGapMm = 0.8;
+            StreakAngleDeg = 90;
+            StreakLength = 8;
+            StreakBreak = 3;
+            StreakFade = MethodChoices.FadeNone;
+            WaveHeightMm = 3;
+            WaveLengthMm = 20;
+            WaveAngleDeg = 0;
         }
     }
 
@@ -249,6 +314,14 @@ namespace Strassio.Core.Methods
 
         public const string GradientCenter = "center";
         public const string GradientHorizontal = "horizontal";
+
+        public const string FadeNone = "none";
+        public const string FadeEdge = "edge";
+        public const string FadeCenter = "center";
+        public const string FadeRight = "right";
+        public const string FadeLeft = "left";
+        public const string FadeUp = "up";
+        public const string FadeDown = "down";
 
         /// <summary>Для поля «размер»: как у основного камня.</summary>
         public const string SameSize = "";

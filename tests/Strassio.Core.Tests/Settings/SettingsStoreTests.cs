@@ -45,7 +45,7 @@ public class SettingsStoreTests : IDisposable
         {
             Language = "en", Units = LengthUnit.Inch, Theme = ThemeMode.Dark, Layout = DockerLayout.Horizontal,
             Decimals = 3, DefaultSize = "ss10", DefaultColor = "Золото", Outline = OutlineStyle.Width, OutlineWidthMm = 0.05,
-            CheckUpdates = false,
+            CheckUpdates = false, Compact = true,
         };
 
         store.SaveSettings(s);
@@ -61,6 +61,7 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(OutlineStyle.Width, back.Outline);
         Assert.Equal(0.05, back.OutlineWidthMm);
         Assert.False(back.CheckUpdates);
+        Assert.True(back.Compact);
     }
 
     [Fact]
@@ -75,6 +76,21 @@ public class SettingsStoreTests : IDisposable
         Assert.Equal(2, s.Decimals);
         Assert.Equal(LengthUnit.Millimeter, s.Units);
         Assert.True(s.CheckUpdates);
+        Assert.True(s.AvoidExisting);    // «не налезать на готовые стразы» — включено, пока не выключат
+        Assert.False(s.ColorFromShape);
+        Assert.False(s.Compact);         // компактный режим — только если включить кнопкой
+    }
+
+    [Fact]
+    public void DesignSwitches_SaveThenLoad()
+    {
+        var store = new SettingsStore(dir);
+        store.SaveSettings(new PluginSettings { AvoidExisting = false, ColorFromShape = true });
+
+        PluginSettings back = new SettingsStore(dir).LoadSettings();
+
+        Assert.False(back.AvoidExisting);
+        Assert.True(back.ColorFromShape);
     }
 
     [Fact]

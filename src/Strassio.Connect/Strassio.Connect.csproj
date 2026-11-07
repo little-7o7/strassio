@@ -16,4 +16,9 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Ход автообновления — общий с плагином (Strassio.Licensing), но без ссылки на всю сборку лицензии. -->
+    <Compile Include="..\Strassio.Licensing\AutoUpdate.cs" Link="AutoUpdate.cs" />
+  </ItemGroup>
+
 </Project>

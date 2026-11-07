@@ -136,6 +136,26 @@ namespace Strassio.Core.Methods
                     double small = Diameter(p.FillSize, d * 0.6, sizes);
                     return Plain(AdvancedFillers.FillGaps(contours, d, Math.Min(small, d), p.GapMm, p.EdgeMarginMm));
 
+                case MethodKind.F13:
+                    // От мелкого камня до основного через все размеры таблицы между ними.
+                    double thin = Diameter(p.ThinSize, sizes != null && sizes.Count > 0 ? Math.Min(d, sizes.Values.Min()) : d, sizes);
+                    return Plain(StrokeRow.Place(contours, SizeRange(thin, d, sizes), p.GapMm, p.EdgeMarginMm));
+
+                case MethodKind.F14:
+                    return Plain(Scatter.Dissolve(contours, d, p.GapMm, Math.Max(p.GapMm, p.FadeGapMm), FadeOf(p.FadeTo), p.EdgeMarginMm, p.Variant));
+
+                case MethodKind.F15:
+                    return Plain(PatternFills.Rays(contours, d, p.GapMm, p.RayGapMm, p.CenterHoleMm, p.EdgeMarginMm));
+
+                case MethodKind.F16:
+                    return Plain(PatternFills.Streaks(
+                        contours, d, p.GapMm, p.LineGapMm, p.StreakAngleDeg, p.StreakLength, p.StreakBreak,
+                        p.StreakFade == MethodChoices.FadeNone ? (FadeDirection?)null : FadeOf(p.StreakFade), p.Variant, p.EdgeMarginMm));
+
+                case MethodKind.F17:
+                    return Plain(PatternFills.Waves(
+                        contours, d, p.GapMm, p.LineGapMm, p.WaveHeightMm, p.WaveLengthMm, p.WaveAngleDeg, p.EdgeMarginMm));
+
                 case MethodKind.F3:
                 case MethodKind.F4:
                 case MethodKind.F5:
@@ -147,11 +167,11 @@ namespace Strassio.Core.Methods
                             contours, d, p.GapMm, p.EdgeMarginMm, kind == MethodKind.F3 ? 1 : Math.Max(1, p.Rings));
                         if (along != null)
                         {
-                            return Plain(along);
+                            return Plain(Seam(kind, along, contours, p));
                         }
                     }
 
-                    return Plain(ContourFiller.Fill(contours, new ContourFillOptions
+                    return Plain(Seam(kind, ContourFiller.Fill(contours, new ContourFillOptions
                     {
                         StoneDiameterMm = d,
                         GapMm = p.GapMm,
@@ -159,10 +179,30 @@ namespace Strassio.Core.Methods
                         MaxRings = kind == MethodKind.F3 ? (int?)null : p.Rings,
                         FillCenter = kind != MethodKind.F5,
                         CenterPattern = p.CenterPattern == MethodChoices.PatternSquare ? GridPattern.Square : GridPattern.Honeycomb,
-                    }));
+                    }), contours, p));
 
                 default:
                     throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+            }
+        }
+
+        /// <summary>Выбор «куда редеть» из настроек (F14, F16) — направление растворения.</summary>
+        private static FadeDirection FadeOf(string value)
+        {
+            switch (value)
+            {
+                case MethodChoices.FadeCenter:
+                    return FadeDirection.Center;
+                case MethodChoices.FadeRight:
+                    return FadeDirection.Right;
+                case MethodChoices.FadeLeft:
+                    return FadeDirection.Left;
+                case MethodChoices.FadeUp:
+                    return FadeDirection.Up;
+                case MethodChoices.FadeDown:
+                    return FadeDirection.Down;
+                default:
+                    return FadeDirection.Edge;
             }
         }
 
@@ -180,6 +220,22 @@ namespace Strassio.Core.Methods
             }
 
             return AdvancedFillers.AddMissingStones(stones, contours, stones[0].DiameterMm, p.GapMm, p.EdgeMarginMm);
+        }
+
+        /// <summary>
+        /// Шов контурной заливки (F3, F4): где середина упирается в крайние кольца или кольца сходятся
+        /// посередине, камни раздвигаются, чтобы цепочка дырок разошлась мелкими просветами
+        /// (<see cref="SeamSmoother"/>). Крайние ряды по контуру не двигаются. У «Канта» (F5) середины нет.
+        /// Квадратная сетка в середине — тоже без сглаживания: раздвигание превратило бы её в соты.
+        /// </summary>
+        private static List<PlacedStone> Seam(MethodKind kind, List<PlacedStone> stones, IReadOnlyList<Curve> contours, MethodParameters p)
+        {
+            if (kind == MethodKind.F5 || p.CenterPattern == MethodChoices.PatternSquare)
+            {
+                return stones;
+            }
+
+            return SeamSmoother.Smooth(stones, contours, p.GapMm, p.EdgeMarginMm, kind == MethodKind.F3 ? 1 : Math.Max(1, p.Rings));
         }
 
         /// <summary>

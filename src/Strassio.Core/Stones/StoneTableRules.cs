@@ -65,6 +65,11 @@ namespace Strassio.Core.Stones
                     problems.Add(new StoneProblem("stones.error.diameter", sizeName));
                 }
 
+                if (double.IsNaN(size.DrillMm) || size.DrillMm < 0 || size.DrillMm > Cnc.DrillCatalog.MaxDrillMm)
+                {
+                    problems.Add(new StoneProblem("stones.error.drill", sizeName));
+                }
+
                 if (size.Colors.Count == 0)
                 {
                     problems.Add(new StoneProblem("stones.error.noColors", sizeName));
@@ -116,6 +121,7 @@ namespace Strassio.Core.Stones
                 problems.AddRange(Validate(set));
             }
 
+            problems.AddRange(Cnc.DrillCatalog.Validate(table.Drills));
             return problems;
         }
 
@@ -134,6 +140,7 @@ namespace Strassio.Core.Stones
                 {
                     Name = size.Name,
                     DiameterMm = size.DiameterMm,
+                    DrillMm = size.DrillMm,
                     Colors = size.Colors.Select(c => new StoneColor { Name = c.Name, Rgb = c.Rgb }).ToList(),
                 }).ToList();
             }

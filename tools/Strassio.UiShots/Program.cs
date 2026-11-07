@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -6,7 +7,10 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Strassio.Core.Cnc;
+using Strassio.Core.Geometry;
 using Strassio.Core.Settings;
+using Strassio.Core.Stones;
 
 namespace Strassio.UiShots
 {
@@ -52,9 +56,11 @@ namespace Strassio.UiShots
                     SnapDocker(outDir, "docker-edit" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 2);
                     SnapDocker(outDir, "docker-color" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 3);
                     SnapDocker(outDir, "docker-vector" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 4);
-                    SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6"));
+                    SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6", false, SampleCatalog(), null));
+                    SnapWindow(outDir, "catalog-drills" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6", true, SampleCatalog(), null));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
                     SnapWindow(outDir, "license" + theme, Make("Strassio.Corel.LicenseWindow", new object?[] { null }));
+                    SnapWindow(outDir, "drill" + theme, Make("Strassio.Corel.DrillWindow", null, DrillSample(), DrillProfiles(), SampleCatalog(), "Main", false, "rose", string.Empty, new DrillBoard(Point2D.Zero, 600, 400), null));
                 }
 
                 Console.WriteLine("Снимки: " + outDir);
@@ -93,6 +99,62 @@ namespace Strassio.UiShots
         {
             Settings.Theme = dark ? ThemeMode.Dark : ThemeMode.Light;
             Addon.GetType("Strassio.Corel.Themes.ThemeManager").GetMethod("Refresh").Invoke(null, null);
+        }
+
+        /// <summary>Отверстия для окна «Сверление»: три размера камней в два цвета.</summary>
+        private static List<DrillHole> DrillSample()
+        {
+            var holes = new List<DrillHole>();
+            for (int i = 0; i < 160; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + (i % 20) * 3, 10 + (i / 20) * 3), 2.4, "ss6", i % 2 == 0 ? "Crystal" : "Rose"));
+            }
+
+            for (int i = 0; i < 40; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + i * 3.4, 40), 2.9, "ss10", "Crystal"));
+            }
+
+            for (int i = 0; i < 12; i++)
+            {
+                holes.Add(new DrillHole(new Point2D(10 + i * 5, 46), 4.0, "ss16", "Crystal"));
+            }
+
+            return holes;
+        }
+
+        /// <summary>Каталог для снимков: ss6 сверлится фрезой 2,2 с дофрезеровкой, у сверла 4 — свой номер и подача.</summary>
+        private static StoneTable SampleCatalog()
+        {
+            var table = new StoneTable();
+            table.Sets.Add(new StoneSet
+            {
+                Name = "Main",
+                Sizes =
+                {
+                    new StoneSize
+                    {
+                        Name = "ss6", DiameterMm = 2.4, DrillMm = 2.2,
+                        Colors = { new StoneColor { Name = "Crystal", Rgb = "#E8EEF5" }, new StoneColor { Name = "Rose", Rgb = "#F48FB1" } },
+                    },
+                    new StoneSize { Name = "ss10", DiameterMm = 2.9, Colors = { new StoneColor { Name = "Crystal", Rgb = "#E8EEF5" } } },
+                },
+            });
+            table.Drills.Add(new DrillTool { DiameterMm = 2.2, Name = "cutter", Rpm = 20000 });
+            table.Drills.Add(new DrillTool { DiameterMm = 3.0 });
+            table.Drills.Add(new DrillTool { DiameterMm = 4.0, Tool = 7, Feed = 300 });
+            return table;
+        }
+
+        /// <summary>Профиль для снимка: две копии рисунка на доске и метки совмещения.</summary>
+        private static DrillConfig DrillProfiles()
+        {
+            var config = new DrillConfig();
+            DrillSettings p = config.Profile();
+            p.Name = "Workshop";
+            p.Marks = true;
+            p.RepeatX = 2;
+            return config;
         }
 
         private static Window Make(string typeName, params object?[] args) =>

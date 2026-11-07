@@ -1,5 +1,6 @@
 #nullable enable
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Microsoft.Win32;
@@ -24,6 +25,7 @@ namespace Strassio.Corel
             Settings = Store.LoadSettings();
 
             string addonDir = Path.GetDirectoryName(typeof(PluginContext).Assembly.Location) ?? string.Empty;
+            helperSource = Path.Combine(addonDir, "Strassio.Connect.exe");
             Localizer = new Localizer(Path.Combine(addonDir, "lang"), Settings.Language, BuiltInLanguage, BuiltInLanguages);
 
             EnableModernTls();
@@ -34,6 +36,7 @@ namespace Strassio.Corel
             {
                 PluginVersion = typeof(PluginContext).Assembly.GetName().Version?.ToString(3),
             };
+            NoticeFinishedUpdate();
 
             bool firstRun = !File.Exists(Store.StonesPath);
             Stones = Store.LoadStones(key => Localizer[key]);
@@ -151,6 +154,130 @@ namespace Strassio.Corel
         public UpdateInfo? AvailableUpdate { get; private set; }
 
         public event EventHandler? UpdateFound;
+
+        // ---- Автообновление (SPEC 14.1) ------------------------------------------------------
+
+        /// <summary>Strassio.Connect.exe рядом с аддоном — его копия ведёт автообновление.</summary>
+        private readonly string helperSource;
+
+        /// <summary><c>%LOCALAPPDATA%\Strassio\updates</c>: установщик, файл состояния, копия программы обновления.</summary>
+        public string UpdatesDirectory { get; } = AutoUpdate.DefaultDirectory();
+
+        private string UpdateStatusPath => Path.Combine(UpdatesDirectory, AutoUpdate.StatusFileName);
+
+        /// <summary>Этот запуск — первый после автообновления до этой версии (докер скажет «Strassio обновлён»).</summary>
+        public string? JustUpdatedTo { get; private set; }
+
+        /// <summary>Как идёт автообновление — по файлу состояния, который пишет программа обновления.</summary>
+        public UpdateProgress ReadUpdateProgress(out UpdateStatus? status)
+        {
+            status = UpdateStatus.Read(UpdateStatusPath);
+            return AutoUpdate.Describe(status, License.PluginVersion, IsHelperAlive);
+        }
+
+        /// <summary>Обновиться само можно, если сервер прислал SHA-256 установщика и программа обновления на месте.</summary>
+        public bool CanAutoUpdate(UpdateInfo update) => AutoUpdate.IsSha256(update.Sha256) && File.Exists(helperSource);
+
+        /// <summary>
+        /// Запускает автообновление и сразу возвращается. Программа обновления работает из копии в
+        /// папке обновлений: файл рядом с аддоном установщик будет перезаписывать.
+        /// </summary>
+        public void StartAutoUpdate(UpdateInfo update)
+        {
+            if (!CanAutoUpdate(update))
+            {
+                throw new InvalidOperationException("no sha256 or Strassio.Connect.exe");
+            }
+
+            string helperDir = Path.Combine(UpdatesDirectory, "helper");
+            Directory.CreateDirectory(helperDir);
+            string helper = Path.Combine(helperDir, "Strassio.Connect.exe");
+            try
+            {
+                File.Copy(helperSource, helper, true);
+                if (File.Exists(helperSource + ".config"))
+                {
+                    File.Copy(helperSource + ".config", helper + ".config", true);
+                }
+            }
+            catch (IOException) when (File.Exists(helper))
+            {
+                // Копия занята — обновление уже идёт; вторая копия сама увидит это и выйдет.
+            }
+
+            // Прошлая неудача не должна висеть в докере, пока новая попытка не запишет своё.
+            try
+            {
+                File.Delete(UpdateStatusPath);
+            }
+            catch (Exception)
+            {
+                // Не удалилось — программа обновления перезапишет.
+            }
+
+            string arguments = "UPDATE " + Quote(update.Url) + " " + Quote(update.Sha256!.Trim()) + " " + Quote(update.Version) + " " + Quote(UpdatesDirectory);
+            var start = new ProcessStartInfo(helper, arguments)
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = helperDir,
+            };
+            using (Process.Start(start))
+            {
+            }
+        }
+
+        /// <summary>После обновления: сказать «обновлён» и убрать скачанный установщик.</summary>
+        private void NoticeFinishedUpdate()
+        {
+            try
+            {
+                if (ReadUpdateProgress(out UpdateStatus? status) != UpdateProgress.Updated || status == null)
+                {
+                    return;
+                }
+
+                JustUpdatedTo = status.Version;
+                foreach (string file in Directory.GetFiles(UpdatesDirectory))
+                {
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch (Exception)
+                    {
+                        // Не удалилось сейчас — удалится после следующего обновления.
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Уборка — не условие работы.
+            }
+        }
+
+        private static bool IsHelperAlive(int pid)
+        {
+            if (pid <= 0)
+            {
+                return false;
+            }
+
+            try
+            {
+                using (Process process = Process.GetProcessById(pid))
+                {
+                    return !process.HasExited && string.Equals(process.ProcessName, "Strassio.Connect", StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        /// <summary>Аргумент в кавычках. Кавычек внутри у ссылки, SHA-256, версии и пути не бывает — на всякий случай убираем.</summary>
+        private static string Quote(string value) => "\"" + value.Replace("\"", string.Empty).TrimEnd('\\') + "\"";
 
         private DateTime lastUpdateCheckUtc = DateTime.MinValue;
 

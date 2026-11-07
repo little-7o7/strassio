@@ -72,6 +72,10 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "checkUpdates")]
         public bool CheckUpdates { get; set; }
 
+        /// <summary>Компактный докер: подсказки под полями скрыты (остаются всплывающие), поля плотнее.</summary>
+        [DataMember(Name = "compact")]
+        public bool Compact { get; set; }
+
         /// <summary>Последний выбранный метод ("l1", "f3"…) — выбирается сам при следующем запуске.</summary>
         [DataMember(Name = "lastMethod")]
         public string LastMethod { get; set; } = string.Empty;
@@ -79,6 +83,14 @@ namespace Strassio.Core.Settings
         /// <summary>Живой предпросмотр: картинка в докере пересчитывается сама при каждом изменении (раздел 5, [NEW]).</summary>
         [DataMember(Name = "livePreview")]
         public bool LivePreview { get; set; }
+
+        /// <summary>Новые стразы не налезают на те, что уже лежат на странице: отодвигаются или убираются.</summary>
+        [DataMember(Name = "avoidExisting")]
+        public bool AvoidExisting { get; set; }
+
+        /// <summary>«Создать» на нескольких фигурах: цвет камня у каждой фигуры — ближайший к цвету её заливки.</summary>
+        [DataMember(Name = "colorFromShape")]
+        public bool ColorFromShape { get; set; }
 
         /// <summary>Последние настройки, с которыми создавали стразы («Недавние» в списке пресетов).</summary>
         [DataMember(Name = "recent")]
@@ -135,8 +147,11 @@ namespace Strassio.Core.Settings
             Outline = OutlineStyle.None;
             OutlineWidthMm = 0.1;
             CheckUpdates = true;
+            Compact = false;
             LastMethod = string.Empty;
             LivePreview = false;
+            AvoidExisting = true;
+            ColorFromShape = false;
             Recent = new List<Preset>();
             ActiveSet = string.Empty;
             Method = new MethodParameters();
