@@ -2,6 +2,8 @@
   "_language": "English",
   "app.title": "Strassio",
   "docker.settings.tooltip": "Settings",
+  "docker.compact.on": "Compact mode: hide the hints under the fields so more fits in the docker. Pop-up tips stay.",
+  "docker.compact.off": "Normal mode: show the hints under the fields.",
   "docker.stone": "Stone",
   "docker.set": "Set",
   "docker.set.tooltip": "The stone table to take sizes and colours from (e.g. for different suppliers).",

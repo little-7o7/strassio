@@ -34,6 +34,8 @@
                 <Button x:Name="SettingsButton" DockPanel.Dock="Right" Style="{StaticResource Strassio.IconButton}" Click="Settings_Click"
                         ToolTip="{Binding [docker.settings.tooltip]}"
                         FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE713;"/>
+                <Button x:Name="CompactButton" DockPanel.Dock="Right" Style="{StaticResource Strassio.IconButton}" Click="Compact_Click"
+                        Margin="0,0,4,0" FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE73F;"/>
                 <TextBlock Text="{Binding [app.title]}" Style="{StaticResource Strassio.Title}"/>
             </DockPanel>
             <!-- Пробный период / «нет лицензии»; при действующей лицензии не видна -->

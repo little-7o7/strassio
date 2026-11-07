@@ -81,6 +81,7 @@ namespace Strassio.Corel
 
             ApplyLayout();
             RebuildAll();
+            ApplyCompact();
             SelectLastMethod();
         }
 
@@ -132,6 +133,7 @@ namespace Strassio.Corel
         {
             ApplyLayout();
             RebuildAll();
+            ApplyCompact();
             ThemeManager.Refresh();
         }
 
