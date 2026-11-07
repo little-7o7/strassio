@@ -128,7 +128,7 @@ namespace Strassio.Preview
         }
 
         /// <summary>Два подсолнуха на стебле с листьями: лучи золотом, середина и листья голубым.</summary>
-        private static List<(PlacedStone, string)> SunflowerTile()
+        internal static List<(PlacedStone, string)> SunflowerTile()
         {
             const string gold = "#E9B949", blue = "#2D6FA6";
             var result = new List<(PlacedStone, string)>();

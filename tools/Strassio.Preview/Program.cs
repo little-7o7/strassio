@@ -65,6 +65,12 @@ if (scenario == "lines")
     return;
 }
 
+if (scenario == "drill")
+{
+    DrillLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "fabric")
 {
     FabricLab.Render(FindRepoRoot());
