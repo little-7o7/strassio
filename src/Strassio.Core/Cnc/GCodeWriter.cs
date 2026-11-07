@@ -24,6 +24,9 @@ namespace Strassio.Core.Cnc
         public IReadOnlyList<DrillJob> Jobs { get; }
 
         public int Holes => Jobs.Sum(j => j.Points.Count);
+
+        /// <summary>Самый большой круг дофрезеровки в файле, мм — сколько сверлу можно ходить вбок внутри отверстия.</summary>
+        public double MillLimitMm => Jobs.SelectMany(j => j.MillRadii).DefaultIfEmpty(0).Max();
     }
 
     /// <summary>
@@ -115,8 +118,21 @@ namespace Strassio.Core.Cnc
                 w.Comment("X0 Y0: " + OriginText(s, plan) + ". Z0: top of material");
                 w.Comment("Design " + Num(plan.WidthMm, "0.0") + " x " + Num(plan.HeightMm, "0.0") + " mm, from X"
                     + Num(plan.Min.X, "0.0") + " Y" + Num(plan.Min.Y, "0.0") + " to X" + Num(plan.Max.X, "0.0") + " Y" + Num(plan.Max.Y, "0.0"));
-                w.Comment("Depth " + Num(s.DepthMm, "0.###") + " mm, retract " + Num(s.RetractMm, "0.###")
-                    + " mm, plunge F" + Num(s.PlungeFeed, "0.#") + (s.PeckMm > 0 ? ", peck " + Num(s.PeckMm, "0.###") + " mm" : string.Empty));
+                if (plan.CopiesX * plan.CopiesY > 1)
+                {
+                    w.Comment("Copies " + plan.CopiesX.ToString(CultureInfo.InvariantCulture) + " x " + plan.CopiesY.ToString(CultureInfo.InvariantCulture)
+                        + ", step X" + Num(plan.Pitch.X, "0.###") + " Y-" + Num(plan.Pitch.Y, "0.###") + " mm");
+                }
+
+                int marks = jobs.Sum(j => j.Marks.Count);
+                if (marks > 0)
+                {
+                    w.Comment("Registration marks: " + marks.ToString(CultureInfo.InvariantCulture) + " holes, "
+                        + Num(s.MarksOffsetMm, "0.###") + " mm outside the design corners");
+                }
+
+                w.Comment("Depth " + Num(s.DepthMm, "0.###") + " mm, retract " + Num(s.RetractMm, "0.###") + " mm"
+                    + (s.PeckMm > 0 ? ", peck " + Num(s.PeckMm, "0.###") + " mm" : string.Empty));
             }
 
             w.Line("G21");
@@ -125,16 +141,14 @@ namespace Strassio.Core.Cnc
             w.Line("G0 Z" + Z(s.ClearanceMm));
 
             bool toolChange = s.FileMode == DrillFileMode.OneFileToolChange;
+            bool spindle = s.SpindleRpm > 0;
+            int rpmNow = 0;
             for (int k = 0; k < jobs.Count; k++)
             {
                 DrillJob job = jobs[k];
                 if (s.Comments)
                 {
-                    string sizes = Ascii.Comment(string.Join(", ", job.Sizes.Where(x => x.Length > 0)));
-                    string color = job.Color.Length > 0 ? ", " + Ascii.Comment(job.Color) : string.Empty;
-                    w.Comment("Drill " + Num(job.DrillMm, "0.###") + " mm, T" + job.Tool.ToString(CultureInfo.InvariantCulture)
-                        + (sizes.Length > 0 ? ", stones " + sizes : string.Empty) + color + ", "
-                        + job.Points.Count.ToString(CultureInfo.InvariantCulture) + " holes");
+                    w.Comment(JobComment(job));
                 }
 
                 if (toolChange)
@@ -142,32 +156,28 @@ namespace Strassio.Core.Cnc
                     if (k > 0)
                     {
                         w.Line("G0 Z" + Z(s.ClearanceMm));
-                        if (s.SpindleRpm > 0)
+                        if (spindle)
                         {
                             w.Line("M5");
+                            rpmNow = 0;
                         }
                     }
 
                     w.Line("T" + job.Tool.ToString(CultureInfo.InvariantCulture) + " M6");
                 }
 
-                if (s.SpindleRpm > 0 && (k == 0 || toolChange))
+                int rpm = job.Rpm > 0 ? job.Rpm : s.SpindleRpm;
+                if (spindle && rpm != rpmNow)
                 {
-                    w.Line("M3 S" + s.SpindleRpm.ToString(CultureInfo.InvariantCulture));
+                    w.Line("M3 S" + rpm.ToString(CultureInfo.InvariantCulture));
+                    rpmNow = rpm;
                 }
 
-                if (s.CannedCycle)
-                {
-                    Canned(w, job.Points, s);
-                }
-                else
-                {
-                    Simple(w, job.Points, s);
-                }
+                Holes(w, job, s);
             }
 
             w.Line("G0 Z" + Z(s.ClearanceMm));
-            if (s.SpindleRpm > 0)
+            if (spindle)
             {
                 w.Line("M5");
             }
@@ -182,19 +192,94 @@ namespace Strassio.Core.Cnc
             return w.ToString();
         }
 
-        /// <summary>Каждое отверстие — подвод, опускание на подаче (с выводом сверла, если задан шаг), подъём.</summary>
-        private static void Simple(Writer w, IReadOnlyList<Point2D> points, DrillSettings s)
+        /// <summary>«Drill 2.2 mm cutter, T1, F500 S18000, stones ss6, 120 holes, 120 milled to D2.4, 4 marks».</summary>
+        private static string JobComment(DrillJob job)
+        {
+            var c = new StringBuilder("Drill ").Append(Num(job.DrillMm, "0.###")).Append(" mm");
+            string name = Ascii.Comment(job.Name);
+            if (name.Length > 0)
+            {
+                c.Append(' ').Append(name);
+            }
+
+            c.Append(", T").Append(job.Tool.ToString(CultureInfo.InvariantCulture)).Append(", F").Append(Num(job.Feed, "0.#"));
+            if (job.Rpm > 0)
+            {
+                c.Append(" S").Append(job.Rpm.ToString(CultureInfo.InvariantCulture));
+            }
+
+            string sizes = Ascii.Comment(string.Join(", ", job.Sizes.Where(x => x.Length > 0)));
+            if (sizes.Length > 0)
+            {
+                c.Append(", stones ").Append(sizes);
+            }
+
+            if (job.Color.Length > 0)
+            {
+                c.Append(", ").Append(Ascii.Comment(job.Color));
+            }
+
+            c.Append(", ").Append(job.Points.Count.ToString(CultureInfo.InvariantCulture)).Append(" holes");
+            if (job.Milled > 0)
+            {
+                string to = string.Join("/", job.MillRadii.Where(r => r > 0).Select(r => Num(job.DrillMm + 2 * r, "0.##")).Distinct());
+                c.Append(", ").Append(job.Milled.ToString(CultureInfo.InvariantCulture)).Append(" milled to D").Append(to);
+            }
+
+            if (job.Marks.Count > 0)
+            {
+                c.Append(", ").Append(job.Marks.Count.ToString(CultureInfo.InvariantCulture)).Append(" marks");
+            }
+
+            return c.ToString();
+        }
+
+        /// <summary>
+        /// Отверстия сверла по порядку. Простое отверстие — подвод, опускание на подаче (с выводом сверла,
+        /// если задан шаг), подъём; с циклами — G81/G83 (дальше только X Y). Отверстие с дофрезеровкой —
+        /// опускание в центре, потом круги по G1 на полной глубине, обратно в центр и подъём.
+        /// </summary>
+        private static void Holes(Writer w, DrillJob job, DrillSettings s)
         {
             string retract = Z(s.RetractMm);
-            string feed = " F" + Num(s.PlungeFeed, "0.#");
             List<double> levels = Levels(s);
-            bool first = true;
-            foreach (Point2D p in points)
+            bool atRetract = false;
+            bool cycle = false;
+            for (int n = 0; n < job.Points.Count; n++)
             {
+                Point2D p = job.Points[n];
+                double mill = n < job.MillRadii.Count ? job.MillRadii[n] : 0;
+                if (s.CannedCycle && mill <= 0)
+                {
+                    if (cycle)
+                    {
+                        w.Line(XY(p));
+                    }
+                    else
+                    {
+                        string words = s.PeckMm > 0 && s.PeckMm < s.DepthMm
+                            ? "G83 " + XY(p) + " Z" + Z(-s.DepthMm) + " R" + retract + " Q" + Z(s.PeckMm)
+                            : "G81 " + XY(p) + " Z" + Z(-s.DepthMm) + " R" + retract;
+                        w.Line("G0 " + XY(p));
+                        w.Line("G99 " + words + w.Feed(job.Feed, always: true));
+                        cycle = true;
+                        atRetract = true;
+                    }
+
+                    continue;
+                }
+
+                if (cycle)
+                {
+                    w.Line("G80");
+                    cycle = false;
+                }
+
                 w.Line("G0 " + XY(p));
-                if (first)
+                if (!atRetract)
                 {
                     w.Line("G0 Z" + retract);
+                    atRetract = true;
                 }
 
                 for (int i = 0; i < levels.Count; i++)
@@ -205,32 +290,35 @@ namespace Strassio.Core.Cnc
                         w.Line("G0 Z" + Z(-levels[i - 1] + 0.3));
                     }
 
-                    w.Line("G1 Z" + Z(-levels[i]) + (first ? feed : string.Empty));
-                    first = false;
+                    w.Line("G1 Z" + Z(-levels[i]) + w.Feed(job.Feed));
+                    if (i < levels.Count - 1 || mill <= 0)
+                    {
+                        w.Line("G0 Z" + retract);
+                    }
+                }
+
+                if (mill > 0)
+                {
+                    foreach (double ring in DrillPlanner.MillRings(mill, job.DrillMm))
+                    {
+                        int segments = DrillPlanner.MillSegments(ring);
+                        w.Line("G1 " + XY(p + new Point2D(ring, 0)) + w.Feed(s.MillFeed));
+                        for (int k = 1; k <= segments; k++)
+                        {
+                            double a = 2 * Math.PI * k / segments;
+                            w.Line("G1 " + XY(p + new Point2D(ring * Math.Cos(a), ring * Math.Sin(a))));
+                        }
+                    }
+
+                    w.Line("G1 " + XY(p));
                     w.Line("G0 Z" + retract);
                 }
             }
-        }
 
-        /// <summary>Цикл G81 (или G83 с шагом): первая строка с параметрами, дальше только X Y.</summary>
-        private static void Canned(Writer w, IReadOnlyList<Point2D> points, DrillSettings s)
-        {
-            if (points.Count == 0)
+            if (cycle)
             {
-                return;
+                w.Line("G80");
             }
-
-            string cycle = s.PeckMm > 0 && s.PeckMm < s.DepthMm
-                ? "G83 " + XY(points[0]) + " Z" + Z(-s.DepthMm) + " R" + Z(s.RetractMm) + " Q" + Z(s.PeckMm)
-                : "G81 " + XY(points[0]) + " Z" + Z(-s.DepthMm) + " R" + Z(s.RetractMm);
-            w.Line("G0 " + XY(points[0]));
-            w.Line("G99 " + cycle + " F" + Num(s.PlungeFeed, "0.#"));
-            for (int i = 1; i < points.Count; i++)
-            {
-                w.Line(XY(points[i]));
-            }
-
-            w.Line("G80");
         }
 
         /// <summary>Глубины проходов: шаг за шагом до полной глубины (без шага — сразу на всю).</summary>
@@ -312,6 +400,7 @@ namespace Strassio.Core.Cnc
             private readonly StringBuilder text = new StringBuilder();
             private readonly bool numbers;
             private int n;
+            private string? current;
 
             public Writer(bool numbers)
             {
@@ -330,6 +419,19 @@ namespace Strassio.Core.Cnc
             }
 
             public void Comment(string comment) => Line("(" + comment + ")");
+
+            /// <summary>« F500», если подача меняется (или <paramref name="always"/>), иначе пусто — F модальная.</summary>
+            public string Feed(double feed, bool always = false)
+            {
+                string f = Num(feed, "0.#");
+                if (!always && f == current)
+                {
+                    return string.Empty;
+                }
+
+                current = f;
+                return " F" + f;
+            }
 
             public void Raw(string line) => text.Append(line).Append(NewLine);
 

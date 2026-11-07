@@ -38,18 +38,23 @@ public class GCodeWriterTests
         int total = 0;
         foreach (GCodeFile file in files)
         {
-            GCodeRun run = GCodeCheck.Run(file.Text);
+            GCodeRun run = GCodeCheck.Run(file.Text, file.MillLimitMm);
             Assert.True(run.Problems.Count == 0, file.Name + ": " + string.Join("; ", run.Problems));
             Assert.True(run.Ended);
             Assert.Equal(file.Holes, run.Holes.Count);
             Assert.Equal(-s.DepthMm, run.MinZ, 6);
 
-            var expected = file.Jobs.SelectMany(j => j.Points.Select(p => (p, j.Tool))).ToList();
+            var expected = file.Jobs.SelectMany(j => j.Points.Select((p, k) => (p, j.Tool, Mill: j.MillRadii[k]))).ToList();
             for (int i = 0; i < expected.Count; i++)
             {
                 Assert.Equal(expected[i].p.X, run.Holes[i].At.X, 3);
                 Assert.Equal(expected[i].p.Y, run.Holes[i].At.Y, 3);
                 Assert.Equal(-s.DepthMm, run.Holes[i].BottomZ, 6);
+                if (s.FileMode == DrillFileMode.OneFileToolChange)
+                {
+                    Assert.Equal(expected[i].Tool, run.Holes[i].Tool);
+                }
+                Assert.Equal(expected[i].Mill, run.Holes[i].MillMm, 3);
             }
 
             total += run.Holes.Count;
@@ -61,8 +66,8 @@ public class GCodeWriterTests
     [Fact]
     public void FilePerDrill_SimpleMoves_DrillsAllHoles()
     {
-        var s = new DrillSettings { DrillsMm = new List<double> { 2.4, 3.0, 4.0 } };
-        DrillPlan plan = DrillPlanner.Plan(Design(), s);
+        var s = new DrillSettings();
+        DrillPlan plan = DrillPlanner.Plan(Design(), s, DrillRack.Of(2.4, 3.0, 4.0));
         IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, s, "Роза");
 
         Assert.Equal(3, files.Count);
@@ -133,8 +138,8 @@ public class GCodeWriterTests
     [Fact]
     public void OneFileToolChange_HasTM6PerDrill()
     {
-        var s = new DrillSettings { DrillsMm = new List<double> { 4.0, 2.4, 3.0 }, FileMode = DrillFileMode.OneFileToolChange };
-        DrillPlan plan = DrillPlanner.Plan(Design(), s);
+        var s = new DrillSettings { FileMode = DrillFileMode.OneFileToolChange };
+        DrillPlan plan = DrillPlanner.Plan(Design(), s, DrillRack.Of(4.0, 2.4, 3.0));
         IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, s, "rose");
 
         GCodeFile file = Assert.Single(files);
@@ -150,8 +155,8 @@ public class GCodeWriterTests
     [Fact]
     public void SplitByColor_FileNamesInLatin()
     {
-        var s = new DrillSettings { SplitByColor = true, DrillsMm = new List<double> { 2.4, 3.0, 4.0 } };
-        DrillPlan plan = DrillPlanner.Plan(Design(), s);
+        var s = new DrillSettings { SplitByColor = true };
+        DrillPlan plan = DrillPlanner.Plan(Design(), s, DrillRack.Of(2.4, 3.0, 4.0));
         IReadOnlyList<GCodeFile> files = GCodeWriter.Files(plan, s, "узор");
         Assert.Equal(
             new[] { "uzor_Kristall_1_D2.4_ss6.tap", "uzor_Kristall_2_D4_ss16.tap", "uzor_Rozovyy_3_D3_ss10.tap" },
@@ -206,21 +211,33 @@ public class GCodeWriterTests
     [Fact]
     public void Settings_RoundTripAndProblems()
     {
-        var s = new DrillSettings { DepthMm = 2, Origin = DrillOrigin.DesignCenter, FileMode = DrillFileMode.OneFileToolChange, DrillsMm = new List<double> { 2.4 } };
-        s.Rules.Add(new DrillRule { Size = "ss10", DrillMm = 3 });
+        var config = new DrillConfig();
+        DrillSettings s = config.Profile();
+        s.DepthMm = 2;
+        s.Origin = DrillOrigin.DesignCenter;
+        s.FileMode = DrillFileMode.OneFileToolChange;
+        s.PathStyle = DrillPathStyle.Snake;
+        s.Marks = true;
+        s.MarksOffsetMm = 12;
+        s.RepeatX = 2;
         string dir = Path.Combine(Path.GetTempPath(), "strassio-drill-" + Guid.NewGuid().ToString("N"));
         try
         {
             var store = new SettingsStore(dir);
-            store.SaveDrill(s);
-            DrillSettings back = store.LoadDrill();
+            store.SaveDrill(config);
+            Assert.Contains("\"snake\"", File.ReadAllText(store.DrillPath));
+            DrillSettings back = store.LoadDrill().Profile();
             Assert.Equal(2, back.DepthMm);
             Assert.Equal(DrillOrigin.DesignCenter, back.Origin);
             Assert.Equal(DrillFileMode.OneFileToolChange, back.FileMode);
             Assert.Equal(BoardCorner.LowerLeft, back.Home);
-            Assert.Equal(new[] { 2.4 }, back.DrillsMm);
-            Assert.Equal(3, back.RuleFor("SS10"));
+            Assert.Equal(DrillPathStyle.Snake, back.PathStyle);
+            Assert.True(back.Marks);
+            Assert.Equal(12, back.MarksOffsetMm);
+            Assert.Equal(2, back.RepeatX);
+            Assert.Equal(1, back.RepeatY);
             Assert.Equal(1.0, back.RetractMm);
+            Assert.True(back.MillSmaller);
             Assert.Empty(back.Problems());
         }
         finally
@@ -234,25 +251,62 @@ public class GCodeWriterTests
         Assert.Contains("drill.problem.depth", new DrillSettings { DepthMm = 0 }.Problems());
         Assert.Contains("drill.problem.clearance", new DrillSettings { ClearanceMm = 0.5 }.Problems());
         Assert.Contains("drill.problem.board", new DrillSettings { BoardWidthMm = -1 }.Problems());
+        Assert.Contains("drill.problem.repeat", new DrillSettings { RepeatX = 0 }.Problems());
+        Assert.Contains("drill.problem.marks", new DrillSettings { MarksOffsetMm = -1 }.Problems());
+        Assert.Contains("drill.problem.millFeed", new DrillSettings { MillFeed = 0 }.Problems());
+    }
 
-        // Угол доски и размер сохраняются словами и числами.
-        string dir2 = Path.Combine(Path.GetTempPath(), "strassio-drill-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var store = new SettingsStore(dir2);
-            store.SaveDrill(new DrillSettings { Home = BoardCorner.UpperRight, BoardWidthMm = 1200, BoardHeightMm = 800 });
-            Assert.Contains("\"upperRight\"", File.ReadAllText(store.DrillPath));
-            DrillSettings back2 = store.LoadDrill();
-            Assert.Equal(BoardCorner.UpperRight, back2.Home);
-            Assert.Equal(1200, back2.BoardWidthMm);
-            Assert.Equal(DrillOrigin.Board, back2.Origin);
-        }
-        finally
-        {
-            if (Directory.Exists(dir2))
-            {
-                Directory.Delete(dir2, true);
-            }
-        }
+    [Fact]
+    public void Config_ReadsOldSingleProfileFile()
+    {
+        // drill.json до профилей: один профиль со списком свёрл и своими свёрлами для размеров.
+        const string old = "{\"depthMm\":2.5,\"drills\":[2.2,3],\"home\":\"upperRight\",\"origin\":\"board\",\"rules\":[{\"drillMm\":2.2,\"size\":\"ss6\"}]}";
+        DrillConfig config = DrillConfig.FromJson(old);
+        DrillSettings p = Assert.Single(config.Profiles);
+        Assert.Equal(2.5, p.DepthMm);
+        Assert.Equal(BoardCorner.UpperRight, p.Home);
+        Assert.Equal(new[] { 2.2, 3 }, p.DrillsMm);
+        Assert.Equal(DrillPathStyle.Fast, p.PathStyle);
+        Assert.Equal(1, p.RepeatX);
+        Assert.Equal(GCodeFormats.ArtCam, p.Format);
+        Assert.False(string.IsNullOrWhiteSpace(p.Name));
+    }
+
+    [Fact]
+    public void Config_Profiles_AddRenameRemove()
+    {
+        var config = new DrillConfig();
+        DrillSettings first = config.Profile();
+        first.DepthMm = 2;
+        DrillSettings second = config.Add(first, "Цех");
+        Assert.Equal(2, second.DepthMm);
+        Assert.Equal("Цех", config.Active);
+        Assert.Equal("Цех 2", config.Add(null, "Цех").Name);
+        Assert.False(config.Rename(second, "Цех 2"));
+        Assert.True(config.Rename(second, "Станок 2"));
+        Assert.Same(second, config.Profile("станок 2"));
+        Assert.True(config.Remove(second));
+        Assert.True(config.Remove(config.Profiles[1]));
+        Assert.False(config.Remove(config.Profiles[0]));
+
+        DrillConfig back = DrillConfig.FromJson(config.ToJson());
+        Assert.Single(back.Profiles);
+        Assert.Equal(2, back.Profile().DepthMm);
+    }
+
+    [Fact]
+    public void Formats_ApplyAndDetect()
+    {
+        var s = new DrillSettings { FileMode = DrillFileMode.OneFileToolChange };
+        Assert.Equal(GCodeFormats.ArtCam, GCodeFormats.Detect(s));
+        GCodeFormats.Apply(s, GCodeFormats.Grbl);
+        Assert.Equal(".nc", s.Extension);
+        Assert.Equal(DrillFileMode.FilePerDrill, s.FileMode);
+        Assert.Equal(GCodeFormats.Grbl, GCodeFormats.Detect(s));
+        s.LineNumbers = true;
+        Assert.Equal(GCodeFormats.Custom, GCodeFormats.Detect(s));
+        GCodeFormats.Apply(s, GCodeFormats.Plain);
+        Assert.False(s.Comments);
+        Assert.Equal(GCodeFormats.Plain, GCodeFormats.Detect(s));
     }
 }

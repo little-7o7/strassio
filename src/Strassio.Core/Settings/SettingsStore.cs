@@ -51,9 +51,36 @@ namespace Strassio.Core.Settings
 
         public PluginSettings LoadSettings() => Load<PluginSettings>(SettingsPath) ?? new PluginSettings();
 
-        public Cnc.DrillSettings LoadDrill() => Load<Cnc.DrillSettings>(DrillPath) ?? new Cnc.DrillSettings();
+        /// <summary>Профили станков. Старый drill.json (один профиль) читается как единственный профиль.</summary>
+        public Cnc.DrillConfig LoadDrill()
+        {
+            if (!File.Exists(DrillPath))
+            {
+                return new Cnc.DrillConfig();
+            }
 
-        public void SaveDrill(Cnc.DrillSettings settings) => Save(DrillPath, settings);
+            try
+            {
+                Cnc.DrillConfig config = Cnc.DrillConfig.FromJson(File.ReadAllText(DrillPath, Encoding.UTF8));
+                if (config.Profiles.Count > 0)
+                {
+                    return config;
+                }
+            }
+            catch (Exception)
+            {
+                // Ниже: испорченный файл откладывается в сторону, как у остальных настроек.
+            }
+
+            File.Move(DrillPath, DrillPath + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+            return new Cnc.DrillConfig();
+        }
+
+        public void SaveDrill(Cnc.DrillConfig config)
+        {
+            config.Profile();
+            Save(DrillPath, config);
+        }
 
         public void SaveSettings(PluginSettings settings) => Save(SettingsPath, settings);
 

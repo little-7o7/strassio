@@ -10,28 +10,40 @@ public class DrillPlannerTests
         new DrillHole(new Point2D(x, y), d, size, color);
 
     [Fact]
-    public void ChooseDrill_RuleThenNearestThenHole()
+    public void ChooseDrill_SizeDrillThenNearestThenHole()
     {
-        var s = new DrillSettings { DrillsMm = new List<double> { 2.0, 2.5, 3.0 } };
-        s.Rules.Add(new DrillRule { Size = "SS10", DrillMm = 3.2 });
+        var s = new DrillSettings();
+        var rack = new DrillRack(new[] { 2.0, 2.5, 3.0 }.Select(d => new DrillTool { DiameterMm = d }), new Dictionary<string, double> { ["SS10"] = 3.2 });
 
-        Assert.Equal(3.2, DrillPlanner.ChooseDrill("ss10", 2.9, s));
-        Assert.Equal(2.5, DrillPlanner.ChooseDrill("ss6", 2.4, s));
-        // Ровно посередине — большее: камень должен пролезть.
-        Assert.Equal(3.0, DrillPlanner.ChooseDrill("ss8", 2.75, s));
+        Assert.Equal(3.2, DrillPlanner.ChooseDrill("ss10", 2.9, s, rack));
+        Assert.Equal(2.5, DrillPlanner.ChooseDrill("ss6", 2.4, s, rack));
+        // Ровно посередине — большее: камень должен пролезть (без фрезеровки; с ней — меньшее и круг).
+        Assert.Equal(3.0, DrillPlanner.ChooseDrill("ss8", 2.75, new DrillSettings { MillSmaller = false }, rack));
+        Assert.Equal(2.5, DrillPlanner.ChooseDrill("ss8", 2.75, s, rack));
         Assert.Equal(2.42, DrillPlanner.ChooseDrill("ss6", 2.4213, new DrillSettings()));
+    }
+
+    [Fact]
+    public void ChooseDrill_PrefersSmallerToMill_WhenNearestIsMuchBigger()
+    {
+        var rack = DrillRack.Of(2.2, 2.8);
+        // 2,4: ближайшее 2,2 (меньше на 0,2) — дофрезеруется.
+        Assert.Equal(2.2, DrillPlanner.ChooseDrill("ss6", 2.4, new DrillSettings(), rack));
+        // 2,55: ближайшее 2,8 больше на 0,25 — лучше 2,2 и фрезеровка, а без фрезеровки — 2,8.
+        Assert.Equal(2.2, DrillPlanner.ChooseDrill("ss9", 2.55, new DrillSettings(), DrillRack.Of(2.2, 2.8)));
+        Assert.Equal(2.8, DrillPlanner.ChooseDrill("ss9", 2.55, new DrillSettings { MillSmaller = false }, DrillRack.Of(2.2, 2.8)));
     }
 
     [Fact]
     public void GroupsByDrill_SmallFirst_ToolNumbersFromRack()
     {
-        var s = new DrillSettings { DrillsMm = new List<double> { 3.0, 2.4 } };
+        var s = new DrillSettings();
         var holes = new[]
         {
             Hole(10, 10, 2.9, "ss10"), Hole(20, 10, 2.4, "ss6"), Hole(30, 10, 2.4, "ss6"), Hole(40, 10, 2.5, "ss8"),
         };
 
-        DrillPlan plan = DrillPlanner.Plan(holes, s);
+        DrillPlan plan = DrillPlanner.Plan(holes, s, DrillRack.Of(3.0, 2.4));
 
         Assert.Equal(2, plan.Jobs.Count);
         Assert.Equal(2.4, plan.Jobs[0].DrillMm);
@@ -126,11 +138,19 @@ public class DrillPlannerTests
     [Fact]
     public void Mismatch_WhenDrillFarFromHole()
     {
-        var s = new DrillSettings { DrillsMm = new List<double> { 2.0, 4.0 } };
-        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(0, 0, 2.9, "ss10"), Hole(5, 0, 2.1, "ss5") }, s);
+        var s = new DrillSettings { MillSmaller = false };
+        DrillPlan plan = DrillPlanner.Plan(new[] { Hole(0, 0, 2.9, "ss10"), Hole(5, 0, 2.1, "ss5") }, s, DrillRack.Of(2.0, 4.0));
         DrillMismatch m = Assert.Single(plan.Mismatches);
         Assert.Equal("ss10", m.Size);
         Assert.Equal(2.0, m.DrillMm);
+
+        // С дофрезеровкой меньшее сверло — не ошибка: отверстие будет точно 2,9 и 2,1.
+        DrillPlan milled = DrillPlanner.Plan(new[] { Hole(0, 0, 2.9, "ss10"), Hole(5, 0, 2.1, "ss5") }, new DrillSettings(), DrillRack.Of(2.0, 4.0));
+        Assert.Empty(milled.Mismatches);
+        Assert.Equal(2, milled.Milled);
+
+        // Сверло больше отверстия — предупреждение и с фрезеровкой.
+        Assert.Single(DrillPlanner.Plan(new[] { Hole(0, 0, 2.9, "ss10") }, new DrillSettings(), DrillRack.Of(3.5)).Mismatches);
     }
 
     [Fact]

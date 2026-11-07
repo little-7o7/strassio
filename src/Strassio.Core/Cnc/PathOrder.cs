@@ -10,7 +10,7 @@ namespace Strassio.Core.Cnc
     /// следующий» от нуля станка, потом улучшение 2-opt (распутывает перекрещенные переходы).
     /// Обе части работают через сетку соседей, поэтому 10 000 отверстий — доли секунды.
     /// </summary>
-    public static class PathOrder
+    public static partial class PathOrder
     {
         /// <summary>Сколько ближайших соседей перебирать при улучшении.</summary>
         private const int Neighbors = 8;

@@ -44,7 +44,7 @@ namespace Strassio.Core.Cnc
         OneFileToolChange,
     }
 
-    /// <summary>Своё сверло для размера камня: «ss10 → 3,0 мм» (иначе берётся ближайшее из списка).</summary>
+    /// <summary>Старый формат: своё сверло для размера камня «ss10 → 3,0 мм» (теперь — в таблице камней).</summary>
     [DataContract]
     public sealed class DrillRule
     {
@@ -56,10 +56,11 @@ namespace Strassio.Core.Cnc
     }
 
     /// <summary>
-    /// Настройки станка и свёрл для экспорта отверстий в G-code (docs/SPEC.md, раздел 11.1). Все длины —
-    /// в мм, скорости — в мм/мин. Z0 — верх материала, глубина отсчитывается вниз. В файле перечисления
-    /// хранятся словами, как в <see cref="Settings.PluginSettings"/>; поля, которых нет в старом файле,
-    /// получают значения по умолчанию.
+    /// Профиль станка для экспорта отверстий в G-code (docs/SPEC.md, раздел 11.1): глубина, подачи, ноль,
+    /// доска, метки, повтор, формат файла. Свёрла живут в каталоге (<see cref="Stones.StoneTable.Drills"/>).
+    /// Все длины — в мм, скорости — в мм/мин. Z0 — верх материала, глубина отсчитывается вниз. В файле
+    /// перечисления хранятся словами, как в <see cref="Settings.PluginSettings"/>; поля, которых нет в
+    /// старом файле, получают значения по умолчанию.
     /// </summary>
     [DataContract]
     public sealed class DrillSettings
@@ -69,16 +70,63 @@ namespace Strassio.Core.Cnc
             SetDefaults();
         }
 
+        /// <summary>Название профиля станка, например «Мой станок» или «Станок в цеху».</summary>
+        [DataMember(Name = "name")]
+        public string Name { get; set; } = string.Empty;
+
         /// <summary>
-        /// Свёрла, которые есть у пользователя, в мм — по порядку гнёзд: номер инструмента T = место в
-        /// списке (с 1). Пустой список — сверло под каждый размер равно диаметру отверстия.
+        /// Старый формат (до каталога свёрл): свёрла пользователя, мм. Читается только для переноса в
+        /// каталог (<see cref="DrillCatalog.ImportLegacy"/>), в расчёте не участвует.
         /// </summary>
         [DataMember(Name = "drills")]
         public List<double> DrillsMm { get; set; } = new List<double>();
 
-        /// <summary>Свои свёрла для размеров камней (важнее ближайшего из списка).</summary>
+        /// <summary>Старый формат: свои свёрла для размеров. Только для переноса в каталог.</summary>
         [DataMember(Name = "rules")]
         public List<DrillRule> Rules { get; set; } = new List<DrillRule>();
+
+        /// <summary>
+        /// Сверло меньше отверстия — дофрезеровать отверстие по кругу до нужного диаметра (например, ss6
+        /// 2,4 мм сверлом 2,2). Выключено — отверстие будет по сверлу.
+        /// </summary>
+        [DataMember(Name = "millSmaller")]
+        public bool MillSmaller { get; set; }
+
+        /// <summary>Подача по кругу при дофрезеровке, мм/мин.</summary>
+        [DataMember(Name = "millFeed")]
+        public double MillFeed { get; set; }
+
+        /// <summary>Метки совмещения: по отверстию у каждого угла рисунка, снаружи.</summary>
+        [DataMember(Name = "marks")]
+        public bool Marks { get; set; }
+
+        /// <summary>Насколько метки отстоят от края рисунка (по X и по Y), мм.</summary>
+        [DataMember(Name = "marksOffsetMm")]
+        public double MarksOffsetMm { get; set; }
+
+        /// <summary>Сколько копий рисунка на доске по X (вправо).</summary>
+        [DataMember(Name = "repeatX")]
+        public int RepeatX { get; set; }
+
+        /// <summary>Сколько копий рисунка на доске по Y (вниз).</summary>
+        [DataMember(Name = "repeatY")]
+        public int RepeatY { get; set; }
+
+        /// <summary>Промежуток между копиями (между метками, если они есть), мм.</summary>
+        [DataMember(Name = "repeatGapMm")]
+        public double RepeatGapMm { get; set; }
+
+        /// <summary>Сколько материала должно оставаться между отверстиями, мм (проверка при сохранении).</summary>
+        [DataMember(Name = "minBridgeMm")]
+        public double MinBridgeMm { get; set; }
+
+        /// <summary>В каком порядке сверлить отверстия одного сверла.</summary>
+        [IgnoreDataMember]
+        public DrillPathStyle PathStyle { get; set; }
+
+        /// <summary>Готовый формат файла (<see cref="GCodeFormats"/>) или "custom".</summary>
+        [DataMember(Name = "format")]
+        public string Format { get; set; } = GCodeFormats.ArtCam;
 
         /// <summary>Глубина сверления ниже верха материала (положительное число).</summary>
         [DataMember(Name = "depthMm")]
@@ -186,18 +234,34 @@ namespace Strassio.Core.Cnc
             };
         }
 
+        [DataMember(Name = "path")]
+        private string PathText
+        {
+            get => PathStyle switch
+            {
+                DrillPathStyle.Rows => "rows",
+                DrillPathStyle.Snake => "snake",
+                DrillPathStyle.Columns => "columns",
+                DrillPathStyle.Groups => "groups",
+                DrillPathStyle.Spread => "spread",
+                _ => "fast",
+            };
+            set => PathStyle = value switch
+            {
+                "rows" => DrillPathStyle.Rows,
+                "snake" => DrillPathStyle.Snake,
+                "columns" => DrillPathStyle.Columns,
+                "groups" => DrillPathStyle.Groups,
+                "spread" => DrillPathStyle.Spread,
+                _ => DrillPathStyle.Fast,
+            };
+        }
+
         [DataMember(Name = "fileMode")]
         private string FileModeText
         {
             get => FileMode == DrillFileMode.OneFileToolChange ? "toolChange" : "perDrill";
             set => FileMode = value == "toolChange" ? DrillFileMode.OneFileToolChange : DrillFileMode.FilePerDrill;
-        }
-
-        /// <summary>Своё сверло для размера или null.</summary>
-        public double? RuleFor(string size)
-        {
-            DrillRule? rule = Rules?.FirstOrDefault(r => r != null && r.DrillMm > 0 && string.Equals(r.Size, size, StringComparison.OrdinalIgnoreCase));
-            return rule?.DrillMm;
         }
 
         /// <summary>
@@ -242,13 +306,31 @@ namespace Strassio.Core.Cnc
                 problems.Add("drill.problem.rpm");
             }
 
-            if ((DrillsMm ?? new List<double>()).Any(d => !(d > 0) || d > 50) || (Rules ?? new List<DrillRule>()).Any(r => r != null && (r.DrillMm < 0 || r.DrillMm > 50)))
+            if (!(MillFeed > 0) || MillFeed > 20000)
             {
-                problems.Add("drill.problem.drills");
+                problems.Add("drill.problem.millFeed");
+            }
+
+            if (double.IsNaN(MarksOffsetMm) || MarksOffsetMm < 0 || MarksOffsetMm > 200)
+            {
+                problems.Add("drill.problem.marks");
+            }
+
+            if (RepeatX < 1 || RepeatY < 1 || RepeatX > MaxRepeat || RepeatY > MaxRepeat || double.IsNaN(RepeatGapMm) || RepeatGapMm < 0 || RepeatGapMm > 1000)
+            {
+                problems.Add("drill.problem.repeat");
+            }
+
+            if (double.IsNaN(MinBridgeMm) || MinBridgeMm < 0 || MinBridgeMm > 10)
+            {
+                problems.Add("drill.problem.bridge");
             }
 
             return problems;
         }
+
+        /// <summary>Больше копий рисунка по одной оси не бывает.</summary>
+        public const int MaxRepeat = 50;
 
         public DrillSettings Clone()
         {
@@ -289,6 +371,17 @@ namespace Strassio.Core.Cnc
             MaxMismatchMm = 0.2;
             Extension = ".tap";
             LastFolder = string.Empty;
+            Name = string.Empty;
+            MillSmaller = true;
+            MillFeed = 300;
+            Marks = false;
+            MarksOffsetMm = 10;
+            RepeatX = 1;
+            RepeatY = 1;
+            RepeatGapMm = 10;
+            MinBridgeMm = 0.3;
+            Format = GCodeFormats.ArtCam;
+            PathStyle = DrillPathStyle.Fast;
         }
     }
 }

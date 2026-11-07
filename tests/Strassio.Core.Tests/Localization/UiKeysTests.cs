@@ -14,7 +14,7 @@ public class UiKeysTests
     private static readonly Regex XamlKey = new(@"\{Binding \[([A-Za-z0-9_.]+)\]\}");
 
     private static readonly Regex CodeKey = new(
-        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo|transfer|edit|color|live|prod|preset|vec|text|motif|variant|drill)\\.[A-Za-z0-9_.]+)\"");
+        "\"((?:app|docker|settings|stones|status|param|method|unit|size|undo|transfer|edit|color|live|prod|preset|vec|text|motif|variant|drill|catalog)\\.[A-Za-z0-9_.]+)\"");
 
     [Fact]
     public void EveryKeyUsedInAddon_ExistsInBothLanguages()
@@ -31,9 +31,11 @@ public class UiKeysTests
             }
         }
 
-        // Ключи сообщений ядра для окна «Сверление» ("drill.problem.*") тоже показываются в аддоне.
+        // Ключи сообщений ядра для окон «Сверление» и «Каталог страз и свёрл» ("drill.problem.*",
+        // "catalog.error.*", "stones.error.*") тоже показываются в аддоне.
         string cnc = Path.Combine(root, "src", "Strassio.Core", "Cnc");
-        foreach (string file in Directory.GetFiles(addon, "*.cs", SearchOption.AllDirectories).Concat(Directory.GetFiles(cnc, "*.cs")))
+        string stones = Path.Combine(root, "src", "Strassio.Core", "Stones");
+        foreach (string file in Directory.GetFiles(addon, "*.cs", SearchOption.AllDirectories).Concat(Directory.GetFiles(cnc, "*.cs")).Concat(Directory.GetFiles(stones, "*.cs")))
         {
             if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar))
             {

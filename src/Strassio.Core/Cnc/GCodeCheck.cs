@@ -8,8 +8,11 @@ namespace Strassio.Core.Cnc
     /// <summary>Что вышло при «прогоне» программы: где просверлено, как глубоко, что опасно.</summary>
     public sealed class GCodeRun
     {
-        /// <summary>Просверленные отверстия: место, нижняя точка Z, номер инструмента.</summary>
-        public List<(Point2D At, double BottomZ, int Tool)> Holes { get; } = new List<(Point2D, double, int)>();
+        /// <summary>
+        /// Просверленные отверстия: место (где сверло вошло), нижняя точка Z, номер инструмента и на
+        /// сколько сверло ушло вбок внутри отверстия (дофрезеровка), мм.
+        /// </summary>
+        public List<(Point2D At, double BottomZ, int Tool, double MillMm)> Holes { get; } = new List<(Point2D, double, int, double)>();
 
         /// <summary>Холостой путь по X Y, мм.</summary>
         public double TravelMm { get; set; }
@@ -28,11 +31,12 @@ namespace Strassio.Core.Cnc
     /// и проверяет, что сверло не ходит по X Y внутри материала, шпиндель крутится, пока сверло
     /// внизу, и программа заканчивается M30. Понимает только то, что пишет <see cref="GCodeWriter"/>
     /// (G0/G1, G81/G83, G80, G98/G99, T, M3/M5/M6/M30) — этого хватает, чтобы проверить свой файл
-    /// перед сохранением и нарисовать путь в превью.
+    /// перед сохранением и нарисовать путь в превью. Дофрезеровка: внутри материала можно ходить
+    /// по X Y только на подаче (G1) и не дальше <c>millLimitMm</c> от места, где сверло вошло.
     /// </summary>
     public static class GCodeCheck
     {
-        public static GCodeRun Run(string program)
+        public static GCodeRun Run(string program, double millLimitMm = 0)
         {
             var run = new GCodeRun();
             double x = 0, y = 0, z = double.NaN;
@@ -152,7 +156,7 @@ namespace Strassio.Core.Cnc
                         run.Problems.Add($"line {ln + 1}: G83 without Q");
                     }
 
-                    run.Holes.Add((new Point2D(x, y), cycleZ, tool));
+                    run.Holes.Add((new Point2D(x, y), cycleZ, tool, 0));
                     run.MinZ = Math.Min(run.MinZ, cycleZ);
                     z = retractToR ? cycleR : Math.Max(initialZ, cycleR);
                     continue;
@@ -162,18 +166,36 @@ namespace Strassio.Core.Cnc
                 bool movesXY = Math.Abs(toX - x) > 1e-9 || Math.Abs(toY - y) > 1e-9;
                 if (movesXY)
                 {
-                    // По X Y — только над материалом (Z0 — его верх), иначе сверло волочится и ломается.
+                    bool inside = !double.IsNaN(z) && Math.Min(z, double.IsNaN(toZ) ? z : toZ) <= 1e-9;
                     if (double.IsNaN(z))
                     {
                         run.Problems.Add($"line {ln + 1}: X/Y move before Z is known");
                     }
-                    else if (Math.Min(z, double.IsNaN(toZ) ? z : toZ) <= 1e-9)
+                    else if (inside)
                     {
-                        run.Problems.Add($"line {ln + 1}: X/Y move at or below the top of material (Z {Fmt(Math.Min(z, toZ))})");
+                        // Внутри материала — только дофрезеровка: на подаче, по горизонтали, внутри своего отверстия.
+                        var hole = inHole ? run.Holes[run.Holes.Count - 1] : default;
+                        double side = inHole ? Point2D.Distance(hole.At, new Point2D(toX, toY)) : double.MaxValue;
+                        if (motion != 1 || !inHole || Math.Abs(toZ - z) > 1e-9 || side > millLimitMm + 1e-3)
+                        {
+                            run.Problems.Add($"line {ln + 1}: X/Y move at or below the top of material (Z {Fmt(Math.Min(z, toZ))})");
+                        }
+                        else
+                        {
+                            if (!spindle)
+                            {
+                                run.Problems.Add($"line {ln + 1}: milling with spindle off");
+                            }
+
+                            run.Holes[run.Holes.Count - 1] = (hole.At, hole.BottomZ, hole.Tool, Math.Max(hole.MillMm, side));
+                        }
                     }
 
                     run.TravelMm += Point2D.Distance(new Point2D(x, y), new Point2D(toX, toY));
-                    inHole = false;
+                    if (!inside)
+                    {
+                        inHole = false;
+                    }
                 }
 
                 if (!double.IsNaN(toZ) && toZ < -1e-9)
@@ -193,12 +215,13 @@ namespace Strassio.Core.Cnc
                     {
                         inHole = true;
                         holeBottom = toZ;
-                        run.Holes.Add((new Point2D(toX, toY), toZ, tool));
+                        run.Holes.Add((new Point2D(toX, toY), toZ, tool, 0));
                     }
                     else if (toZ < holeBottom)
                     {
                         holeBottom = toZ;
-                        run.Holes[run.Holes.Count - 1] = (new Point2D(toX, toY), toZ, tool);
+                        var hole = run.Holes[run.Holes.Count - 1];
+                        run.Holes[run.Holes.Count - 1] = (hole.At, toZ, tool, hole.MillMm);
                     }
                 }
 
