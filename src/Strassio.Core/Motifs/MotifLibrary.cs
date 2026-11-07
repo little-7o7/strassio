@@ -63,6 +63,32 @@ namespace Strassio.Core.Motifs
 
         public bool Exists(string name) => File.Exists(PathFor(name));
 
+        /// <summary>Готовые мотивы этой версии уже клали в папку (даже если пользователь потом какие-то удалил).</summary>
+        public bool StarterInstalled(int version) => File.Exists(StarterMarker(version));
+
+        /// <summary>
+        /// Кладёт готовые мотивы, которых ещё нет (свои мотивы пользователя с тем же именем не трогает),
+        /// и запоминает, что эта версия набора установлена. Возвращает, сколько добавлено.
+        /// </summary>
+        public int InstallStarter(IEnumerable<Motif> starter, int version)
+        {
+            Directory.CreateDirectory(Folder);
+            int added = 0;
+            foreach (Motif motif in starter)
+            {
+                if (!Exists(motif.Name))
+                {
+                    Save(motif);
+                    added++;
+                }
+            }
+
+            File.WriteAllText(StarterMarker(version), DateTime.UtcNow.ToString("o"), new UTF8Encoding(false));
+            return added;
+        }
+
+        private string StarterMarker(int version) => Path.Combine(Folder, $".starter-{version}");
+
         public void Delete(string name)
         {
             string path = PathFor(name);

@@ -89,6 +89,12 @@ if (scenario == "text")
     return;
 }
 
+if (scenario == "starter")
+{
+    StarterLab.Render(FindRepoRoot());
+    return;
+}
+
 if (scenario == "monogram")
 {
     MonogramLab.Render(FindRepoRoot(), args.Skip(1).ToList());
