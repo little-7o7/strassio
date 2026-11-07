@@ -139,6 +139,15 @@ namespace Strassio.Corel
             return stones;
         }
 
+        /// <summary>Все стразы одного слоя (внутри групп тоже).</summary>
+        public static List<StoneShape> FromLayer(Layer layer, IEnumerable<string> knownSizes)
+        {
+            var stones = new List<StoneShape>();
+            int order = 0;
+            CollectStones(layer.Shapes, knownSizes, stones, ref order);
+            return stones;
+        }
+
         /// <summary>
         /// Стразы страницы в прямоугольнике (мм) — препятствия для новых страз («учитывать готовые»).
         /// Группа, которая целиком вне прямоугольника, не просматривается вовсе: так тысячи камней

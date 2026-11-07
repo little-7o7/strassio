@@ -403,6 +403,16 @@
                         ToolTip="{Binding [prod.layers.tooltip]}"/>
                 <Button Content="{Binding [prod.layersColor]}" Click="LayersBySizeColor_Click" Margin="0,0,0,6"
                         ToolTip="{Binding [prod.layersColor.tooltip]}"/>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="6"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button Content="{Binding [prod.label]}" Click="LabelTemplate_Click" ToolTip="{Binding [prod.label.tooltip]}"/>
+                    <Button Grid.Column="2" Content="{Binding [prod.labelLayers]}" Click="LabelLayers_Click"
+                            ToolTip="{Binding [prod.labelLayers.tooltip]}"/>
+                </Grid>
                 <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"
                         ToolTip="{Binding [prod.clean.tooltip]}"/>
             </StackPanel>
