@@ -13,6 +13,7 @@ using Strassio.Core.Placement;
 using Strassio.Core.Settings;
 using CoreCurve = Strassio.Core.Geometry.Curve;
 using CorelApplication = Corel.Interop.VGCore.Application;
+using OutlineStyle = Strassio.Core.Settings.OutlineStyle;
 
 namespace Strassio.Corel
 {

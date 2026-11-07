@@ -8,6 +8,7 @@ using Corel.Interop.VGCore;
 using Strassio.Core.Editing;
 using Strassio.Core.Settings;
 using Strassio.Core.Stones;
+using Clipboard = System.Windows.Clipboard;
 
 namespace Strassio.Corel
 {
