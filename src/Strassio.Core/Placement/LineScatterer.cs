@@ -114,6 +114,10 @@ namespace Strassio.Core.Placement
                 int? gapsForSegment = gapsPerSegment?[i];
 
                 List<double> positions = FillSubSegmentCore(subLength, options, stoneStep, endForced, gapsForSegment);
+                if (options.ChordSpacing)
+                {
+                    positions = ChordSpaced(flat, aDist + startTrim, subLength, positions, options, gapsForSegment != null);
+                }
 
                 bool isLastSegment = i == segCount - 1;
                 // Конец последнего отрезка совпадает с началом первого только у острого угла: у
@@ -491,6 +495,138 @@ namespace Strassio.Core.Placement
             }
 
             return positions;
+        }
+
+        /// <summary>
+        /// Те же стразы отрезка, но поровну по прямой между центрами: на изгибе дуга между соседями длиннее
+        /// прямой, и ровный шаг по дуге сводил стразы ближе заданного. Число страз — как по дуге; если по
+        /// хорде они не помещаются с допустимым сжатием (половина зазора), одна убирается — кроме режима
+        /// «точное количество». Крайние стразы остаются на концах отрезка.
+        /// </summary>
+        private static List<double> ChordSpaced(
+            FlattenedCurve flat, double start, double length, List<double> positions, LineScatterOptions options, bool exactCount)
+        {
+            if (options.Mode == StepMode.ExactStep || positions.Count < 3 || length <= 1e-9
+                || positions[0] > 1e-9 || Math.Abs(positions[positions.Count - 1] - length) > 1e-6)
+            {
+                return positions;
+            }
+
+            double minSpacing = options.StoneDiameterMm + options.GapMm * 0.5;
+            for (int intervals = positions.Count - 1; intervals >= 2; intervals--)
+            {
+                double chord = SolveChordStep(flat, start, length, intervals);
+                if (exactCount || chord >= minSpacing - 1e-9 || intervals == 2)
+                {
+                    var result = new List<double>(intervals + 1) { 0 };
+                    double t = start;
+                    for (int k = 1; k < intervals; k++)
+                    {
+                        t = ChordWalk(flat, t, chord, start + length + 1);
+                        result.Add(Math.Min(length, t - start));
+                    }
+
+                    result.Add(length);
+                    return result;
+                }
+            }
+
+            return positions;
+        }
+
+        /// <summary>Шаг по прямой, при котором <paramref name="intervals"/> шагов от start ровно доходят до start + length.</summary>
+        private static double SolveChordStep(FlattenedCurve flat, double start, double length, int intervals)
+        {
+            double end = start + length;
+            double lo = 0, hi = length / intervals;
+            for (int iter = 0; iter < 60; iter++)
+            {
+                double mid = (lo + hi) / 2;
+                double t = start;
+                for (int k = 0; k < intervals && t < end; k++)
+                {
+                    t = ChordWalk(flat, t, mid, end + 1);
+                }
+
+                if (t < end)
+                {
+                    lo = mid;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+
+            return (lo + hi) / 2;
+        }
+
+        /// <summary>
+        /// Первое место на линии после <paramref name="from"/> (длина от начала; у замкнутой — без сброса на
+        /// круге), где прямое расстояние до точки from достигает <paramref name="chord"/>. Не дальше limit.
+        /// </summary>
+        private static double ChordWalk(FlattenedCurve flat, double from, double chord, double limit)
+        {
+            IReadOnlyList<FlattenedPoint> pts = flat.Points;
+            IReadOnlyList<double> arcs = flat.ArcLengths;
+            double total = flat.TotalLength;
+            int edges = pts.Count - 1;
+            if (edges < 1 || total <= 1e-12)
+            {
+                return limit;
+            }
+
+            double lap = flat.IsClosed ? Math.Floor(from / total) * total : 0;
+            double local = flat.IsClosed ? from - lap : Clamp(from, 0, total);
+            int i = 0;
+            while (i < edges - 1 && arcs[i + 1] <= local)
+            {
+                i++;
+            }
+
+            Point2D origin = flat.PointAtDistance(local);
+            double r2 = chord * chord;
+            double ta = from;
+            Point2D a = origin;
+            for (int guard = 0; guard < 4 * edges + 4; guard++)
+            {
+                double tb = lap + arcs[i + 1];
+                Point2D b = pts[i + 1].Position;
+                Point2D w = a - origin, e = b - a;
+                if ((b - origin).X * (b - origin).X + (b - origin).Y * (b - origin).Y >= r2)
+                {
+                    double ee = e.X * e.X + e.Y * e.Y;
+                    if (ee < 1e-18)
+                    {
+                        return Math.Min(ta, limit);
+                    }
+
+                    double ew = e.X * w.X + e.Y * w.Y, ww = w.X * w.X + w.Y * w.Y;
+                    double u = (-ew + Math.Sqrt(Math.Max(0, ew * ew - ee * (ww - r2)))) / ee;
+                    return Math.Min(limit, ta + Clamp(u, 0, 1) * (tb - ta));
+                }
+
+                if (tb >= limit)
+                {
+                    return limit;
+                }
+
+                a = b;
+                ta = tb;
+                i++;
+                if (i >= edges)
+                {
+                    if (!flat.IsClosed)
+                    {
+                        return limit;
+                    }
+
+                    i = 0;
+                    lap += total;
+                }
+            }
+
+            return limit;
         }
 
         private static void AddEvenlySpaced(List<double> positions, double subLength, int count)
