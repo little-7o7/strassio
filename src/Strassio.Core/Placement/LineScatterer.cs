@@ -231,15 +231,75 @@ namespace Strassio.Core.Placement
                 // встаёт в самую вершину, а соседние разводит плавный сдвиг (NudgeStonesNearSharpCorners).
                 room = Math.Min(room, MaxRoundCutInSteps * stoneStep);
 
-                if (cut > room)
+                // Срез через угол верен для прямых сторон. Кривые стороны (ямка сердца) расходятся
+                // быстрее, и крайние стразы вставали дальше нужного — в ямке оставался просвет почти
+                // в камень. Поэтому срез подбирается по настоящему расстоянию между точками сторон.
+                double fitted = FitCornerCut(flat, breakpoints[i].Distance, stoneStep, room, loopCloses, total);
+                if (double.IsNaN(fitted))
                 {
                     continue;
                 }
 
-                cuts[i] = cut;
+                cuts[i] = fitted;
             }
 
             return cuts;
+        }
+
+        /// <summary>
+        /// Наименьший срез c, при котором точки на сторонах угла (vertex − c и vertex + c) стоят друг от
+        /// друга на шаг ряда. NaN — в пределах maxCut такого нет (угол остаётся острым).
+        /// </summary>
+        private static double FitCornerCut(FlattenedCurve flat, double vertex, double step, double maxCut, bool closed, double total)
+        {
+            double Shortfall(double c)
+            {
+                double a = vertex - c, b = vertex + c;
+                if (closed)
+                {
+                    a = Mod(a, total);
+                    b = Mod(b, total);
+                }
+                else if (a < 0 || b > total)
+                {
+                    return double.NaN;
+                }
+
+                return Point2D.Distance(flat.PointAtDistance(a), flat.PointAtDistance(b)) - step;
+            }
+
+            double increment = Math.Max(0.02, step / 20), previous = 0;
+            for (double c = increment; c <= maxCut + 1e-9; c += increment)
+            {
+                double s = Shortfall(c);
+                if (double.IsNaN(s))
+                {
+                    return double.NaN;
+                }
+
+                if (s >= 0)
+                {
+                    double lo = previous, hi = c;
+                    for (int k = 0; k < 40; k++)
+                    {
+                        double mid = (lo + hi) / 2;
+                        if (Shortfall(mid) >= 0)
+                        {
+                            hi = mid;
+                        }
+                        else
+                        {
+                            lo = mid;
+                        }
+                    }
+
+                    return hi;
+                }
+
+                previous = c;
+            }
+
+            return double.NaN;
         }
 
         /// <summary>

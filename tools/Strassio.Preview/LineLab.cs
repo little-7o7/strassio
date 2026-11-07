@@ -61,7 +61,7 @@ namespace Strassio.Preview
                     }
 
                     IReadOnlyList<PlacedStone> stones = MethodRunner.Run(kind, new[] { curve }, D, p, Sizes).Stones;
-                    Metrics m = Measure(stones, flat, p.GapMm, singleRow: kind != MethodKind.L2 && kind != MethodKind.L4);
+                    Metrics m = Measure(stones, flat, p.GapMm, singleRow: kind != MethodKind.L2 && kind != MethodKind.L3 && kind != MethodKind.L4);
                     Console.WriteLine(
                         $"{name,-9} {shapeName,-8} {stones.Count,5} {m.Overlaps,5} {F(m.MinGap),6} {F(m.MaxGap),6} {F(m.MaxGap - m.MinGap),7} {F(m.OffLine),8}");
                     File.WriteAllText(Path.Combine(dir, $"{name}-{shapeName}.svg"),
@@ -94,8 +94,9 @@ namespace Strassio.Preview
         }
 
         /// <summary>
-        /// Налезания — пары ближе «полсуммы диаметров + зазор − 0,05». Просветы — между соседями по ряду: для
-        /// одного ряда стразы сортируются по месту на линии, для нескольких рядов — до ближайшего соседа.
+        /// Налезания — пары, между которыми меньше половины зазора (так же их считает сам плагин: подгонка
+        /// шага может сжать зазор, но не больше чем вдвое). Просветы — между соседями по ряду: для
+        /// одного ряда — соседи по списку (стразы идут по ходу линии), для нескольких рядов — до ближайшего соседа.
         /// </summary>
         private static Metrics Measure(IReadOnlyList<PlacedStone> stones, FlattenedCurve flat, double gap, bool singleRow)
         {
@@ -104,10 +105,15 @@ namespace Strassio.Preview
             {
                 for (int j = i + 1; j < stones.Count; j++)
                 {
-                    double need = (stones[i].DiameterMm + stones[j].DiameterMm) / 2 + Math.Max(0, gap) - 0.05;
+                    double need = (stones[i].DiameterMm + stones[j].DiameterMm) / 2 + Math.Max(0, gap) / 2 - 0.01;
                     if (Point2D.Distance(stones[i].Center, stones[j].Center) < need)
                     {
                         overlaps++;
+                        if (Environment.GetEnvironmentVariable("LINELAB_DEBUG") == "1")
+                        {
+                            double g = Point2D.Distance(stones[i].Center, stones[j].Center) - (stones[i].DiameterMm + stones[j].DiameterMm) / 2;
+                            Console.WriteLine($"    pair gap {g:0.000} rows {stones[i].RowId}/{stones[j].RowId} at {stones[i].Center} – {stones[j].Center} d {stones[i].DiameterMm}/{stones[j].DiameterMm}");
+                        }
                     }
                 }
             }
@@ -115,20 +121,16 @@ namespace Strassio.Preview
             double minGap = double.PositiveInfinity, maxGap = double.NegativeInfinity, off = 0;
             if (singleRow)
             {
-                List<(PlacedStone S, double At, double Off)> along = stones.Select(s =>
+                // Ряд идёт в списке по ходу линии — так его выдают все методы по линии.
+                off = stones.Count == 0 ? 0 : stones.Max(s => Project(flat, s.Center).Distance);
+                for (int i = 0; i + 1 < stones.Count; i++)
                 {
-                    (double at, double dist) = Project(flat, s.Center);
-                    return (s, at, dist);
-                }).OrderBy(t => t.at).ToList();
-                off = along.Count == 0 ? 0 : along.Max(t => t.Off);
-                for (int i = 0; i + 1 < along.Count; i++)
-                {
-                    Edge(along[i].S, along[i + 1].S);
+                    Edge(stones[i], stones[i + 1]);
                 }
 
-                if (flat.IsClosed && along.Count > 2)
+                if (flat.IsClosed && stones.Count > 2)
                 {
-                    Edge(along[along.Count - 1].S, along[0].S);
+                    Edge(stones[stones.Count - 1], stones[0]);
                 }
             }
             else
@@ -151,6 +153,11 @@ namespace Strassio.Preview
             void Edge(PlacedStone a, PlacedStone b)
             {
                 double g = Point2D.Distance(a.Center, b.Center) - (a.DiameterMm + b.DiameterMm) / 2;
+                if (Environment.GetEnvironmentVariable("LINELAB_DEBUG") == "2" && g > gap + 0.15)
+                {
+                    Console.WriteLine($"    wide {g:0.000} {a.Center}{(a.IsCorner ? "*" : "")} – {b.Center}{(b.IsCorner ? "*" : "")}");
+                }
+
                 minGap = Math.Min(minGap, g);
                 maxGap = Math.Max(maxGap, g);
             }

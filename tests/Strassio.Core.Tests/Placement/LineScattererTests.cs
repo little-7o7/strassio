@@ -310,4 +310,52 @@ public class LineScattererTests
         var distinctPositions = stones.Select(s => (Math.Round(s.Center.X, 6), Math.Round(s.Center.Y, 6))).Distinct().Count();
         Assert.Equal(stones.Count, distinctPositions);
     }
+
+    /// <summary>Просветы между соседями по ряду (замкнутый ряд — по кругу).</summary>
+    private static double[] RowGaps(IReadOnlyList<PlacedStone> stones, bool closed)
+    {
+        int n = closed ? stones.Count : stones.Count - 1;
+        return Enumerable.Range(0, n)
+            .Select(i => Point2D.Distance(stones[i].Center, stones[(i + 1) % stones.Count].Center)
+                - (stones[i].DiameterMm + stones[(i + 1) % stones.Count].DiameterMm) / 2)
+            .ToArray();
+    }
+
+    [Fact]
+    public void SmallCircle_StonesKeepTheGap_MeasuredStraightNotAlongTheArc()
+    {
+        // Круг радиусом 4 мм: дуга между соседями заметно длиннее прямой. Раньше шаг считался по дуге,
+        // по прямой выходило 0,07 мм вместо 0,2 — и проверка наложений убирала весь ряд.
+        var circle = Curve.FromPolyline(
+            Enumerable.Range(0, 120).Select(i => new Point2D(4 * Math.Cos(2 * Math.PI * i / 120), 4 * Math.Sin(2 * Math.PI * i / 120))).ToList(),
+            isClosed: true);
+        var options = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+
+        IReadOnlyList<PlacedStone> stones = LineScatterer.Scatter(circle, options);
+
+        Assert.True(stones.Count >= 8, $"страз {stones.Count}");
+        double[] gaps = RowGaps(stones, closed: true);
+        Assert.All(gaps, g => Assert.InRange(g, 0.1 - 1e-6, 0.5));
+        Assert.True(gaps.Max() - gaps.Min() < 0.01, "просветы неровные");
+    }
+
+    [Fact]
+    public void HeartDip_TwoStonesAroundTheNotch_KeepTheUsualGap()
+    {
+        // Сердце кривыми Безье: в ямке стороны изгибаются и расходятся. Срез угла, посчитанный только
+        // по углу между касательными, ставил две стразы у ямки на 1 мм дальше друг от друга, чем остальные.
+        var heart = new Curve(new[]
+        {
+            CurveSegment.Cubic(new Point2D(0, -25), new Point2D(-12, -12), new Point2D(-28, 0), new Point2D(-22, 12)),
+            CurveSegment.Cubic(new Point2D(-22, 12), new Point2D(-17, 24), new Point2D(-3, 22), new Point2D(0, 13)),
+            CurveSegment.Cubic(new Point2D(0, 13), new Point2D(3, 22), new Point2D(17, 24), new Point2D(22, 12)),
+            CurveSegment.Cubic(new Point2D(22, 12), new Point2D(28, 0), new Point2D(12, -12), new Point2D(0, -25)),
+        }, true);
+        var options = new LineScatterOptions { StoneDiameterMm = 2.4, GapMm = 0.2 };
+
+        IReadOnlyList<PlacedStone> stones = LineScatterer.Scatter(heart, options);
+
+        double[] gaps = RowGaps(stones, closed: true);
+        Assert.All(gaps, g => Assert.InRange(g, 0.1 - 1e-6, 0.45));
+    }
 }
