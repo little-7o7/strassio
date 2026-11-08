@@ -53,7 +53,9 @@ test("страница админки и неизвестные пути", async
   const page = await app.handle(req("GET", "/adminpanel"));
   assert.equal(page.status, 200);
   assert.match(page.html!, /Strassio/);
-  assert.equal((await app.handle(req("GET", "/api/nope"))).status, 404);
+  const nope = await app.handle(req("GET", "/api/nope"));
+  assert.equal(nope.status, 404);
+  assert.equal((nope.json as { error: string }).error, "no_route", "не not_found: на него плагин удаляет лицензию");
   assert.equal((await app.handle(req("GET", "/api/update/latest"))).status, 404);
 });
 
@@ -73,6 +75,9 @@ test("перебор паролей админки упирается в лим�
   for (let i = 0; i < 12; i++) statuses.push((await app.handle(req("POST", "/api/admin/login", {}, "guess" + i))).status);
   assert.equal(statuses[0], 401);
   assert.equal(statuses[11], 429);
+  // Пока адрес ждёт, не проходит и верный пароль — иначе подбор ничем не тормозится.
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, PASSWORD))).status, 429);
+  assert.equal((await app.handle(req("POST", "/api/admin/login", {}, PASSWORD, "9.9.9.9"))).status, 200);
 });
 
 test("админка: пробелы и перенос строки по краям пароля (так вставили в Vercel) не мешают войти", async () => {
@@ -189,7 +194,7 @@ test("сайт: подбор почты к чужому ключу упирае�
 });
 
 test("админка: «Заполнить из GitHub» и пробная версия в «Опубликовать»", async () => {
-  const draft = { tag: "v0.9.0", version: "0.9.0", url: "https://github.com/x/y/releases/download/v0.9.0/a.exe", sha256: "a".repeat(64), notesRu: "• новое" };
+  const draft = { tag: "v0.9.0", version: "0.9.0", url: "https://github.com/little-7o7/strassio-releases/releases/download/v0.9.0/a.exe", sha256: "a".repeat(64), notesRu: "• новое" };
   const channels: string[] = [];
   const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey)), PASSWORD, undefined, undefined, undefined, undefined, async (channel) => {
     channels.push(channel);
@@ -207,4 +212,7 @@ test("админка: «Заполнить из GitHub» и пробная ве�
   assert.equal((await app.handle(req("POST", "/api/admin/update", beta, PASSWORD))).status, 200);
   assert.equal((await app.handle(req("GET", "/api/update/latest?channel=beta"))).status, 200);
   assert.equal((await app.handle(req("POST", "/api/admin/update", { ...beta, version: "1.0" }, PASSWORD))).status, 400);
+  // Установщик — только из выпусков strassio-releases: плагин запускает скачанный файл сам.
+  assert.equal((await app.handle(req("POST", "/api/admin/update", { ...beta, url: "https://evil.example/a.exe" }, PASSWORD))).status, 400);
+  assert.equal((await app.handle(req("POST", "/api/admin/update", { ...beta, url: "https://github.com/someone/else/releases/download/v1/a.exe" }, PASSWORD))).status, 400);
 });

@@ -24,7 +24,8 @@ export type ErrorCode =
   | "not_activated"
   | "revoked"
   | "email_required"
-  | "wrong_email";
+  | "wrong_email"
+  | "offline_seat";
 
 export type ClientResult =
   | { ok: true; license: SignedDocument; client?: ClientInfo }
@@ -142,6 +143,7 @@ export class LicenseService {
     }
 
     const created = await this.store.insertActivation(this.newActivation(license!.id, input));
+    if (await this.overLimit(created)) return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     await this.log("client", "activate", license!.serial, input.hwid);
     return this.issue(license!, created.hwid);
   }
@@ -162,7 +164,9 @@ export class LicenseService {
     if (active.length >= PCS_PER_KEY) {
       if (!this.canTransfer(license!)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
 
-      const oldest = active.slice().sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
+      // Компьютер с файлом лицензии без интернета не отключить: файл работает и дальше — освобождает только автор.
+      const oldest = active.filter((a) => !isOfflineSeat(a)).sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
+      if (!oldest) return { ok: false, error: "occupied", ...this.transferInfo(license!) };
       oldest.status = "revoked";
       await this.store.updateActivation(oldest);
       this.countTransfer(license!);
@@ -171,7 +175,21 @@ export class LicenseService {
     }
 
     const created = await this.store.insertActivation(this.newActivation(license!.id, input));
+    if (await this.overLimit(created)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
     return this.issue(license!, created.hwid);
+  }
+
+  /**
+   * Места проверяются и записываются разными запросами к базе, поэтому два одновременных запроса могли
+   * поставить один ключ на два компьютера. После записи сверяемся: место остаётся за активациями
+   * с меньшим номером, лишняя (наша) отзывается.
+   */
+  private async overLimit(created: ActivationRow): Promise<boolean> {
+    const active = (await this.store.activations(created.licenseId)).filter((a) => a.status === "active").sort((a, b) => a.id - b.id);
+    if (active.slice(0, PCS_PER_KEY).some((a) => a.id === created.id)) return false;
+    created.status = "revoked";
+    await this.store.updateActivation(created);
+    return true;
   }
 
   /** Тихая сверка: при каждом запуске плагина и раз в день. */
@@ -549,6 +567,9 @@ export class LicenseService {
     if (!license) return { ok: false, error: "not_found" };
     const activation = await this.store.findActivation(Number(activationId));
     if (!activation || activation.licenseId !== license.id || activation.status !== "active") return { ok: false, error: "not_found" };
+    // Файл лицензии без интернета продолжит работать и после «освобождения» — иначе один ключ давал бы
+    // сколько угодно таких файлов. Такое место освобождает только автор (админка).
+    if (isOfflineSeat(activation)) return { ok: false, error: "offline_seat" };
 
     if (!this.canTransfer(license)) return { ok: false, error: "transfer_limit" };
 
@@ -578,7 +599,8 @@ export class LicenseService {
     const active = (await this.store.activations(license.id)).filter((a) => a.status === "active");
     if (!active.some((a) => hwidMatches(parseHwid(a.hwid)!, parts))) {
       if (active.length >= PCS_PER_KEY) return { ok: false, error: "occupied" };
-      await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }));
+      const created = await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }));
+      if (await this.overLimit(created)) return { ok: false, error: "occupied" };
     }
 
     await this.log("site", "offline", license.serial, hwid);
@@ -708,8 +730,11 @@ export class LicenseService {
     await this.store.updateActivation(activation);
     if (action) await this.log("client", action, license.serial, input.hwid);
     // Данные клиента — для блока «О программе» в настройках плагина. Получает их только компьютер,
-    // на котором этот ключ сейчас активирован (сверка по коду компьютера).
-    return { ...this.issue(license, activation.hwid), client: { ...license.client } };
+    // на котором этот ключ сейчас активирован (сверка по коду компьютера). Ключ и код компьютера видны
+    // в коде активации, а почта — второй секрет для переноса, поэтому сверка (action = null) отдаёт её скрытой.
+    const client = { ...license.client };
+    if (!action && client.email) client.email = maskEmail(client.email);
+    return { ...this.issue(license, activation.hwid), client };
   }
 
   private issue(license: LicenseRow, hwid: string): { ok: true; license: SignedDocument } {
@@ -749,4 +774,15 @@ function short(value: unknown): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
+}
+
+/** m***@example.com: в «О программе» видно, какая почта, но для переноса лицензии она не годится. */
+export function maskEmail(email: string): string {
+  const at = email.indexOf("@");
+  return at > 0 ? email[0] + "***" + email.substring(at) : "***";
+}
+
+/** Активация файлом лицензии без интернета (из админки или с сайта): плагин с ним сервер не спрашивает. */
+function isOfflineSeat(a: ActivationRow): boolean {
+  return a.pluginVersion === "offline" || a.pluginVersion === "site-offline";
 }

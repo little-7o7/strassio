@@ -426,6 +426,31 @@ test("сверка отдаёт плагину данные клиента (дл
   payload(await service.activate({ serial, hwid: PC1 }));
   const checked = await service.check({ serial, hwid: PC1 });
   assert.ok(checked.ok);
-  if (checked.ok) assert.deepEqual(checked.client, client);
+  // Почта — второй секрет для переноса: в сверке её видно только скрытой.
+  if (checked.ok) assert.deepEqual(checked.client, { ...client, email: "m***@example.com" });
+  const again = await service.activate({ serial, hwid: PC1 });
+  if (again.ok) assert.deepEqual(again.client, client, "повторная активация (с почтой) — полные данные");
   assert.deepEqual(await service.check({ serial, hwid: PC2 }), { ok: false, error: "not_activated" }, "чужой компьютер ничего не получает");
+});
+
+test("два запроса одновременно не ставят ключ на два компьютера", async () => {
+  const { service } = setup();
+  const [{ serial }] = await service.createKeys({});
+  const both = await Promise.all([service.activate({ serial, hwid: PC1 }), service.activate({ serial, hwid: PC2 })]);
+  assert.equal(both.filter((r) => r.ok).length, 1, JSON.stringify(both));
+  const checks = await Promise.all([service.check({ serial, hwid: PC1 }), service.check({ serial, hwid: PC2 })]);
+  assert.equal(checks.filter((r) => r.ok).length, 1, "работает только один компьютер");
+});
+
+test("файл без интернета: место не освобождается с сайта и не уходит при переносе — иначе файлов было бы сколько угодно", async () => {
+  const { service, store, advance } = setup();
+  const [{ serial }] = await service.createKeys({ client: { firstName: "", lastName: "", phone: "", email: EMAIL, birthday: "", telegram: "" } });
+  assert.ok((await service.siteOffline(serial, PC1, EMAIL)).ok);
+  const license = await store.findLicense(serial);
+  const [seat] = await store.activations(license!.id);
+  assert.deepEqual(await service.siteRelease(serial, seat.id, EMAIL), { ok: false, error: "offline_seat" });
+  advance(8);
+  const moved = await service.transfer({ serial, hwid: PC2 });
+  assert.equal(moved.ok, false);
+  assert.equal((await store.activations(license!.id)).filter((a) => a.status === "active").length, 1);
 });

@@ -2,7 +2,7 @@
 // переводит свой запрос в HttpRequest и отдаёт HttpResponse как есть.
 import { createHash, timingSafeEqual } from "node:crypto";
 import { ADMIN_PAGE } from "./adminPage.js";
-import { latestRelease, type ReleaseResult, VERSION_PATTERN } from "./githubRelease.js";
+import { isReleaseUrl, latestRelease, type ReleaseResult, VERSION_PATTERN } from "./githubRelease.js";
 import type { Platform } from "./platform.js";
 import type { LicenseService } from "./service.js";
 import { parseClient } from "./service.js";
@@ -52,6 +52,12 @@ export class RateLimiter {
   }
 }
 
+/**
+ * Несуществующий адрес. Не «not_found»: на этот код (нет такого ключа) плагин удаляет лицензию, и сменённый
+ * адрес или правило в vercel.json разом отключили бы всех покупателей.
+ */
+const NO_ROUTE: HttpResponse = { status: 404, json: { ok: false, error: "no_route" } };
+
 const CLIENT_ACTIONS = ["activate", "transfer", "check", "deactivate", "trial"] as const;
 const MY_LICENSE_ACTIONS = ["lookup", "release", "offline"] as const;
 
@@ -85,7 +91,7 @@ export class App {
     private readonly service: LicenseService,
     adminPassword: string | undefined,
     private readonly clientLimiter = new RateLimiter(30, 60_000),
-    private readonly adminLimiter = new RateLimiter(10, 15 * 60_000),
+    private readonly adminFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly lookupFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly requestLimiter = new RateLimiter(5, 60 * 60_000),
     private readonly fetchRelease: (channel: string) => Promise<ReleaseResult> = (channel) => latestRelease(channel),
@@ -118,7 +124,7 @@ export class App {
 
     // Хаб little_7o7: подпись проверяется по пути как он пришёл, поэтому — до обрезки «/» в конце.
     if (req.path.startsWith("/api/platform/")) {
-      return this.platform ? this.platform.handle(req) : { status: 404, json: { ok: false, error: "not_found" } };
+      return this.platform ? this.platform.handle(req) : NO_ROUTE;
     }
 
     // Админка — только /adminpanel. Главная «/» — статический сайт.
@@ -191,7 +197,7 @@ export class App {
       return this.admin(req, path.substring("/api/admin/".length), body);
     }
 
-    return { status: 404, json: { ok: false, error: "not_found" } };
+    return NO_ROUTE;
   }
 
   private async admin(req: HttpRequest, action: string, body: Record<string, unknown>): Promise<HttpResponse> {
@@ -199,9 +205,11 @@ export class App {
       return { status: 503, json: { ok: false, error: "admin_disabled" } };
     }
 
+    // Считаются только неудачные попытки — чтобы работа в админке не упиралась в лимит. После 10 неудач
+    // адрес ждёт даже с верным паролем: иначе лимит не мешает подбору.
+    if (this.adminFailures.blocked(req.ip)) return tooMany();
     if (!this.isAdmin(req.headers["authorization"])) {
-      // Считаются только неудачные попытки — чтобы работа в админке не упиралась в лимит.
-      if (!this.adminLimiter.allow(req.ip)) return tooMany();
+      this.adminFailures.fail(req.ip);
       return { status: 401, json: { ok: false, error: "unauthorized" } };
     }
 
@@ -251,7 +259,7 @@ export class App {
         const version = String(body.version ?? "").trim();
         const url = String(body.url ?? "").trim();
         const sha256 = String(body.sha256 ?? "").trim().toLowerCase();
-        if (!VERSION_PATTERN.test(version) || !/^https:\/\//.test(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
+        if (!VERSION_PATTERN.test(version) || !isReleaseUrl(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
           return { status: 400, json: { ok: false, error: "bad_request" } };
         }
 

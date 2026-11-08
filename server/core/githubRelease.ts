@@ -7,6 +7,14 @@ export const RELEASES_REPO = "little-7o7/strassio-releases";
 /** Тот же формат, что принимает «Опубликовать»: 1.2.3 или пробная 1.2.3-beta.1. */
 export const VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/;
 
+/**
+ * Ссылка на установщик — только из выпусков strassio-releases: плагин сам запускает скачанный файл,
+ * поэтому даже с паролем админки нельзя подсунуть установщик с другого сайта.
+ */
+export function isReleaseUrl(url: string): boolean {
+  return url.startsWith(`https://github.com/${RELEASES_REPO}/releases/download/`) && url.length <= 500 && !/\s/.test(url);
+}
+
 export interface ReleaseDraft {
   tag: string;
   version: string;

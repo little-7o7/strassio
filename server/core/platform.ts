@@ -6,7 +6,7 @@
 // confirm, already_has_key, password_required, wrong_password, password_not_set, github, too_many_requests.
 // Опасное (заблокировать, удалить ключ, отозвать компьютер, удалить пробный, опубликовать обновление) — только с паролем
 // админки Strassio (ADMIN_PASSWORD) в теле: хаб его не хранит, человек вводит его каждый раз (решение владельца 2026-11-08).
-import { VERSION_PATTERN, latestRelease, type ReleaseResult } from "./githubRelease.js";
+import { VERSION_PATTERN, isReleaseUrl, latestRelease, type ReleaseResult } from "./githubRelease.js";
 import { FailureLimiter, type HttpRequest, type HttpResponse } from "./http.js";
 import { same, verifySignature, type PlatformKeys } from "./platformAuth.js";
 import { parseClient, type LicenseService } from "./service.js";
@@ -30,7 +30,8 @@ type Body = Record<string, unknown>;
 type Handler = (m: string[], body: Body, req: HttpRequest) => Promise<HttpResponse>;
 type Route = { method: "GET" | "POST"; path: RegExp; password?: boolean; run: Handler };
 
-const NOT_FOUND: HttpResponse = { status: 404, json: { ok: false, error: "not_found" } };
+// Не «not_found»: плагин на этот код удаляет лицензию, а несуществующий адрес — не повод (см. http.ts).
+const NOT_FOUND: HttpResponse = { status: 404, json: { ok: false, error: "no_route" } };
 const ok = (data: Record<string, unknown> = {}): HttpResponse => ({ status: 200, json: { ok: true, ...data } });
 const fail = (status: number, error: string, extra: Record<string, unknown> = {}): HttpResponse => ({ status, json: { ok: false, error, ...extra } });
 const missing = () => fail(404, "missing");
@@ -204,7 +205,7 @@ export class Platform {
         const url = String(b.url ?? "").trim();
         const sha256 = String(b.sha256 ?? "").trim().toLowerCase();
         const channel = b.channel === "beta" ? "beta" : b.channel === "stable" || b.channel === undefined ? "stable" : null;
-        if (!channel || !VERSION_PATTERN.test(version) || (minVersion && !VERSION_PATTERN.test(minVersion)) || !/^https:\/\/\S+$/.test(url) || url.length > 500 || !/^[0-9a-f]{64}$/.test(sha256)) return bad();
+        if (!channel || !VERSION_PATTERN.test(version) || (minVersion && !VERSION_PATTERN.test(minVersion)) || !isReleaseUrl(url) || !/^[0-9a-f]{64}$/.test(sha256)) return bad();
         await s.publishUpdate({ channel, version, minVersion, url, sha256, notesRu: String(b.notesRu ?? "").slice(0, 4000), notesEn: String(b.notesEn ?? "").slice(0, 4000) });
         return ok();
       }, true),
