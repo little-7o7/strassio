@@ -81,12 +81,18 @@ namespace Strassio.Licensing
         /// <summary>Подпись верна для открытого ключа <paramref name="key"/>.</summary>
         public bool IsSignedBy(LicensePublicKey key)
         {
+            // Сериализатор не вызывает конструктор: поля, которых нет в файле, приходят null.
+            if (string.IsNullOrEmpty(Payload) || string.IsNullOrEmpty(Signature))
+            {
+                return false;
+            }
+
             try
             {
                 byte[] signature = Convert.FromBase64String(Signature);
                 return key.Verify(Encoding.UTF8.GetBytes(Payload), signature);
             }
-            catch (FormatException)
+            catch (Exception)
             {
                 return false;
             }
