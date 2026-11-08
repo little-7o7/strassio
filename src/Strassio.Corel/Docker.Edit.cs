@@ -375,7 +375,7 @@ namespace Strassio.Corel
         /// Вернуть CorelDRAW как было — каждое по отдельности: не вернулись единицы (документ уже закрыли),
         /// а перерисовка и события всё равно включаются, иначе CorelDRAW выглядит зависшим.
         /// </summary>
-        private static void Restore(Corel.Interop.VGCore.Application app, Document doc, cdrUnit unit, bool eventsEnabled, bool optimization)
+        private static void Restore(global::Corel.Interop.VGCore.Application app, Document doc, cdrUnit unit, bool eventsEnabled, bool optimization)
         {
             try { app.EventsEnabled = eventsEnabled; } catch (Exception) { }
             try { app.Optimization = optimization; } catch (Exception) { }
