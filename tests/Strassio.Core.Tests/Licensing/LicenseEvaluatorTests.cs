@@ -115,6 +115,58 @@ public class LicenseEvaluatorTests
         Assert.Equal(LicenseState.Expired, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(201), null, key).State);
     }
 
+    [Fact]
+    public void OfflineLicense_BoughtForever_WorksForYearsWithoutChecks()
+    {
+        (ECDsa signer, LicensePublicKey key) = NewKey();
+        SignedDocument doc = Sign(signer, Payload(Pc, issued: Now).TrimEnd('}') + ",\"offline\":true}");
+
+        LicenseStatus later = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(3 * 365), null, key);
+        Assert.Equal(LicenseState.Valid, later.State);
+        Assert.True(later.IsOffline);
+        Assert.Null(later.DaysLeft);
+        Assert.Null(later.OfflineDaysLeft);
+        Assert.False(later.ExpiresSoon);
+        Assert.False(later.OfflineEndsSoon);
+    }
+
+    [Fact]
+    public void YearlyKey_WarnsInLast30Days()
+    {
+        (ECDsa signer, LicensePublicKey key) = NewKey();
+        SignedDocument doc = Sign(signer, Payload(Pc, expires: Now.AddDays(365), issued: Now).TrimEnd('}') + ",\"offline\":true}");
+
+        Assert.False(LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(334), null, key).ExpiresSoon);
+        LicenseStatus soon = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(336), null, key);
+        Assert.True(soon.ExpiresSoon);
+        Assert.Equal(29, soon.DaysLeft);
+        Assert.Equal(LicenseState.Expired, LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(365), null, key).State);
+    }
+
+    [Fact]
+    public void TrialEnd_IsNotARenewalWarning()
+    {
+        (ECDsa signer, LicensePublicKey key) = NewKey();
+        SignedDocument doc = Sign(signer, Payload(Pc, LicenseData.PlanTrial, expires: Now.AddDays(5), issued: Now));
+        Assert.False(LicenseEvaluator.Evaluate(doc, Pc, Now, Now, key).ExpiresSoon);
+    }
+
+    [Fact]
+    public void OnlineLicense_CountsDownDaysWithoutConnection()
+    {
+        (ECDsa signer, LicensePublicKey key) = NewKey();
+        SignedDocument doc = Sign(signer, Payload(Pc, issued: Now));
+
+        LicenseStatus day3 = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(3), Now, key);
+        Assert.Equal(11, day3.OfflineDaysLeft);
+        Assert.False(day3.OfflineEndsSoon);
+
+        LicenseStatus day11 = LicenseEvaluator.Evaluate(doc, Pc, Now.AddDays(11).AddHours(1), Now, key);
+        Assert.Equal(3, day11.OfflineDaysLeft);
+        Assert.True(day11.OfflineEndsSoon, "за несколько дней до остановки — предупредить, а не после");
+        Assert.False(day11.IsOffline);
+    }
+
     /// <summary>
     /// Лицензия, подписанная настоящим кодом сервера (server/core, Node.js) одноразовым ключом: плагин
     /// должен принять её подпись, формат JSON и код компьютера — иначе клиенты не смогут активироваться.

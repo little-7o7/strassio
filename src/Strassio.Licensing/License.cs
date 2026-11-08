@@ -42,8 +42,8 @@ namespace Strassio.Licensing
         public string NextCheckAt { get; set; } = string.Empty;
 
         /// <summary>
-        /// Файл офлайн-активации от автора (раздел 13.6) для компьютера без интернета: сверка раз в
-        /// день не нужна, лицензия действует до <see cref="ExpiresAt"/>.
+        /// Лицензия для компьютера без интернета (раздел 13.3b: галочка на сайте, «Моя лицензия» или автор):
+        /// сверка не нужна, действует до <see cref="ExpiresAt"/> (нет срока — всегда).
         /// </summary>
         [DataMember(Name = "offline", Order = 6, EmitDefaultValue = false)]
         public bool Offline { get; set; }

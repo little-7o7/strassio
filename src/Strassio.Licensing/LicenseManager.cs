@@ -197,8 +197,8 @@ namespace Strassio.Licensing
         }
 
         /// <summary>
-        /// Офлайн-активация (раздел 13.6): файл лицензии, который автор сделал в админке по коду
-        /// компьютера клиента. Принимается, только если подпись верна и он для этого компьютера.
+        /// Файл лицензии (раздел 13.3b): для компьютера без интернета — скачан на сайте («Активация» с галочкой
+        /// или «Моя лицензия») или прислан автором. Принимается, только если подпись верна и он для этого компьютера.
         /// </summary>
         public LicenseActionResult Import(string json)
         {
@@ -258,9 +258,9 @@ namespace Strassio.Licensing
 
         /// <summary>
         /// Тихая сверка с сервером (раздел 13.3): только если пора (раз в день) или <paramref name="force"/>.
-        /// Нет связи — ничего не меняется, плагин работает до 14 дней. Сервер ответил, что лицензия
-        /// отозвана/заблокирована/истекла — файл удаляется, причина — в <see cref="LastProblem"/>.
-        /// Возвращает true, если лицензия изменилась.
+        /// Нет связи — ничего не меняется, плагин работает до 14 дней (лицензия без интернета — до конца срока).
+        /// Сервер ответил, что лицензия отозвана/заблокирована/истекла — файл удаляется, причина — в
+        /// <see cref="LastProblem"/>. Возвращает true, если лицензия изменилась.
         /// </summary>
         public async Task<bool> CheckAsync(bool force = false, CancellationToken cancel = default)
         {
@@ -280,12 +280,21 @@ namespace Strassio.Licensing
             SignedDocument? checkedDocument = Document;
             try
             {
+                ApiRequest request = NewRequest(license.IsTrial ? null : license.Serial);
+                request.Offline = license.Offline;
                 ApiReply reply = license.IsTrial
-                    ? await api.PostAsync("trial", NewRequest(null), cancel)
-                    : await api.PostAsync("check", NewRequest(license.Serial), cancel);
+                    ? await api.PostAsync("trial", request, cancel)
+                    : await api.PostAsync("check", request, cancel);
 
                 if (reply.Ok)
                 {
+                    // Лицензию без интернета не меняем на обычную (14 дней без связи): так ответил бы только
+                    // старый или чужой сервер. Настоящий присылает такую же — с новым сроком после продления.
+                    if (license.Offline && reply.License?.Read<LicenseData>()?.Offline != true)
+                    {
+                        return false;
+                    }
+
                     return Accept(reply).Ok;
                 }
 
@@ -314,14 +323,12 @@ namespace Strassio.Licensing
 
         /// <summary>
         /// Сверка при каждом запуске CorelDRAW (так решил автор): отозванная или перенесённая лицензия
-        /// снимается сразу. Нет интернета — работаем дальше, до 14 дней с последней
-        /// удачной сверки. Файл офлайн-активации (для компьютера без интернета) не сверяется.
+        /// снимается сразу. Нет интернета — работаем дальше, до 14 дней с последней удачной сверки.
+        /// Лицензия без интернета (раздел 13.3b) тоже пробует сверку при запуске: связь есть — подтянется
+        /// новый срок после продления; нет — ничего не меняется, срок «14 дней» к ней не относится.
         /// </summary>
-        public Task<bool> CheckOnStartAsync(CancellationToken cancel = default)
-        {
-            LicenseData? license = Status.License;
-            return CheckAsync(force: license != null && !license.Offline, cancel);
-        }
+        public Task<bool> CheckOnStartAsync(CancellationToken cancel = default) =>
+            CheckAsync(force: Status.License != null, cancel);
 
         /// <summary>Серийный ключ к виду STRS-XXXX-XXXX-XXXX: регистр, пробелы и дефисы при вводе не важны.</summary>
         public static string? NormalizeSerial(string? text)

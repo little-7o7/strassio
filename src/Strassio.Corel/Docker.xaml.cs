@@ -335,7 +335,10 @@ namespace Strassio.Corel
         /// <summary>Лицензия изменилась (фоновая сверка, окно «Лицензия») — событие приходит не из потока окна.</summary>
         private void License_Changed(object? sender, EventArgs e) => Dispatcher.BeginInvoke(new Action(RefreshLicenseLine));
 
-        /// <summary>Строка под шапкой: пробный период или «нет лицензии». При действующей лицензии не видна.</summary>
+        /// <summary>
+        /// Строка под шапкой: пробный период, «нет лицензии», скоро конец срока или давно нет связи.
+        /// При действующей лицензии без забот не видна.
+        /// </summary>
         private void RefreshLicenseLine()
         {
             string text = string.Empty;
@@ -355,6 +358,16 @@ namespace Strassio.Corel
                 else if (PluginContext.LicenseEnforced && !status.CanCreate)
                 {
                     text = Loc[status.State == Strassio.Licensing.LicenseState.None ? "docker.license.none" : "docker.license.problem"];
+                }
+                else if (PluginContext.LicenseEnforced && status.ExpiresSoon)
+                {
+                    // Годовой ключ: за 30 дней до конца — напомнить продлить (без интернета новый код берут на сайте).
+                    text = Loc.Format("docker.license.expiresSoon", status.DaysLeft ?? 0);
+                }
+                else if (PluginContext.LicenseEnforced && status.OfflineEndsSoon)
+                {
+                    // Обычная лицензия давно без связи: предупредить до остановки, а не после.
+                    text = Loc.Format("docker.license.offlineSoon", status.OfflineDaysLeft ?? 0);
                 }
             }
             catch (Exception)

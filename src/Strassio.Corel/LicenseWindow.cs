@@ -16,8 +16,8 @@ namespace Strassio.Corel
 {
     /// <summary>
     /// Окно «Лицензия» (docs/SPEC.md, раздел 13): состояние; активация через сайт в три шага
-    /// (код компьютера → сайт /activate → код активации сюда); пробный период, освобождение,
-    /// проверка и офлайн-файл.
+    /// (код компьютера → сайт /activate → код активации сюда; с галочкой «нет интернета» — код без сверки);
+    /// пробный период, освобождение, проверка и файл лицензии для компьютера без интернета.
     /// Строится кодом, как NameDialog; тексты — из файлов языков, цвета — тема CorelDRAW.
     /// </summary>
     internal sealed class LicenseWindow : Window
@@ -207,7 +207,9 @@ namespace Strassio.Corel
             bool full = hasLicense && !status.License!.IsTrial;
             trialButton.Visibility = status.State == LicenseState.None ? Visibility.Visible : Visibility.Collapsed;
             checkButton.Visibility = hasLicense ? Visibility.Visible : Visibility.Collapsed;
-            releaseButton.Visibility = full ? Visibility.Visible : Visibility.Collapsed;
+
+            // Компьютер без интернета освобождает только автор: копию файла не выключить (раздел 13.3b).
+            releaseButton.Visibility = full && !status.IsOffline ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private string StateText(LicenseStatus status) => DescribeState(Loc, status, context.License.LastProblem);
@@ -218,7 +220,7 @@ namespace Strassio.Corel
             switch (status.State)
             {
                 case LicenseState.Valid:
-                    return Loc["license.state.valid"];
+                    return Loc[status.IsOffline ? "license.state.validOffline" : "license.state.valid"];
                 case LicenseState.Trial:
                     return Loc.Format("license.state.trial", status.DaysLeft ?? 0);
                 case LicenseState.Expired:
@@ -247,7 +249,19 @@ namespace Strassio.Corel
             string until = license.ExpiresUtc.HasValue
                 ? license.ExpiresUtc.Value.ToLocalTime().ToString("d", CultureInfo.CurrentCulture)
                 : Loc["license.forever"];
-            return Loc.Format("license.detail", license.Serial, until);
+            string text = Loc.Format("license.detail", license.Serial, until);
+
+            // Годовой ключ скоро кончится или обычная лицензия давно без связи — что делать, одной фразой.
+            if (status.ExpiresSoon)
+            {
+                text += Environment.NewLine + Loc.Format(status.IsOffline ? "license.expiresSoon.offline" : "license.expiresSoon", status.DaysLeft ?? 0);
+            }
+            else if (status.OfflineEndsSoon)
+            {
+                text += Environment.NewLine + Loc.Format("license.offlineEndsSoon", status.OfflineDaysLeft ?? 0);
+            }
+
+            return text;
         }
 
         private void SetBusy(bool value)

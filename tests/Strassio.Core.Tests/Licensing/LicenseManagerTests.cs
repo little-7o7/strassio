@@ -184,21 +184,99 @@ public class LicenseManagerTests : IDisposable
         Assert.Equal(LicenseState.Valid, m.Status.State);
     }
 
-    [Fact]
-    public async Task EveryStart_OfflineFile_IsNotChecked()
+    /// <summary>Лицензия для компьютера без интернета (SPEC 13.3b): тот же вид, что License, но с "offline": true.</summary>
+    private SignedDocument OfflineLicense(HardwareCode hw, DateTime? expires = null)
     {
-        string payload = License(Pc).Payload.TrimEnd('}') + ",\"offline\":true}";
-        var doc = new SignedDocument
+        string payload = License(hw, expires: expires).Payload.TrimEnd('}') + ",\"offline\":true}";
+        return new SignedDocument
         {
             Payload = payload,
             Signature = Convert.ToBase64String(signer.SignData(Encoding.UTF8.GetBytes(payload), HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation)),
         };
-        LicenseManager m = NewManager();
-        Assert.True(m.Import(ToJson(doc)).Ok);
+    }
 
-        api.LastAction = null;
+    [Fact]
+    public async Task EveryStart_OfflineLicense_TriesQuietly_AndWorksWithoutInternetForever()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.ImportCode(ToCode(OfflineLicense(Pc))).Ok, "код с галочкой «нет интернета» вставляется в то же поле");
+        Assert.True(m.Status.IsOffline);
+
+        now = Now.AddDays(400);
+        api.Reply = _ => ApiReply.Offline();
+        LicenseManager later = NewManager();
+        Assert.False(await later.CheckOnStartAsync());
+        Assert.Equal("check", api.LastAction);
+        Assert.True(api.LastRequest!.Offline, "сервер узнаёт, что у компьютера лицензия без интернета");
+        Assert.Equal(LicenseState.Valid, later.Status.State);
+        Assert.True(later.CanCreate);
+    }
+
+    [Fact]
+    public async Task OfflineYearlyLicense_Renewed_ArrivesByItselfWhenInternetAppears()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(OfflineLicense(Pc, Now.AddDays(365)))).Ok);
+
+        now = Now.AddDays(340);
+        Assert.True(m.Status.ExpiresSoon);
+        api.Reply = _ => Ok(OfflineLicense(Pc, Now.AddDays(730)));
+        Assert.True(await m.CheckOnStartAsync());
+        LicenseStatus s = m.Status;
+        Assert.True(s.IsOffline);
+        Assert.False(s.ExpiresSoon);
+        Assert.Equal(390, s.DaysLeft);
+    }
+
+    [Fact]
+    public async Task OfflineLicense_IsNotSwappedForOrdinary_FromOldServer()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(OfflineLicense(Pc))).Ok);
+        now = Now.AddDays(1);
+        api.Reply = _ => Ok(License(Pc));
         Assert.False(await m.CheckOnStartAsync());
-        Assert.Null(api.LastAction);
+        Assert.True(m.Status.IsOffline, "иначе через 14 дней без связи клиент остался бы без лицензии");
+
+        now = Now.AddDays(100);
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+    }
+
+    [Fact]
+    public async Task OfflineLicense_ReleasedByAuthor_StopsWhenInternetAppears()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(OfflineLicense(Pc))).Ok);
+        now = Now.AddDays(1);
+        api.Reply = _ => Error("revoked");
+        Assert.True(await m.CheckOnStartAsync());
+        Assert.Equal(LicenseState.None, m.Status.State);
+        Assert.Equal("revoked", m.LastProblem);
+    }
+
+    [Fact]
+    public async Task OfflineLicense_ReleaseFromPlugin_RefusedByServer_LicenseStays()
+    {
+        LicenseManager m = NewManager();
+        Assert.True(m.Import(ToJson(OfflineLicense(Pc))).Ok);
+        api.Reply = _ => Error("offline_seat");
+        LicenseActionResult r = await m.DeactivateAsync();
+        Assert.Equal("offline_seat", r.Error);
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+    }
+
+    [Fact]
+    public async Task OrdinaryLicense_TurnsIntoOffline_WhenSiteMarkedThisComputer()
+    {
+        api.Reply = _ => Ok(License(Pc));
+        LicenseManager m = NewManager();
+        await m.ActivateAsync("STRS-AAAA-BBBB-CCCC");
+        Assert.False(api.LastRequest!.Offline);
+
+        now = Now.AddDays(2);
+        api.Reply = _ => Ok(OfflineLicense(Pc));
+        Assert.True(await m.CheckOnStartAsync());
+        Assert.True(m.Status.IsOffline);
     }
 
     [Fact]

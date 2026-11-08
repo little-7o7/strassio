@@ -25,6 +25,13 @@ namespace Strassio.Licensing
 
         [DataMember(Name = "corelVersion", Order = 3, EmitDefaultValue = false)]
         public string? CorelVersion { get; set; }
+
+        /// <summary>
+        /// Сверка с компьютера, где лежит лицензия без интернета (раздел 13.3b): сервер помечает его место
+        /// «без интернета» и присылает такую же лицензию — не обычную на 14 дней.
+        /// </summary>
+        [DataMember(Name = "offline", Order = 4, EmitDefaultValue = false)]
+        public bool Offline { get; set; }
     }
 
     /// <summary>Ответ сервера: { ok: true, license } или { ok: false, error, transfersLeft? }.</summary>
