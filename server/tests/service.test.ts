@@ -333,7 +333,8 @@ test("админка: данные клиента (имя, фамилия, те�
   const [{ serial }] = await service.createKeys({ client });
   const [{ serial: other }] = await service.createKeys({});
 
-  for (const q of ["мадина", "Каримова", "123 45", "example.com", "madina_k"]) {
+  // Полный телефон — 12 цифр, как ключ: точного ключа нет, значит ищем как обычно.
+  for (const q of ["мадина", "Каримова", "123 45", "example.com", "madina_k", "+998 90 123 45 67"]) {
     const found = await service.search(q);
     assert.deepEqual(found.map((l) => l.serial), [serial], q);
     assert.deepEqual(found[0].client, client);

@@ -355,8 +355,10 @@ export class LicenseService {
   }
 
   async search(query: string): Promise<Array<LicenseRow & { activations: ActivationRow[] }>> {
+    // Похоже на ключ — сначала точный ключ; не нашёлся — обычный поиск: 12 цифр телефона тоже «похожи на ключ».
     const serial = normalizeSerial(query);
-    const rows = serial ? [await this.store.findLicense(serial)].filter((r): r is LicenseRow => !!r) : await this.store.searchLicenses(query, 100);
+    const exact = serial ? await this.store.findLicense(serial) : null;
+    const rows = exact ? [exact] : await this.store.searchLicenses(query, 100);
     return Promise.all(rows.map(async (l) => ({ ...l, activations: await this.store.activations(l.id) })));
   }
 
