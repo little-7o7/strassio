@@ -243,8 +243,14 @@ namespace Strassio.Licensing
                     status.State == LicenseState.Expired ? "expired" : "bad_license");
             }
 
-            // issuedAt подписан сервером — это надёжное время, от него и считаются метки.
-            guard.AcceptServerTime(plain.License!.IssuedUtc ?? now);
+            // issuedAt подписан сервером — это надёжное время, от него и считаются метки. Только если файл
+            // новее уже известного времени сервера: повторный ввод старого файла не отводит часы назад.
+            DateTime issued = plain.License!.IssuedUtc ?? now;
+            if (!guard.ServerTimeUtc.HasValue || issued > guard.ServerTimeUtc.Value)
+            {
+                guard.AcceptServerTime(issued);
+            }
+
             guard.Observe(now);
             Save(doc);
             return LicenseActionResult.Success();
@@ -271,6 +277,7 @@ namespace Strassio.Licensing
                 return false;
             }
 
+            SignedDocument? checkedDocument = Document;
             try
             {
                 ApiReply reply = license.IsTrial
@@ -282,8 +289,16 @@ namespace Strassio.Licensing
                     return Accept(reply).Ok;
                 }
 
-                if (FatalErrors.Contains(reply.Error))
+                // Отказ по ключу сервер всегда шлёт с 403. Тот же код с другим статусом (404 — не тот адрес,
+                // чужой сервер) — не повод удалять лицензию у покупателя.
+                if (FatalErrors.Contains(reply.Error) && (reply.Status == 0 || reply.Status == 403))
                 {
+                    // Пока шла сверка (до 40 с без интернета), могли вставить новый код активации — его не трогаем.
+                    if (!ReferenceEquals(Document, checkedDocument))
+                    {
+                        return false;
+                    }
+
                     LastProblem = reply.Error;
                     Remove(license);
                     return true;
@@ -455,12 +470,16 @@ namespace Strassio.Licensing
                         Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
                         string temp = FilePath + ".tmp";
                         File.WriteAllText(temp, Json.Write(doc), new UTF8Encoding(false));
+
+                        // Replace — одним шагом: при сбое (антивирус держит файл) старая лицензия остаётся на месте.
                         if (File.Exists(FilePath))
                         {
-                            File.Delete(FilePath);
+                            File.Replace(temp, FilePath, null);
                         }
-
-                        File.Move(temp, FilePath);
+                        else
+                        {
+                            File.Move(temp, FilePath);
+                        }
                     }
                 }
                 catch (Exception)

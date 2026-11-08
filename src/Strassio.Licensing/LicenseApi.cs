@@ -53,6 +53,10 @@ namespace Strassio.Licensing
         [DataMember(Name = "client", Order = 5, EmitDefaultValue = false)]
         public LicenseClient? Client { get; set; }
 
+        /// <summary>HTTP-код ответа; 0 — ответ не по HTTP (тесты). Отказ сервера по ключу приходит с 403.</summary>
+        [IgnoreDataMember]
+        public int Status { get; set; }
+
         public static ApiReply Offline() => new ApiReply { Ok = false, Error = NoConnection };
     }
 
@@ -98,7 +102,8 @@ namespace Strassio.Licensing
         public HttpLicenseApi(string baseUrl, TimeSpan? timeout = null, string? helperPath = null, bool tryDirect = true)
         {
             baseUri = new Uri(baseUrl.TrimEnd('/') + "/");
-            http = new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(15) };
+            // Ответы сервера — короткий JSON; больше мегабайта — не он, а память CorelDRAW не резиновая.
+            http = new HttpClient { Timeout = timeout ?? TimeSpan.FromSeconds(15), MaxResponseContentBufferSize = 1 << 20 };
             this.helperPath = helperPath;
             this.tryDirect = tryDirect;
         }
@@ -218,6 +223,7 @@ namespace Strassio.Licensing
             if (reply != null && (reply.Ok || !string.IsNullOrEmpty(reply.Error)))
             {
                 LastError = null;
+                reply.Status = status;
                 return reply;
             }
 

@@ -23,8 +23,10 @@ namespace Strassio.Licensing
         {
             get
             {
+                // Только https или свой компьютер: по http ключ и код компьютера шли бы открытым текстом.
                 string? env = Environment.GetEnvironmentVariable("STRASSIO_SERVER");
-                return !string.IsNullOrWhiteSpace(env) && Uri.TryCreate(env, UriKind.Absolute, out _) ? env!.Trim() : DefaultServer;
+                return !string.IsNullOrWhiteSpace(env) && Uri.TryCreate(env!.Trim(), UriKind.Absolute, out Uri? uri) &&
+                    (uri.Scheme == Uri.UriSchemeHttps || uri.IsLoopback) ? env!.Trim() : DefaultServer;
             }
         }
 

@@ -238,6 +238,67 @@ public class LicenseManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task Check_ErrorCodeWithoutForbidden_KeepsLicense()
+    {
+        api.Reply = _ => Ok(License(Pc));
+        LicenseManager m = NewManager();
+        await m.ActivateAsync("STRS-AAAA-BBBB-CCCC");
+
+        // Не тот адрес (404) или чужой сервер — тот же код, но не отказ по ключу: лицензия остаётся.
+        api.Reply = _ => new ApiReply { Ok = false, Error = "not_found", Status = 404 };
+        Assert.False(await m.CheckAsync(force: true));
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+
+        api.Reply = _ => new ApiReply { Ok = false, Error = "not_found", Status = 403 };
+        Assert.True(await m.CheckAsync(force: true));
+        Assert.Equal(LicenseState.None, m.Status.State);
+    }
+
+    [Fact]
+    public async Task Check_NewCodePastedWhileWaiting_KeepsNewLicense()
+    {
+        api.Reply = _ => Ok(License(Pc));
+        LicenseManager m = NewManager();
+        await m.ActivateAsync("STRS-AAAA-BBBB-CCCC");
+
+        // Старый ключ отозван; пока сверка ждёт ответа, клиент вставил код активации нового ключа.
+        string fresh = ToCode(License(Pc, serial: "STRS-DDDD-EEEE-FFFF"));
+        api.Reply = _ =>
+        {
+            Assert.True(m.ImportCode(fresh).Ok);
+            return Error("revoked");
+        };
+        Assert.False(await m.CheckAsync(force: true));
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+        Assert.Equal("STRS-DDDD-EEEE-FFFF", m.Status.License!.Serial);
+    }
+
+    [Fact]
+    public void Import_WithoutSignature_IsRefused_NotThrown()
+    {
+        LicenseManager m = NewManager();
+        Assert.False(m.Import("{\"payload\":\"{}\"}").Ok);
+        Assert.False(m.ImportCode("SA1.e30").Ok);
+        Assert.Equal(LicenseState.None, m.Status.State);
+    }
+
+    [Fact]
+    public void Import_SameFileAgain_DoesNotWindClockBack()
+    {
+        LicenseManager m = NewManager();
+        string code = ToCode(License(Pc));
+        Assert.True(m.ImportCode(code).Ok);
+        now = Now.AddDays(3);
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+
+        // Шаг назад в пределах допуска можно, но повторный ввод того же файла не опускает метку времени.
+        now = now.AddMinutes(-100);
+        Assert.True(m.ImportCode(code).Ok);
+        now = now.AddMinutes(-100);
+        Assert.Equal(LicenseState.ClockTampered, m.Status.State);
+    }
+
+    [Fact]
     public async Task Deactivate_FreesComputer()
     {
         api.Reply = _ => Ok(License(Pc));
