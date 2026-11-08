@@ -5,6 +5,7 @@ import { neon } from "@neondatabase/serverless";
 import { Signer } from "../core/crypto.js";
 import { App } from "../core/http.js";
 import { PgStore } from "../core/pgStore.js";
+import { requestTarget } from "../core/requestTarget.js";
 import { Platform } from "../core/platform.js";
 import { platformKeys } from "../core/platformAuth.js";
 import { LicenseService } from "../core/service.js";
@@ -69,11 +70,8 @@ function tryJson(text: string): unknown {
 }
 
 export default async function handler(req: IncomingMessage & { body?: unknown }, res: ServerResponse) {
-  const url = new URL(req.url ?? "/", "http://localhost");
-  // vercel.json переписывает путь в ?__path=…, настоящий путь восстанавливаем отсюда.
-  const rewritten = url.searchParams.get("__path");
-  const path = rewritten !== null ? "/" + rewritten.replace(/^\/+/, "") : url.pathname;
-  url.searchParams.delete("__path");
+  // vercel.json переписывает путь в ?__path=…, а Vercel дописывает ещё и &path=… — убираем оба (core/requestTarget.ts).
+  const { path, query } = requestTarget(req.url);
 
   const headers: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(req.headers)) headers[key] = Array.isArray(value) ? value[0] : value;
@@ -82,7 +80,7 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   let response;
   try {
     const { body, raw } = await readBody(req);
-    response = await getApp().handle({ method: req.method ?? "GET", path, query: url.searchParams, headers, body, rawBody: raw, ip });
+    response = await getApp().handle({ method: req.method ?? "GET", path, query, headers, body, rawBody: raw, ip });
   } catch (error) {
     console.error(error);
     response = { status: 500, json: { ok: false, error: "server_not_configured" } };
