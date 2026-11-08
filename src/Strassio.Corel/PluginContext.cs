@@ -17,7 +17,8 @@ namespace Strassio.Corel
     /// </summary>
     internal sealed class PluginContext
     {
-        private static readonly Lazy<PluginContext> Lazy = new Lazy<PluginContext>(() => new PluginContext());
+        // PublicationOnly: сбой при запуске (файл занят) не запоминается — следующее открытие докера пробует снова.
+        private static readonly Lazy<PluginContext> Lazy = new Lazy<PluginContext>(() => new PluginContext(), System.Threading.LazyThreadSafetyMode.PublicationOnly);
 
         private PluginContext()
         {
@@ -305,39 +306,42 @@ namespace Strassio.Corel
             }
         }
 
-        public void SaveSettings()
+        /// <returns>Текст ошибки, если файл не записался (настройки действуют до закрытия CorelDRAW); null — записан.</returns>
+        public string? SaveSettings()
         {
-            TrySave(() => Store.SaveSettings(Settings));
+            string? error = TrySave(() => Store.SaveSettings(Settings));
             if (Localizer.LanguageCode != Settings.Language)
             {
                 Localizer.SetLanguage(Settings.Language);
             }
 
             SettingsChanged?.Invoke(this, EventArgs.Empty);
+            return error;
         }
 
         /// <summary>
         /// Настройки и таблица камней из файла переноса (раздел 12 ТЗ): заменить свои, сохранить оба
         /// файла, сменить язык и перерисовать докер — как будто пользователь всё выставил руками.
         /// </summary>
-        public void ApplyImport(SettingsBundle bundle)
+        public string? ApplyImport(SettingsBundle bundle)
         {
             Settings = bundle.Settings!;
             Stones = bundle.Stones!;
-            TrySave(() => Store.SaveStones(Stones));
-            SaveSettings();
+            string? error = TrySave(() => Store.SaveStones(Stones));
+            return SaveSettings() ?? error;
         }
 
         /// <summary>Новая таблица камней из редактора: сохранить в stones.json и перерисовать докер.</summary>
-        public void ReplaceStones(StoneTable table)
+        public string? ReplaceStones(StoneTable table)
         {
             Stones = table;
-            TrySave(() => Store.SaveStones(Stones));
+            string? error = TrySave(() => Store.SaveStones(Stones));
             SettingsChanged?.Invoke(this, EventArgs.Empty);
+            return error;
         }
 
         /// <summary>Сохранить без перерисовки докера — например, запомнить последний выбранный камень.</summary>
-        public void SaveSettingsQuietly() => TrySave(() => Store.SaveSettings(Settings));
+        public void SaveSettingsQuietly() => _ = TrySave(() => Store.SaveSettings(Settings));
 
         /// <summary>
         /// Где лежат настройки, таблица камней, пресеты и лицензия: C:\Strassio\data (установщик пишет
@@ -469,15 +473,17 @@ namespace Strassio.Corel
             return reader.ReadToEnd();
         }
 
-        private static void TrySave(Action save)
+        /// <summary>Нет доступа к папке, диск полон — работаем дальше с тем, что в памяти; возвращает текст ошибки.</summary>
+        private static string? TrySave(Action save)
         {
             try
             {
                 save();
+                return null;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Нет доступа к %APPDATA% — работаем дальше с тем, что в памяти; файл запишется в следующий раз.
+                return ex.Message;
             }
         }
     }

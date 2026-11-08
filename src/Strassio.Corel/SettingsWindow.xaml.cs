@@ -132,7 +132,12 @@ namespace Strassio.Corel
             s.OutlineWidthMm = outlineWidthMm;
             s.CheckUpdates = CheckUpdatesBox.IsChecked == true;
 
-            context.SaveSettings();
+            string? error = context.SaveSettings();
+            if (error != null)
+            {
+                MessageBox.Show(this, Loc.Format("error.saveFailed", error), Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
             DialogResult = true;
         }
 
@@ -181,8 +186,14 @@ namespace Strassio.Corel
                 return;
             }
 
-            context.ApplyImport(bundle!);
+            string? error = context.ApplyImport(bundle!);
             Fill();
+            if (error != null)
+            {
+                ShowError(Loc.Format("error.saveFailed", error));
+                return;
+            }
+
             ShowInfo(Loc.Format("transfer.imported", Path.GetFileName(dialog.FileName)));
         }
 

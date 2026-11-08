@@ -25,11 +25,19 @@ namespace Strassio.Corel
         /// <summary>Код этого компьютера (WMI небыстрый — вызывать один раз, лучше не в потоке окна).</summary>
         public static HardwareCode ReadCode() => HardwareCode.FromComponents(new WmiHardwareSource().ReadComponents());
 
+        private const string Scope = @"root\cimv2";
+
+        /// <summary>
+        /// Без срока сломанный WMI висит бесконечно, а CorelDRAW ждёт код компьютера при первом «Создать».
+        /// Не успел — признак «неизвестно», как при выключенном WMI.
+        /// </summary>
+        private static EnumerationOptions Options() => new EnumerationOptions { Timeout = TimeSpan.FromSeconds(10) };
+
         private static string? Query(string wql, string property)
         {
             try
             {
-                using var searcher = new ManagementObjectSearcher(wql);
+                using var searcher = new ManagementObjectSearcher(Scope, wql, Options());
                 foreach (ManagementBaseObject item in searcher.Get())
                 {
                     using (item)
@@ -56,14 +64,14 @@ namespace Strassio.Corel
             try
             {
                 string drive = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.System))?.TrimEnd('\\') ?? "C:";
-                using var partitions = new ManagementObjectSearcher(
-                    "ASSOCIATORS OF {Win32_LogicalDisk.DeviceID='" + drive + "'} WHERE AssocClass=Win32_LogicalDiskToPartition");
+                using var partitions = new ManagementObjectSearcher(Scope,
+                    "ASSOCIATORS OF {Win32_LogicalDisk.DeviceID='" + drive + "'} WHERE AssocClass=Win32_LogicalDiskToPartition", Options());
                 foreach (ManagementBaseObject partition in partitions.Get())
                 {
                     using (partition)
                     {
-                        using var disks = new ManagementObjectSearcher(
-                            "ASSOCIATORS OF {Win32_DiskPartition.DeviceID='" + partition["DeviceID"] + "'} WHERE AssocClass=Win32_DiskDriveToDiskPartition");
+                        using var disks = new ManagementObjectSearcher(Scope,
+                            "ASSOCIATORS OF {Win32_DiskPartition.DeviceID='" + partition["DeviceID"] + "'} WHERE AssocClass=Win32_DiskDriveToDiskPartition", Options());
                         foreach (ManagementBaseObject disk in disks.Get())
                         {
                             using (disk)

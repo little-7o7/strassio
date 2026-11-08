@@ -793,7 +793,13 @@ namespace Strassio.Corel
 
             context.Settings.ActiveSet = set.Name;
             context.SaveSettingsQuietly();
-            context.ReplaceStones(table);
+            string? error = context.ReplaceStones(table);
+            if (error != null)
+            {
+                // Таблица уже действует, но после перезапуска CorelDRAW вернулась бы старая — человек должен знать.
+                MessageBox.Show(this, Loc.Format("error.saveFailed", error), Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+
             DialogResult = true;
         }
 
