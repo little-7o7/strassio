@@ -36,6 +36,7 @@ namespace Strassio.Corel
                 Api, WmiHardwareSource.ReadCode, LicenseKeys.Key, Store.Directory, null, LicenseMarkStores())
             {
                 PluginVersion = typeof(PluginContext).Assembly.GetName().Version?.ToString(3),
+                DropFolders = LicenseDropFolders(Store.Directory, addonDir),
             };
             NoticeFinishedUpdate();
 
@@ -85,7 +86,33 @@ namespace Strassio.Corel
         /// Можно создавать и править стразы. Спрашивается в нескольких местах докера (SPEC 13.2),
         /// а не один раз при запуске.
         /// </summary>
-        public bool CanCreate => !LicenseEnforced || License.CanCreate;
+        public bool CanCreate => !LicenseEnforced || License.CanCreate || (PickUpLicenseFile() && License.CanCreate);
+
+        private long lastLicenseFileScanTicks;
+
+        /// <summary>
+        /// Не положили ли в папку плагина (C:\Strassio) файл лицензии с сайта (раздел 13.3b) — если да, взять его.
+        /// Без <paramref name="force"/> — не чаще раза в 3 секунды (зовётся и при нажатии кнопок в докере).
+        /// </summary>
+        public bool PickUpLicenseFile(bool force = false)
+        {
+            long nowTicks = DateTime.UtcNow.Ticks;
+            if (!force && nowTicks - System.Threading.Interlocked.Read(ref lastLicenseFileScanTicks) < TimeSpan.FromSeconds(3).Ticks)
+            {
+                return false;
+            }
+
+            System.Threading.Interlocked.Exchange(ref lastLicenseFileScanTicks, nowTicks);
+            try
+            {
+                return License.ImportDroppedFiles();
+            }
+            catch (Exception)
+            {
+                // Папка недоступна — не беда: файл можно загрузить кнопкой «Файл лицензии…».
+                return false;
+            }
+        }
 
         private int backgroundCheckStarted;
 
@@ -106,6 +133,7 @@ namespace Strassio.Corel
                 try
                 {
                     _ = License.Computer;
+                    PickUpLicenseFile(force: true);
                     License.NotifyChanged();
                     await License.CheckOnStartAsync();
                 }
@@ -119,7 +147,50 @@ namespace Strassio.Corel
 
             // CorelDRAW могут не закрывать неделями: раз в час смотрим, не пора ли сверка (пора — раз в сутки).
             dailyCheck = new System.Threading.Timer(_ => CheckIfDue(), null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+            WatchLicenseFolders();
         }
+
+        /// <summary>Слежение за папками лицензии — держим ссылки, иначе сборщик мусора их остановит.</summary>
+        private readonly System.Collections.Generic.List<FileSystemWatcher> licenseWatchers = new System.Collections.Generic.List<FileSystemWatcher>();
+
+        private System.Threading.Timer? licenseFileTimer;
+
+        /// <summary>
+        /// Файл лицензии положили в папку, пока CorelDRAW открыт, — подхватываем сразу, без перезапуска.
+        /// Ждём полторы секунды после последнего изменения: копирование могло ещё не закончиться.
+        /// </summary>
+        private void WatchLicenseFolders()
+        {
+            licenseFileTimer = new System.Threading.Timer(_ => PickUpLicenseFile(force: true), null, System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+            foreach (string folder in License.DropFolders)
+            {
+                try
+                {
+                    if (!Directory.Exists(folder))
+                    {
+                        continue;
+                    }
+
+                    var watcher = new FileSystemWatcher(folder, "*.json")
+                    {
+                        IncludeSubdirectories = false,
+                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+                    };
+                    watcher.Created += (s, e) => LicenseFolderChanged();
+                    watcher.Changed += (s, e) => LicenseFolderChanged();
+                    watcher.Renamed += (s, e) => LicenseFolderChanged();
+                    watcher.EnableRaisingEvents = true;
+                    licenseWatchers.Add(watcher);
+                }
+                catch (Exception)
+                {
+                    // Слежение не включилось — файл всё равно найдётся: при открытии окна «Лицензия», при нажатии
+                    // кнопки в докере и раз в час.
+                }
+            }
+        }
+
+        private void LicenseFolderChanged() => licenseFileTimer?.Change(1500, System.Threading.Timeout.Infinite);
 
         /// <summary>Держим ссылку, иначе сборщик мусора остановит таймер.</summary>
         private System.Threading.Timer? dailyCheck;
@@ -133,7 +204,7 @@ namespace Strassio.Corel
 
             try
             {
-                if (await License.CheckAsync())
+                if (PickUpLicenseFile(force: true) | await License.CheckAsync())
                 {
                     return;
                 }
@@ -364,6 +435,62 @@ namespace Strassio.Corel
 
             MoveOldData(SettingsStore.DefaultDirectory, installed);
             return installed;
+        }
+
+        /// <summary>
+        /// Куда клиент кладёт файл лицензии с сайта: сама папка плагина C:\Strassio (решение автора 2026-11-08),
+        /// её папка data и папка аддона в CorelDRAW. Папка плагина — та, где лежит data (из реестра установщика).
+        /// </summary>
+        private static string[] LicenseDropFolders(string dataDir, string addonDir)
+        {
+            var folders = new System.Collections.Generic.List<string>();
+            foreach (string? dir in new[] { ParentOfData(InstalledDataDirectoryValue()), ParentOfData(dataDir), dataDir, addonDir })
+            {
+                if (!string.IsNullOrWhiteSpace(dir) && !folders.Contains(dir!, StringComparer.OrdinalIgnoreCase))
+                {
+                    folders.Add(dir!);
+                }
+            }
+
+            return folders.ToArray();
+        }
+
+        private static string? ParentOfData(string? dataDir)
+        {
+            try
+            {
+                string? trimmed = dataDir?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return !string.IsNullOrEmpty(trimmed) && string.Equals(Path.GetFileName(trimmed), "data", StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetDirectoryName(trimmed)
+                    : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>Что записал установщик в HKLM\Software\Strassio\DataDir — без проверки записи.</summary>
+        private static string? InstalledDataDirectoryValue()
+        {
+            foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using RegistryKey root = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, view);
+                    using RegistryKey? key = root.OpenSubKey(@"Software\Strassio");
+                    if (key?.GetValue("DataDir") is string dir && dir.Trim().Length > 0)
+                    {
+                        return dir.Trim();
+                    }
+                }
+                catch (Exception)
+                {
+                    // Нет ключа — пробуем другой вид реестра.
+                }
+            }
+
+            return null;
         }
 
         private static string? InstalledDataDirectory()

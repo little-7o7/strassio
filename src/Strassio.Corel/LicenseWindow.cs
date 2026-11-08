@@ -140,7 +140,12 @@ namespace Strassio.Corel
         {
             try
             {
-                await Task.Run(() => context.License.Computer);
+                // Заодно — не положили ли файл лицензии в папку плагина (C:\Strassio).
+                await Task.Run(() =>
+                {
+                    _ = context.License.Computer;
+                    context.PickUpLicenseFile(force: true);
+                });
             }
             catch (Exception)
             {
@@ -212,10 +217,11 @@ namespace Strassio.Corel
             releaseButton.Visibility = full && !status.IsOffline ? Visibility.Visible : Visibility.Collapsed;
         }
 
-        private string StateText(LicenseStatus status) => DescribeState(Loc, status, context.License.LastProblem);
+        private string StateText(LicenseStatus status) => DescribeState(Loc, status, context.License.LastProblem, context.License.ProblemFile);
 
         /// <summary>Состояние лицензии одной фразой (окно «Лицензия» и «О программе» в настройках).</summary>
-        internal static string DescribeState(Localizer Loc, LicenseStatus status, string? lastProblem)
+        /// <param name="problemFile">Файл в папке плагина, который не подошёл (<paramref name="lastProblem"/> — почему).</param>
+        internal static string DescribeState(Localizer Loc, LicenseStatus status, string? lastProblem, string? problemFile = null)
         {
             switch (status.State)
             {
@@ -234,13 +240,26 @@ namespace Strassio.Corel
                 case LicenseState.ClockTampered:
                     return Loc["license.state.clock"];
                 default:
-                    return lastProblem != null ? Loc["license.error." + lastProblem] : Loc["license.state.none"];
+                    if (lastProblem == null)
+                    {
+                        return Loc["license.state.none"];
+                    }
+
+                    return problemFile != null
+                        ? Loc.Format("license.dropped.problem", problemFile) + " " + Loc["license.error." + lastProblem]
+                        : Loc["license.error." + lastProblem];
             }
         }
 
         private string DetailText(LicenseStatus status)
         {
             LicenseData? license = status.License;
+            if (license == null && status.State == LicenseState.None && context.License.DropFolders.Count > 0)
+            {
+                // Компьютер без интернета: файл с сайта достаточно положить в папку плагина (раздел 13.3b).
+                return Loc.Format("license.dropped.hint", context.License.DropFolders[0]);
+            }
+
             if (license == null || license.IsTrial || status.State == LicenseState.BadSignature)
             {
                 return string.Empty;

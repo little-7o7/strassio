@@ -460,6 +460,132 @@ public class LicenseManagerTests : IDisposable
         Assert.False(doc.IsSignedBy(key));
     }
 
+    /// <summary>Папка плагина (C:\Strassio): настройки и лицензия — в её подпапке data (<see cref="dir"/>).</summary>
+    private string AppDir => Path.Combine(dir, "app");
+
+    private LicenseManager NewDropManager(HardwareCode? pc = null)
+    {
+        LicenseManager m = NewManager(pc);
+        m.DropFolders = new[] { AppDir, dir };
+        return m;
+    }
+
+    private string Drop(string name, string text)
+    {
+        Directory.CreateDirectory(AppDir);
+        string path = Path.Combine(AppDir, name);
+        File.WriteAllText(path, text);
+        return path;
+    }
+
+    /// <summary>Скачал на сайте файл (вписав код компьютера), положил в C:\Strassio — плагин работает сам.</summary>
+    [Fact]
+    public void DroppedFile_InPluginFolder_StartsWorking_AndStaysAfterRestart()
+    {
+        LicenseManager m = NewDropManager();
+        Assert.False(m.ImportDroppedFiles(), "папки ещё нет — ничего не случилось");
+
+        Drop("settings.json", "{\"language\":\"ru\"}");
+        Drop("big.json", "{\"payload\":\"" + new string('x', 20000) + "\",\"signature\":\"x\"}");
+        Drop("notes.txt", ToJson(OfflineLicense(Pc)));
+        Assert.False(m.ImportDroppedFiles(), "посторонние файлы не мешают и не считаются лицензией");
+        Assert.Null(m.LastProblem);
+
+        string path = Drop("strassio-license (1).json", ToJson(OfflineLicense(Pc)));
+        Assert.True(m.ImportDroppedFiles());
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+        Assert.True(m.Status.IsOffline);
+        Assert.True(File.Exists(m.FilePath), "лицензия скопирована к себе (license.json)");
+        Assert.True(File.Exists(path), "файл в папке не трогаем");
+        Assert.False(m.ImportDroppedFiles(), "тот же файл второй раз — ничего не меняется");
+
+        File.Delete(path);
+        Assert.Equal(LicenseState.Valid, NewDropManager().Status.State);
+    }
+
+    [Fact]
+    public void DroppedFile_ForOtherComputer_SaysWhy_ThenRightFileWorks()
+    {
+        LicenseManager m = NewDropManager();
+        string wrong = Drop("strassio-license.json", ToJson(OfflineLicense(OtherPc)));
+        int changed = 0;
+        m.Changed += (s, e) => changed++;
+
+        Assert.False(m.ImportDroppedFiles());
+        Assert.Equal(LicenseState.None, m.Status.State);
+        Assert.Equal("wrong_computer", m.LastProblem);
+        Assert.Equal(wrong, m.ProblemFile);
+        Assert.False(m.ImportDroppedFiles());
+        Assert.Equal(1, changed);
+
+        File.Delete(wrong);
+        Assert.False(m.ImportDroppedFiles());
+        Assert.Null(m.LastProblem);
+
+        Drop("strassio-license (2).json", ToJson(OfflineLicense(Pc)));
+        Assert.True(m.ImportDroppedFiles());
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+        Assert.Null(m.LastProblem);
+        Assert.Null(m.ProblemFile);
+    }
+
+    /// <summary>Годовой ключ без интернета: продлили — новый файл кладут рядом со старым, берётся новый.</summary>
+    [Fact]
+    public void DroppedFile_Renewal_NewerWins_OlderIgnored()
+    {
+        LicenseManager m = NewDropManager();
+        string first = ToJson(OfflineLicense(Pc, Now.AddDays(30)));
+        Drop("strassio-license.json", first);
+        Assert.True(m.ImportDroppedFiles());
+        Assert.Equal(30, m.Status.DaysLeft);
+
+        now = Now.AddDays(20);
+        Drop("strassio-license (1).json", ToJson(OfflineLicense(Pc, Now.AddDays(400))));
+        Assert.True(m.ImportDroppedFiles());
+        Assert.Equal(380, m.Status.DaysLeft);
+
+        // Старый файл остался в папке (или его положили снова) — продлённая лицензия не откатывается.
+        Drop("old.json", first);
+        Assert.False(m.ImportDroppedFiles());
+        Assert.Equal(380, m.Status.DaysLeft);
+        Assert.Equal(380, NewDropManager().Status.DaysLeft);
+    }
+
+    [Fact]
+    public async Task DroppedFile_FullReplacesTrial_EvenIfIssuedEarlier()
+    {
+        now = Now.AddHours(-2);
+        string full = ToJson(OfflineLicense(Pc));
+        now = Now;
+        api.Reply = _ => Ok(License(Pc, "trial", Now.AddDays(14)));
+        LicenseManager m = NewDropManager();
+        Assert.True((await m.StartTrialAsync()).Ok);
+        Assert.Equal(LicenseState.Trial, m.Status.State);
+
+        Drop("strassio-license.json", full);
+        Assert.True(m.ImportDroppedFiles());
+        Assert.Equal(LicenseState.Valid, m.Status.State);
+    }
+
+    /// <summary>Автор освободил компьютер (отозвал) — старый файл в папке уже не включит лицензию, и сообщение сервера остаётся.</summary>
+    [Fact]
+    public async Task DroppedFile_AfterRevoke_OldCopyIgnoredQuietly()
+    {
+        LicenseManager m = NewDropManager();
+        Drop("strassio-license.json", ToJson(OfflineLicense(Pc)));
+        Assert.True(m.ImportDroppedFiles());
+
+        now = Now.AddDays(1);
+        api.Reply = _ => Error("revoked");
+        Assert.True(await m.CheckOnStartAsync());
+        Assert.Equal(LicenseState.None, m.Status.State);
+
+        Assert.False(m.ImportDroppedFiles());
+        Assert.Equal(LicenseState.None, m.Status.State);
+        Assert.Equal("revoked", m.LastProblem);
+        Assert.False(NewDropManager().ImportDroppedFiles());
+    }
+
     private static string ToCode(SignedDocument doc) =>
         ActivationCode.Prefix + ToBase64Url(Encoding.UTF8.GetBytes(doc.Payload)) + "." + ToBase64Url(Convert.FromBase64String(doc.Signature));
 

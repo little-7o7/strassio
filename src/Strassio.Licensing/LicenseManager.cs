@@ -57,15 +57,28 @@ namespace Strassio.Licensing
         /// <summary>Ошибки сервера, после которых лицензия на этом компьютере больше не действует.</summary>
         private static readonly string[] FatalErrors = { "revoked", "not_activated", "not_found", "blocked", "expired" };
 
+        /// <summary>
+        /// Почему не подошёл файл, положенный в папку, — о чём стоит сказать пользователю. Старый файл
+        /// (после него лицензию снимали) и посторонние файлы пропускаются молча: они могут лежать там годами.
+        /// </summary>
+        private static readonly string[] DropProblems = { "wrong_computer", "expired", "clock" };
+
+        /// <summary>Файл лицензии — меньше килобайта; большие файлы (таблица камней, пресеты) не читаем.</summary>
+        private const long DropFileMaxBytes = 16 * 1024;
+
         private readonly ILicenseApi api;
         private readonly Lazy<HardwareCode> computer;
         private readonly LicensePublicKey key;
         private readonly Func<DateTime> clock;
         private readonly TimeGuard guard;
         private readonly object sync = new object();
+        private readonly object dropSync = new object();
         private SignedDocument? document;
         private bool loaded;
         private int checking;
+
+        /// <summary><see cref="LastProblem"/> — про файл в папке, а не ответ сервера (сервер важнее).</summary>
+        private bool problemFromDrop;
 
         /// <param name="computer">Код этого компьютера — считается один раз при первом обращении (WMI небыстрый).</param>
         /// <param name="markStores">
@@ -116,8 +129,20 @@ namespace Strassio.Licensing
 
         public string? CorelVersion { get; set; }
 
-        /// <summary>Что ответил сервер при последней тихой сверке, если лицензию пришлось снять (например, "revoked").</summary>
+        /// <summary>
+        /// Что ответил сервер при последней тихой сверке, если лицензию пришлось снять (например, "revoked"),
+        /// или почему не подошёл файл лицензии в папке плагина (<see cref="ImportDroppedFiles"/>).
+        /// </summary>
         public string? LastProblem { get; private set; }
+
+        /// <summary>Файл в папке плагина, который не подошёл (<see cref="LastProblem"/> — почему); иначе null.</summary>
+        public string? ProblemFile { get; private set; }
+
+        /// <summary>
+        /// Папки, куда клиент может просто положить файл лицензии, скачанный на сайте (раздел 13.3b):
+        /// главная — папка плагина C:\Strassio. Задаёт аддон; пусто — не искать.
+        /// </summary>
+        public IReadOnlyList<string> DropFolders { get; set; } = Array.Empty<string>();
 
         public HardwareCode Computer => computer.Value;
 
@@ -221,6 +246,153 @@ namespace Strassio.Licensing
             return doc == null ? LicenseActionResult.Fail("bad_code") : Import(doc);
         }
 
+        /// <summary>
+        /// Файл лицензии, который клиент просто положил в папку плагина (<see cref="DropFolders"/>, раздел 13.3b):
+        /// скачал на сайте, вписав код этого компьютера, и перенёс в C:\Strassio. Берётся, если подпись верна,
+        /// он для этого компьютера и лучше того, что есть: лицензии нет или она не действует, сейчас пробный
+        /// период, или файл новее (продление годового ключа). Проверки — те же, что у кнопки «Файл лицензии…».
+        /// Сам файл в папке не трогаем (в C:\Strassio писать может только администратор): лицензия копируется
+        /// в license.json. Не подошёл, а своей лицензии нет — причина в <see cref="LastProblem"/> и
+        /// <see cref="ProblemFile"/>. Возвращает true, если лицензия сменилась.
+        /// </summary>
+        public bool ImportDroppedFiles()
+        {
+            // Папку могут смотреть сразу таймер, слежение за папкой и кнопка в докере — хватит одного.
+            if (!Monitor.TryEnter(dropSync))
+            {
+                return false;
+            }
+
+            try
+            {
+                List<DroppedFile> files = FindDroppedFiles();
+                LicenseStatus current = Status;
+                LicenseData? working = current.CanCreate ? current.License : null;
+                string? problem = null;
+                string? problemFile = null;
+                foreach (DroppedFile file in files.OrderByDescending(f => f.License.IssuedUtc ?? DateTime.MinValue))
+                {
+                    if (working != null && !IsBetter(file.License, working))
+                    {
+                        continue;
+                    }
+
+                    LicenseActionResult result = Import(file.Document);
+                    if (result.Ok)
+                    {
+                        return true;
+                    }
+
+                    if (problem == null && DropProblems.Contains(result.Error))
+                    {
+                        problem = result.Error;
+                        problemFile = file.Path;
+                    }
+                }
+
+                // Сказать, почему файл не подошёл, — только если своей лицензии нет и сервер ничего важнее не сообщал.
+                if (working != null || (LastProblem != null && !problemFromDrop))
+                {
+                    return false;
+                }
+
+                if (problem != LastProblem || problemFile != ProblemFile)
+                {
+                    LastProblem = problem;
+                    ProblemFile = problemFile;
+                    problemFromDrop = problem != null;
+                    NotifyChanged();
+                }
+
+                return false;
+            }
+            finally
+            {
+                Monitor.Exit(dropSync);
+            }
+        }
+
+        /// <summary>Файл из папки лучше действующей лицензии: полная вместо пробной или выдана позже (продление).</summary>
+        private static bool IsBetter(LicenseData candidate, LicenseData working)
+        {
+            if (working.IsTrial != candidate.IsTrial)
+            {
+                return working.IsTrial;
+            }
+
+            DateTime? issued = candidate.IssuedUtc;
+            DateTime? workingIssued = working.IssuedUtc;
+            return issued.HasValue && (!workingIssued.HasValue || issued.Value > workingIssued.Value);
+        }
+
+        /// <summary>
+        /// Файлы *.json в <see cref="DropFolders"/> (без подпапок), похожие на лицензию. Имя любое: браузер
+        /// мог назвать его «strassio-license (1).json». Свой license.json не в счёт — он и так загружен.
+        /// </summary>
+        private List<DroppedFile> FindDroppedFiles()
+        {
+            var found = new List<DroppedFile>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Path.GetFullPath(FilePath) };
+            foreach (string folder in DropFolders)
+            {
+                string[] paths;
+                try
+                {
+                    if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+                    {
+                        continue;
+                    }
+
+                    paths = Directory.GetFiles(folder, "*.json", SearchOption.TopDirectoryOnly);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                foreach (string path in paths)
+                {
+                    try
+                    {
+                        if (!seen.Add(Path.GetFullPath(path)) || new FileInfo(path).Length > DropFileMaxBytes)
+                        {
+                            continue;
+                        }
+
+                        SignedDocument? doc = Json.TryRead<SignedDocument>(File.ReadAllText(path, Encoding.UTF8));
+                        LicenseData? license = doc?.Read<LicenseData>();
+                        if (doc != null && !string.IsNullOrEmpty(doc.Signature) && license != null && !string.IsNullOrEmpty(license.Hwid))
+                        {
+                            found.Add(new DroppedFile(path, doc, license));
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // Файл ещё копируется или занят — посмотрим в следующий раз.
+                    }
+                }
+            }
+
+            return found;
+        }
+
+        private sealed class DroppedFile
+        {
+            public DroppedFile(string path, SignedDocument document, LicenseData license)
+            {
+                Path = path;
+                Document = document;
+                License = license;
+            }
+
+            public string Path { get; }
+
+            public SignedDocument Document { get; }
+
+            /// <summary>Содержимое до проверки подписи — только чтобы выбрать, какой файл пробовать первым.</summary>
+            public LicenseData License { get; }
+        }
+
         private LicenseActionResult Import(SignedDocument doc)
         {
             DateTime now = clock();
@@ -252,6 +424,7 @@ namespace Strassio.Licensing
             }
 
             guard.Observe(now);
+            ClearProblem();
             Save(doc);
             return LicenseActionResult.Success();
         }
@@ -309,6 +482,8 @@ namespace Strassio.Licensing
                     }
 
                     LastProblem = reply.Error;
+                    ProblemFile = null;
+                    problemFromDrop = false;
                     Remove(license);
                     return true;
                 }
@@ -388,7 +563,7 @@ namespace Strassio.Licensing
                 return LicenseActionResult.Fail("bad_license");
             }
 
-            LastProblem = null;
+            ClearProblem();
             guard.AcceptServerTime(issued.Value);
             Save(reply.License);
             if (reply.Client != null)
@@ -403,6 +578,13 @@ namespace Strassio.Licensing
             }
 
             return status.State == LicenseState.Expired ? LicenseActionResult.Fail("expired") : LicenseActionResult.Success();
+        }
+
+        private void ClearProblem()
+        {
+            LastProblem = null;
+            ProblemFile = null;
+            problemFromDrop = false;
         }
 
         /// <summary>Метки времени для правил; <paramref name="hasLicense"/> — лицензия лежит (тогда метки обязательны).</summary>

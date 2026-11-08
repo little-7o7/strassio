@@ -244,7 +244,7 @@ namespace Strassio.Corel
 
             lines.Add(string.Empty);
             LicenseStatus status = context.License.Status;
-            Line("about.license", LicenseWindow.DescribeState(Loc, status, context.License.LastProblem));
+            Line("about.license", LicenseWindow.DescribeState(Loc, status, context.License.LastProblem, context.License.ProblemFile));
             LicenseData? license = status.License;
             if (license != null && !license.IsTrial)
             {
