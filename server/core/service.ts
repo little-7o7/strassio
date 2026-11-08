@@ -11,6 +11,8 @@ export const TRANSFER_COOLDOWN_DAYS = 7;
 /** Один ключ — один компьютер (решение автора, 22.09.2026). Колонка max_pcs в базе больше не читается. */
 export const PCS_PER_KEY = 1;
 const DAY = 24 * 60 * 60 * 1000;
+/** «Срок скоро кончается» на Главной хаба. */
+export const SOON_DAYS = 30;
 
 export type ErrorCode =
   | "bad_request"
@@ -61,6 +63,20 @@ export interface TrialView {
   active: boolean;
 }
 
+/** Ключ, как его показывает хаб little_7o7. status «expired» — срок вышел (в базе остаётся «active»). */
+export interface AdminLicenseView {
+  serial: string;
+  status: "active" | "blocked" | "expired";
+  expiresAt: string | null;
+  daysLeft: number | null;
+  transfersCount: number;
+  nextTransferAt: string | null;
+  note: string;
+  createdAt: string;
+  client: ClientInfo;
+  computers: Array<{ id: number; code: string; hwid: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
+}
+
 export interface KeyOptions {
   count?: number;
   days?: number | null;
@@ -100,6 +116,8 @@ export class LicenseService {
     private readonly store: Store,
     private readonly signer: Signer,
     private readonly clock: () => Date = () => new Date(),
+    /** Кто делает действия «админки» — для журнала: «admin» (старая /adminpanel) или «hub» (хаб little_7o7). */
+    private readonly adminActor: string = "admin",
   ) {}
 
   // ---------- Клиент (плагин) ----------
@@ -285,7 +303,7 @@ export class LicenseService {
       await this.store.updateRequest(request);
     }
 
-    await this.log("admin", "request_" + action, request.serial, `#${request.id}`);
+    await this.log(this.adminActor, "request_" + action, request.serial, `#${request.id}`);
     return true;
   }
 
@@ -332,7 +350,7 @@ export class LicenseService {
       keys.push({ serial });
     }
 
-    await this.log("admin", "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., срок: ${options.days || "бессрочно"}`);
+    await this.log(this.adminActor, "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., срок: ${options.days || "бессрочно"}`);
     return keys;
   }
 
@@ -349,7 +367,7 @@ export class LicenseService {
     if (!license) return false;
     await this.store.deleteLicense(license.id);
     const who = [license.client.firstName, license.client.lastName].filter(Boolean).join(" ");
-    await this.log("admin", "delete", license.serial, who || license.note);
+    await this.log(this.adminActor, "delete", license.serial, who || license.note);
     return true;
   }
 
@@ -390,7 +408,7 @@ export class LicenseService {
     }
 
     await this.store.updateLicense(license);
-    await this.log("admin", action, license.serial, value === undefined || action === "client" ? "" : String(value));
+    await this.log(this.adminActor, action, license.serial, value === undefined || action === "client" ? "" : String(value));
     return license;
   }
 
@@ -399,7 +417,7 @@ export class LicenseService {
     if (!activation) return false;
     activation.status = "revoked";
     await this.store.updateActivation(activation);
-    await this.log("admin", "revoke", "", `активация ${id}, ${activation.hwid}`);
+    await this.log(this.adminActor, "revoke", "", `активация ${id}, ${activation.hwid}`);
     return true;
   }
 
@@ -415,13 +433,13 @@ export class LicenseService {
       await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "offline", corelVersion: "" }));
     }
 
-    await this.log("admin", "offline", license.serial, hwid);
+    await this.log(this.adminActor, "offline", license.serial, hwid);
     return this.sign(license.serial, hwid, license.plan, license.expiresAt, true);
   }
 
   async publishUpdate(row: Omit<UpdateRow, "createdAt">): Promise<void> {
     await this.store.insertUpdate({ ...row, channel: row.channel === "beta" ? "beta" : "stable", createdAt: this.clock() });
-    await this.log("admin", "publish_update", "", `${row.channel} ${row.version}`);
+    await this.log(this.adminActor, "publish_update", "", `${row.channel} ${row.version}`);
   }
 
   auditLog(limit = 200) {
@@ -429,6 +447,85 @@ export class LicenseService {
   }
 
   // ---------- Сайт: «Моя лицензия» (по одному ключу, решение автора 22.09.2026) ----------
+
+  // ---------- Хаб little_7o7 (/api/platform) ----------
+
+  /** Ключ для хаба: состояние словом, сколько дней осталось, когда можно перенести, компьютеры (код и полный). */
+  adminView(license: LicenseRow, activations: ActivationRow[]): AdminLicenseView {
+    const now = this.clock();
+    const expired = !!license.expiresAt && license.expiresAt <= now;
+    const next = this.nextTransferAt(license);
+    return {
+      serial: license.serial,
+      status: license.status === "blocked" ? "blocked" : expired ? "expired" : "active",
+      expiresAt: license.expiresAt ? iso(license.expiresAt) : null,
+      daysLeft: license.expiresAt ? Math.max(0, Math.ceil((license.expiresAt.getTime() - now.getTime()) / DAY)) : null,
+      transfersCount: license.transfersCount,
+      nextTransferAt: next ? iso(next) : null,
+      note: license.note,
+      createdAt: iso(license.createdAt),
+      client: { ...license.client },
+      computers: activations.map((a) => ({
+        id: a.id,
+        code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
+        hwid: a.hwid,
+        active: a.status === "active",
+        firstAt: iso(a.firstAt),
+        lastCheckAt: iso(a.lastCheckAt),
+        pluginVersion: a.pluginVersion,
+        corelVersion: a.corelVersion,
+      })),
+    };
+  }
+
+  async licenseViews(query: string): Promise<AdminLicenseView[]> {
+    return (await this.search(query)).map(({ activations, ...l }) => this.adminView(l, activations));
+  }
+
+  async licenseView(serialText: unknown): Promise<AdminLicenseView | null> {
+    const serial = normalizeSerial(serialText);
+    const license = serial ? await this.store.findLicense(serial) : null;
+    return license ? this.adminView(license, await this.store.activations(license.id)) : null;
+  }
+
+  findRequest(id: unknown): Promise<RequestRow | null> {
+    const n = Number(id);
+    return Number.isInteger(n) && n > 0 ? this.store.findRequest(n) : Promise.resolve(null);
+  }
+
+  /** Что сейчас получают плагины в каждом канале. */
+  async updates(): Promise<{ stable: UpdateRow | null; beta: UpdateRow | null }> {
+    const [stable, beta] = await Promise.all([this.store.latestUpdate("stable"), this.store.latestUpdate("beta")]);
+    return { stable, beta };
+  }
+
+  ping(): Promise<void> {
+    return this.store.ping();
+  }
+
+  /** Главная хаба: числа, «требует внимания» (ключи, кончающиеся за 30 дней, и новые заявки), что опубликовано. */
+  async summary() {
+    const now = this.clock();
+    const soon = new Date(now.getTime() + SOON_DAYS * DAY);
+    const at = { now, soon, dayAgo: new Date(now.getTime() - DAY), trialSince: new Date(now.getTime() - TRIAL_DAYS * DAY) };
+    const [st, expiring, requests, updates] = await Promise.all([
+      this.store.stats(at),
+      this.store.expiringLicenses(now, soon, 20),
+      this.store.listRequests(50),
+      this.updates(),
+    ]);
+    return {
+      licenses: { total: st.licenses, active: st.licenses - st.blocked - st.expired, blocked: st.blocked, expired: st.expired, expiringSoon: st.expiring, unlimited: st.unlimited },
+      computers: { active: st.computers, checkedToday: st.checkedSince },
+      trials: { active: st.trialsActive, total: st.trials },
+      requests: { new: st.requestsNew, working: st.requestsWorking },
+      updates: { stable: updates.stable ? { version: updates.stable.version, createdAt: iso(updates.stable.createdAt) } : null, beta: updates.beta ? { version: updates.beta.version, createdAt: iso(updates.beta.createdAt) } : null },
+      attention: {
+        expiring: expiring.map((l) => ({ serial: l.serial, expiresAt: iso(l.expiresAt!), daysLeft: Math.max(0, Math.ceil((l.expiresAt!.getTime() - now.getTime()) / DAY)), client: { ...l.client }, note: l.note })),
+        newRequests: requests.filter((r) => r.status === "new").slice(0, 10),
+      },
+    };
+  }
 
   /** Ключ → сведения о лицензии и её компьютерах. */
   async siteLookup(serialText: unknown, email?: unknown): Promise<SiteResult<{ license: SiteLicenseView }>> {
@@ -535,7 +632,7 @@ export class LicenseService {
     const trial = trials.find((t) => t.id === Number(id));
     if (!trial) return false;
     await this.store.deleteTrial(trial.id);
-    await this.log("admin", "trial_delete", "", trial.hwid);
+    await this.log(this.adminActor, "trial_delete", "", trial.hwid);
     return true;
   }
 

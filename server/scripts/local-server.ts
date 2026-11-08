@@ -3,19 +3,29 @@
 //   PORT                — порт (по умолчанию 8787)
 //   LICENSE_PRIVATE_KEY — ключ подписи; не задан — создаётся одноразовый, открытый ключ печатается
 //   ADMIN_PASSWORD      — пароль админки (по умолчанию local-admin-pass; только для этого компьютера)
+//   PLATFORM_API_KEY, PLATFORM_API_SECRET — пара для хаба little_7o7 (/api/platform); не заданы — API выключен
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { generateKeys, Signer } from "../core/crypto.js";
 import { App } from "../core/http.js";
 import { MemoryStore } from "../core/memoryStore.js";
+import { Platform } from "../core/platform.js";
+import { platformKeys } from "../core/platformAuth.js";
 import { LicenseService } from "../core/service.js";
 
 const port = Number(process.env.PORT) || 8787;
 const privateKey = process.env.LICENSE_PRIVATE_KEY || generateKeys().privateKey;
 const password = process.env.ADMIN_PASSWORD || "local-admin-pass";
 const signer = new Signer(privateKey);
-const app = new App(new LicenseService(new MemoryStore(), signer), password);
+const store = new MemoryStore();
+const platform = new Platform({
+  service: new LicenseService(store, signer, undefined, "hub"),
+  keys: platformKeys(process.env.PLATFORM_API_KEY, process.env.PLATFORM_API_SECRET),
+  adminPassword: password,
+  spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
+});
+const app = new App(new LicenseService(store, signer), password).usePlatform(platform);
 
 // Сайт из public/ — как на Vercel: «/» → index.html, «/license» → license.html (cleanUrls).
 const PUBLIC = join(process.cwd(), "public");
@@ -45,16 +55,17 @@ createServer(async (req, res) => {
 
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
+  const raw = Buffer.concat(chunks).toString("utf8");
   let body: unknown = null;
   try {
-    body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : null;
+    body = raw ? JSON.parse(raw) : null;
   } catch {
     body = null;
   }
 
   const headers: Record<string, string | undefined> = {};
   for (const [key, value] of Object.entries(req.headers)) headers[key] = Array.isArray(value) ? value[0] : value;
-  const response = await app.handle({ method: req.method ?? "GET", path: url.pathname, query: url.searchParams, headers, body, ip: "local" });
+  const response = await app.handle({ method: req.method ?? "GET", path: url.pathname, query: url.searchParams, headers, body, rawBody: raw, ip: "local" });
 
   res.statusCode = response.status;
   if (response.html !== undefined) {

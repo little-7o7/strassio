@@ -3,6 +3,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { ADMIN_PAGE } from "./adminPage.js";
 import { latestRelease, type ReleaseResult, VERSION_PATTERN } from "./githubRelease.js";
+import type { Platform } from "./platform.js";
 import type { LicenseService } from "./service.js";
 import { parseClient } from "./service.js";
 
@@ -12,6 +13,8 @@ export interface HttpRequest {
   query: URLSearchParams;
   headers: Record<string, string | undefined>;
   body: unknown;
+  /** Тело как пришло (текст) — по нему проверяется подпись хаба (/api/platform). */
+  rawBody?: string;
   ip: string;
 }
 
@@ -92,6 +95,13 @@ export class App {
   }
 
   private readonly adminPassword: string | undefined;
+  private platform: Platform | null = null;
+
+  /** Закрытый API для хаба little_7o7 (/api/platform/*). Без него эти адреса отвечают 404, как любые несуществующие. */
+  usePlatform(platform: Platform): this {
+    this.platform = platform;
+    return this;
+  }
 
   async handle(req: HttpRequest): Promise<HttpResponse> {
     try {
@@ -105,6 +115,11 @@ export class App {
   private async route(req: HttpRequest): Promise<HttpResponse> {
     const path = req.path.replace(/\/+$/, "") || "/";
     const body = (req.body && typeof req.body === "object" ? req.body : {}) as Record<string, unknown>;
+
+    // Хаб little_7o7: подпись проверяется по пути как он пришёл, поэтому — до обрезки «/» в конце.
+    if (req.path.startsWith("/api/platform/")) {
+      return this.platform ? this.platform.handle(req) : { status: 404, json: { ok: false, error: "not_found" } };
+    }
 
     // Админка — только /adminpanel. Главная «/» — статический сайт.
     if (req.method === "GET" && path === "/adminpanel") {

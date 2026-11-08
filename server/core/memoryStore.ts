@@ -1,6 +1,6 @@
 // Хранилище в памяти — для тестов и локального запуска без базы.
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, Store, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
 
 export class MemoryStore implements Store {
   licenses: LicenseRow[] = [];
@@ -9,6 +9,8 @@ export class MemoryStore implements Store {
   log: AuditRow[] = [];
   updates: UpdateRow[] = [];
   requests: RequestRow[] = [];
+  /** nonce → до какого времени (секунды Unix) помнить. */
+  nonces = new Map<string, number>();
   private nextId = 1;
 
   async findLicense(serial: string) {
@@ -115,6 +117,41 @@ export class MemoryStore implements Store {
   async insertUpdate(row: UpdateRow) {
     this.updates.push({ ...row });
   }
+
+  async spendNonce(nonce: string, untilSec: number, nowSec: number) {
+    for (const [n, until] of this.nonces) if (until < nowSec) this.nonces.delete(n);
+    if (this.nonces.has(nonce)) return false;
+    this.nonces.set(nonce, untilSec);
+    return true;
+  }
+
+  async stats(at: StatsWindow): Promise<StoreStats> {
+    const open = this.licenses.filter((l) => l.status !== "blocked");
+    const active = this.activationRows.filter((a) => a.status === "active");
+    return {
+      licenses: this.licenses.length,
+      blocked: this.licenses.length - open.length,
+      expired: open.filter((l) => l.expiresAt && l.expiresAt <= at.now).length,
+      expiring: open.filter((l) => l.expiresAt && l.expiresAt > at.now && l.expiresAt <= at.soon).length,
+      unlimited: this.licenses.filter((l) => !l.expiresAt).length,
+      computers: active.length,
+      checkedSince: active.filter((a) => a.lastCheckAt > at.dayAgo).length,
+      trials: this.trials.length,
+      trialsActive: this.trials.filter((t) => t.startedAt > at.trialSince).length,
+      requestsNew: this.requests.filter((r) => r.status === "new").length,
+      requestsWorking: this.requests.filter((r) => r.status === "working").length,
+    };
+  }
+
+  async expiringLicenses(now: Date, soon: Date, limit: number) {
+    return this.licenses
+      .filter((l) => l.status !== "blocked" && l.expiresAt && l.expiresAt > now && l.expiresAt <= soon)
+      .sort((a, b) => a.expiresAt!.getTime() - b.expiresAt!.getTime())
+      .slice(0, limit)
+      .map((l) => ({ ...l, client: { ...l.client } }));
+  }
+
+  async ping() {}
 }
 
 function clone<T extends object>(row: T | null): T | null {

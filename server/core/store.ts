@@ -83,6 +83,29 @@ export interface UpdateRow {
 }
 
 export type NewLicense = Omit<LicenseRow, "id">;
+
+/** Границы для сводки хаба: сейчас, «скоро» (через 30 дней), сутки назад, начало ещё идущих пробных. */
+export interface StatsWindow {
+  now: Date;
+  soon: Date;
+  dayAgo: Date;
+  trialSince: Date;
+}
+
+/** Числа для Главной хаба (только чтение). Истёкшие и «скоро истекают» — среди незаблокированных. */
+export interface StoreStats {
+  licenses: number;
+  blocked: number;
+  expired: number;
+  expiring: number;
+  unlimited: number;
+  computers: number;
+  checkedSince: number;
+  trials: number;
+  trialsActive: number;
+  requestsNew: number;
+  requestsWorking: number;
+}
 export type NewActivation = Omit<ActivationRow, "id">;
 
 export interface Store {
@@ -119,4 +142,13 @@ export interface Store {
 
   latestUpdate(channel: string): Promise<UpdateRow | null>;
   insertUpdate(row: UpdateRow): Promise<void>;
+
+  // ---------- Хаб little_7o7 (/api/platform) ----------
+  /** Отметить nonce подписанного запроса. false — он уже был (повтор). Устаревшие (until < nowSec) стираются. */
+  spendNonce(nonce: string, untilSec: number, nowSec: number): Promise<boolean>;
+  stats(at: StatsWindow): Promise<StoreStats>;
+  /** Незаблокированные ключи, срок которых кончается в (now, soon], ближайшие первыми. */
+  expiringLicenses(now: Date, soon: Date, limit: number): Promise<LicenseRow[]>;
+  /** База отвечает (для «Состояния» в хабе). */
+  ping(): Promise<void>;
 }

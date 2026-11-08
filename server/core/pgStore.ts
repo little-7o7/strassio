@@ -1,7 +1,7 @@
 // Хранилище в Postgres (SPEC 15). Драйвер не импортируется здесь: адаптер платформы передаёт функцию
 // query(текст, параметры) → строки. Таблицы создаются сами при первом запросе (CREATE ... IF NOT EXISTS).
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, Store, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
 
 export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
 
@@ -72,6 +72,11 @@ const SCHEMA = [
      notes_en TEXT NOT NULL DEFAULT '',
      min_version TEXT NOT NULL DEFAULT '',
      created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  // Хаб little_7o7 (2026-11-08): использованные nonce подписанных запросов, чтобы перехваченный запрос нельзя было
+  // повторить. Строка живёт 10 минут, устаревшие стираются при каждой записи.
+  `CREATE TABLE IF NOT EXISTS platform_nonces (
+     nonce TEXT PRIMARY KEY,
+     until_sec BIGINT NOT NULL)`,
 ];
 
 export class PgStore implements Store {
@@ -237,6 +242,61 @@ export class PgStore implements Store {
       "INSERT INTO updates (channel, version, url, sha256, notes_ru, notes_en, min_version, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
       [r.channel, r.version, r.url, r.sha256, r.notesRu, r.notesEn, r.minVersion, r.createdAt],
     );
+  }
+
+  // ---------- Хаб little_7o7 (/api/platform) ----------
+
+  /** Одна команда: стереть устаревшие и записать новый; уже есть — ни одной строки в ответе (повтор). */
+  async spendNonce(nonce: string, untilSec: number, nowSec: number) {
+    const rows = await this.q(
+      `WITH gone AS (DELETE FROM platform_nonces WHERE until_sec < $3)
+       INSERT INTO platform_nonces (nonce, until_sec) VALUES ($1, $2) ON CONFLICT (nonce) DO NOTHING RETURNING 1 AS ok`,
+      [nonce, untilSec, nowSec],
+    );
+    return rows.length > 0;
+  }
+
+  async stats(at: StatsWindow): Promise<StoreStats> {
+    const [r] = await this.q(
+      `SELECT
+         (SELECT count(*) FROM licenses) AS licenses,
+         (SELECT count(*) FROM licenses WHERE status = 'blocked') AS blocked,
+         (SELECT count(*) FROM licenses WHERE status <> 'blocked' AND expires_at <= $1) AS expired,
+         (SELECT count(*) FROM licenses WHERE status <> 'blocked' AND expires_at > $1 AND expires_at <= $2) AS expiring,
+         (SELECT count(*) FROM licenses WHERE expires_at IS NULL) AS unlimited,
+         (SELECT count(*) FROM activations WHERE status = 'active') AS computers,
+         (SELECT count(*) FROM activations WHERE status = 'active' AND last_check_at > $3) AS checked_since,
+         (SELECT count(*) FROM trials) AS trials,
+         (SELECT count(*) FROM trials WHERE started_at > $4) AS trials_active,
+         (SELECT count(*) FROM requests WHERE status = 'new') AS requests_new,
+         (SELECT count(*) FROM requests WHERE status = 'working') AS requests_working`,
+      [at.now, at.soon, at.dayAgo, at.trialSince],
+    );
+    return {
+      licenses: Number(r.licenses),
+      blocked: Number(r.blocked),
+      expired: Number(r.expired),
+      expiring: Number(r.expiring),
+      unlimited: Number(r.unlimited),
+      computers: Number(r.computers),
+      checkedSince: Number(r.checked_since),
+      trials: Number(r.trials),
+      trialsActive: Number(r.trials_active),
+      requestsNew: Number(r.requests_new),
+      requestsWorking: Number(r.requests_working),
+    };
+  }
+
+  async expiringLicenses(now: Date, soon: Date, limit: number) {
+    const rows = await this.q(
+      "SELECT * FROM licenses WHERE status <> 'blocked' AND expires_at > $1 AND expires_at <= $2 ORDER BY expires_at LIMIT $3",
+      [now, soon, limit],
+    );
+    return rows.map(license);
+  }
+
+  async ping() {
+    await this.q("SELECT 1");
   }
 }
 

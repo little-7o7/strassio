@@ -5,6 +5,8 @@ import { neon } from "@neondatabase/serverless";
 import { Signer } from "../core/crypto.js";
 import { App } from "../core/http.js";
 import { PgStore } from "../core/pgStore.js";
+import { Platform } from "../core/platform.js";
+import { platformKeys } from "../core/platformAuth.js";
 import { LicenseService } from "../core/service.js";
 
 let app: App | null = null;
@@ -19,25 +21,43 @@ function getApp(): App {
 
   const sql = neon(databaseUrl);
   const store = new PgStore((text, params) => sql.query(text, params ?? []) as Promise<Record<string, any>[]>);
-  app = new App(new LicenseService(store, new Signer(privateKey)), process.env.ADMIN_PASSWORD);
+  const signer = new Signer(privateKey);
+  // Хаб little_7o7 — закрытый API /api/platform: выключен (404), пока в Vercel нет PLATFORM_API_KEY и PLATFORM_API_SECRET.
+  const platform = new Platform({
+    service: new LicenseService(store, signer, undefined, "hub"),
+    keys: platformKeys(process.env.PLATFORM_API_KEY, process.env.PLATFORM_API_SECRET),
+    adminPassword: process.env.ADMIN_PASSWORD,
+    spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
+  });
+  app = new App(new LicenseService(store, signer), process.env.ADMIN_PASSWORD).usePlatform(platform);
   return app;
 }
 
-async function readBody(req: IncomingMessage & { body?: unknown }): Promise<unknown> {
+/**
+ * Тело запроса: разобранное (для логики) и текстом (по нему хаб считает подпись). Vercel может уже разобрать JSON
+ * сам (req.body) — тогда текст восстанавливается JSON.stringify: хаб шлёт ровно JSON.stringify своего объекта, и
+ * разбор с обратной записью даёт тот же текст.
+ */
+async function readBody(req: IncomingMessage & { body?: unknown }): Promise<{ body: unknown; raw: string }> {
   if (req.body !== undefined) {
-    if (typeof req.body === "string") return tryJson(req.body);
-    return req.body;
+    if (typeof req.body === "string") return { body: tryJson(req.body), raw: req.body };
+    if (Buffer.isBuffer(req.body)) {
+      const raw = req.body.toString("utf8");
+      return { body: tryJson(raw), raw };
+    }
+    return { body: req.body, raw: req.body === null ? "" : JSON.stringify(req.body) };
   }
 
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 64 * 1024) return null; // запросы плагина крошечные
+    if (size > 64 * 1024) return { body: null, raw: "" }; // запросы плагина и хаба крошечные
     chunks.push(chunk as Buffer);
   }
 
-  return tryJson(Buffer.concat(chunks).toString("utf8"));
+  const raw = Buffer.concat(chunks).toString("utf8");
+  return { body: tryJson(raw), raw };
 }
 
 function tryJson(text: string): unknown {
@@ -61,7 +81,8 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
 
   let response;
   try {
-    response = await getApp().handle({ method: req.method ?? "GET", path, query: url.searchParams, headers, body: await readBody(req), ip });
+    const { body, raw } = await readBody(req);
+    response = await getApp().handle({ method: req.method ?? "GET", path, query: url.searchParams, headers, body, rawBody: raw, ip });
   } catch (error) {
     console.error(error);
     response = { status: 500, json: { ok: false, error: "server_not_configured" } };
