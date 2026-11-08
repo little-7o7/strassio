@@ -1,5 +1,6 @@
 // Деньги Strassio (хаб little_7o7, владелец 2026-11-08): тарифы, договоры клиентов, закреплённая цена ключа, начисления и
 // поступления частями. Входные данные уже проверены (moneyInput.ts); здесь — правила и журнал. Отчёты — money.ts.
+import { clientKey } from "./insights.js";
 import { dayOf, derivedPrice, leftOf, nextPayDay, paymentView, sortTariffs, type PaymentView } from "./money.js";
 import { saneRate, type RateSource } from "./rates.js";
 import { formatSum, METHOD_LABEL } from "./sums.js";
@@ -336,7 +337,7 @@ export class Billing {
       const log = await this.store.auditSearch({ serial: p.serial, action: "unblock", from: new Date(Date.parse(day + "T00:00:00+05:00")) }, 1);
       if (log.length) continue;
       await this.store.updateLicense({ ...license, status: "blocked" });
-      await this.log("auto_block", p.serial, `долг ${formatSum(left, p.currency)}, срок ${p.dueOn || dayOf(p.createdAt)}`, "system");
+      await this.log("auto_block", p.serial, `долг ${formatSum(left, p.currency)}, срок ${(p.dueOn || dayOf(p.createdAt)).split("-").reverse().join(".")}`, "system");
       out.push({ serial: p.serial, left, currency: p.currency });
     }
     return out;
@@ -422,22 +423,28 @@ export class Billing {
       row = { ...old, ...fields };
       await this.store.updateContract(row);
     }
-    // «Перевести ключи на новые цены» — ключи этого договора и прежних договоров того же клиента.
+    // «Перевести ключи на новые цены» — ключи этого договора, прежних договоров того же клиента и его ключи по общим
+    // тарифам.
     const earlier = all.filter((x) => x.clientKey === row.clientKey && x.id !== row.id).map((x) => x.id);
     const lines = await this.syncLines(row, prices);
-    const moved = moveKeys ? await this.moveKeys([row.id, ...earlier], lines) : 0;
+    const moved = moveKeys ? await this.moveKeys(row.clientKey, [row.id, ...earlier], lines) : 0;
     await this.log("contract", "", `№ ${row.number || row.id}${row.party ? ", " + row.party : ""}${id === null ? ", новый" : ", изменён"}${moved ? `, ключей на новых ценах: ${moved}` : ""}`);
     return row;
   }
 
-  /** Ключи этих договоров — на цены lines (по названию строки: «Месяц» к «Месяцу»). Сколько ключей перевели. */
-  private async moveKeys(contractIds: number[], lines: TariffRow[]): Promise<number> {
+  /**
+   * Ключи этих договоров и ключи клиента по общим тарифам — на цены lines: по названию строки («Месяц» к «Месяцу»),
+   * иначе по сроку (общий «Месяц в сумах» на 30 дней — к «Месяцу» договора). Сколько ключей перевели.
+   */
+  private async moveKeys(owner: string, contractIds: number[], lines: TariffRow[]): Promise<number> {
+    const own = new Set((await this.store.allLicenses(20000)).filter((l) => owner && clientKey(l.client) === owner).map((l) => l.serial));
+    const keyLines = lines.filter((l) => l.active && l.kind === "key");
     let moved = 0;
     for (const t of await this.store.allKeyTerms()) {
-      if (t.contractId === null || !contractIds.includes(t.contractId)) continue;
-      const line = lines.find((l) => l.active && l.name === t.name);
+      if (t.contractId === null ? !own.has(t.serial) : !contractIds.includes(t.contractId)) continue;
+      const line = keyLines.find((l) => l.name === t.name) ?? keyLines.find((l) => l.days === t.days);
       if (!line || (line.id === t.tariffId && line.price === t.price && line.currency === t.currency)) continue;
-      await this.store.saveKeyTerms({ ...t, contractId: line.contractId, tariffId: line.id, days: line.days, price: line.price, currency: line.currency });
+      await this.store.saveKeyTerms({ ...t, contractId: line.contractId, tariffId: line.id, name: line.name, days: line.days, price: line.price, currency: line.currency });
       moved++;
     }
     return moved;
@@ -538,6 +545,6 @@ function chargeText(p: PaymentRow, paidNow: number, method: PayMethod | "x"): st
   const sum = p.amount === 0 ? "бесплатно" : formatSum(p.amount, p.currency) + (p.listPrice > p.amount ? ` (цена ${formatSum(p.listPrice, p.currency)})` : "");
   const how = method === "x" ? "" : method === "" ? "в долг" : paidNow < p.amount ? `${METHOD_LABEL[method]}, заплачено ${formatSum(paidNow, p.currency)}` : METHOD_LABEL[method];
   const kind = p.kind === "renewal" ? "продление" : p.kind === "updates" ? "обновления" : "";
-  return [sum, p.amount === 0 ? "" : how, p.tariff, kind, p.dueOn ? "срок " + p.dueOn : "", p.note].filter(Boolean).join(", ");
+  return [sum, p.amount === 0 ? "" : how, p.tariff, kind, p.dueOn ? "срок " + p.dueOn.split("-").reverse().join(".") : "", p.note].filter(Boolean).join(", ");
 }
 

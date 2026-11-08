@@ -237,6 +237,28 @@ test("договор: цены месяц, 3/6/12 месяцев со скидк
   assert.equal((await s.call("POST", `${s.P}clients/AAAAAAAAAAAA/contracts`, CONTRACT)).status, 404);
 });
 
+test("новый договор с «перевести ключи»: ключи клиента по общим тарифам — на цены договора, по названию или сроку", async () => {
+  const s = setup();
+  const month = (await s.call("POST", `${s.P}tariffs`, { name: "Месяц", days: 30, price: 10, currency: "USD" })).json.tariff;
+  const uzs = (await s.call("POST", `${s.P}tariffs`, { name: "Месяц в сумах", days: 30, price: 120000, currency: "UZS" })).json.tariff;
+  const year = (await s.call("POST", `${s.P}tariffs`, { name: "Полгода", days: 180, price: 55, currency: "USD" })).json.tariff;
+  const a = (await s.call("POST", `${s.P}licenses`, { tariff: String(month.id), method: "cash", ...ALI })).json.keys[0];
+  const b = (await s.call("POST", `${s.P}licenses`, { tariff: String(uzs.id), method: "cash", ...ALI })).json.keys[0];
+  const c = (await s.call("POST", `${s.P}licenses`, { tariff: String(year.id), method: "cash", ...ALI })).json.keys[0];
+  const other = (await s.call("POST", `${s.P}licenses`, { tariff: String(month.id), method: "cash", firstName: "Другой", lastName: "Клиент", phone: "+998 91 111 22 33" })).json.keys[0];
+  const id = (await s.key(a)).clientId;
+  // Без галочки — ключи по старым ценам.
+  assert.equal((await s.call("POST", `${s.P}clients/${id}/contracts`, CONTRACT)).status, 200);
+  assert.equal((await s.key(a)).terms.price, 10);
+  assert.equal((await s.call("POST", `${s.P}clients/${id}/contracts`, { ...CONTRACT, number: "13/2026", moveKeys: "on" })).status, 200);
+  const contractId = (await s.call("GET", `${s.P}clients/${id}`)).json.money.current;
+  const t = async (k: string) => { const x = (await s.key(k)).terms; return [x.name, x.price, x.currency, x.contractId]; };
+  assert.deepEqual(await t(a), ["Месяц", 50, "USD", contractId], "по названию");
+  assert.deepEqual(await t(b), ["Месяц", 50, "USD", contractId], "по сроку 30 дней");
+  assert.deepEqual(await t(c), ["6 месяцев", 270, "USD", contractId], "по сроку 180 дней: 50 × 6 − 10%");
+  assert.deepEqual(await t(other), ["Месяц", 10, "USD", null], "чужой клиент не трогается");
+});
+
 test("подняли цену новым договором: новый ключ по $60, старый продлевается по $50; «перевести ключи» — все по $60", async () => {
   const s = setup();
   const c = await withContract(s);
