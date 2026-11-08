@@ -2,7 +2,7 @@
 // query(текст, параметры) → строки. Таблицы создаются сами при первом запросе (CREATE ... IF NOT EXISTS).
 import { UNKNOWN } from "./hwid.js";
 import { phoneQuery } from "./insights.js";
-import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditFilter, AuditRow, Currency, LicenseRow, NewActivation, NewLicense, NewRequest, PayMethod, PaymentRow, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
 
 export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
 
@@ -78,6 +78,28 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS platform_nonces (
      nonce TEXT PRIMARY KEY,
      until_sec BIGINT NOT NULL)`,
+  // Деньги (хаб, 2026-11-08): тарифы и оплаты ключей. Оплата помнит ключ по serial, без REFERENCES: удалённый ключ
+  // не стирает доход. paid_at NULL — долг.
+  `CREATE TABLE IF NOT EXISTS tariffs (
+     id SERIAL PRIMARY KEY,
+     name TEXT NOT NULL,
+     days INT NULL,
+     price NUMERIC(14,2) NOT NULL,
+     currency TEXT NOT NULL DEFAULT 'UZS',
+     active BOOLEAN NOT NULL DEFAULT true,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS payments (
+     id SERIAL PRIMARY KEY,
+     serial TEXT NOT NULL,
+     kind TEXT NOT NULL DEFAULT 'sale',
+     amount NUMERIC(14,2) NOT NULL,
+     currency TEXT NOT NULL DEFAULT 'UZS',
+     method TEXT NOT NULL DEFAULT '',
+     tariff TEXT NOT NULL DEFAULT '',
+     note TEXT NOT NULL DEFAULT '',
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     paid_at TIMESTAMPTZ NULL)`,
+  `CREATE INDEX IF NOT EXISTS payments_serial ON payments(serial)`,
 ];
 
 export class PgStore implements Store {
@@ -326,6 +348,84 @@ export class PgStore implements Store {
     const rows = await this.q(`SELECT * FROM audit_log ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC LIMIT $${params.length}`, params);
     return rows.map(AUDIT_ROW);
   }
+
+  // ---------- Деньги ----------
+
+  async listTariffs() {
+    return (await this.q("SELECT * FROM tariffs ORDER BY id")).map(tariff);
+  }
+
+  async findTariff(id: number) {
+    const rows = await this.q("SELECT * FROM tariffs WHERE id = $1", [id]);
+    return rows.length ? tariff(rows[0]) : null;
+  }
+
+  async insertTariff(t: Omit<TariffRow, "id">) {
+    const rows = await this.q("INSERT INTO tariffs (name, days, price, currency, active, created_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [t.name, t.days, t.price, t.currency, t.active, t.createdAt]);
+    return tariff(rows[0]);
+  }
+
+  async updateTariff(t: TariffRow) {
+    await this.q("UPDATE tariffs SET name=$2, days=$3, price=$4, currency=$5, active=$6 WHERE id=$1", [t.id, t.name, t.days, t.price, t.currency, t.active]);
+  }
+
+  async insertPayment(p: Omit<PaymentRow, "id">) {
+    const rows = await this.q(
+      `INSERT INTO payments (serial, kind, amount, currency, method, tariff, note, created_at, paid_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [p.serial, p.kind, p.amount, p.currency, p.method, p.tariff, p.note, p.createdAt, p.paidAt],
+    );
+    return payment(rows[0]);
+  }
+
+  async findPayment(id: number) {
+    const rows = await this.q("SELECT * FROM payments WHERE id = $1", [id]);
+    return rows.length ? payment(rows[0]) : null;
+  }
+
+  async updatePayment(p: PaymentRow) {
+    await this.q("UPDATE payments SET kind=$2, amount=$3, currency=$4, method=$5, tariff=$6, note=$7, paid_at=$8 WHERE id=$1", [p.id, p.kind, p.amount, p.currency, p.method, p.tariff, p.note, p.paidAt]);
+  }
+
+  async deletePayment(id: number) {
+    await this.q("DELETE FROM payments WHERE id = $1", [id]);
+  }
+
+  async listPayments(limit: number) {
+    return (await this.q("SELECT * FROM payments ORDER BY id DESC LIMIT $1", [limit])).map(payment);
+  }
+
+  async paymentsFor(serial: string) {
+    return (await this.q("SELECT * FROM payments WHERE serial = $1 ORDER BY id DESC", [serial])).map(payment);
+  }
+}
+
+// NUMERIC приходит строкой («1200000.00») — в число.
+function tariff(r: Record<string, any>): TariffRow {
+  return {
+    id: Number(r.id),
+    name: r.name,
+    days: r.days === null || r.days === undefined ? null : Number(r.days),
+    price: Number(r.price),
+    currency: r.currency === "USD" ? "USD" : ("UZS" as Currency),
+    active: r.active === true || r.active === "t",
+    createdAt: new Date(r.created_at),
+  };
+}
+
+function payment(r: Record<string, any>): PaymentRow {
+  return {
+    id: Number(r.id),
+    serial: r.serial,
+    kind: r.kind === "renewal" ? "renewal" : "sale",
+    amount: Number(r.amount),
+    currency: r.currency === "USD" ? "USD" : "UZS",
+    method: (r.method ?? "") as PayMethod,
+    tariff: r.tariff ?? "",
+    note: r.note ?? "",
+    createdAt: new Date(r.created_at),
+    paidAt: r.paid_at ? new Date(r.paid_at) : null,
+  };
 }
 
 function license(r: Record<string, any>): LicenseRow {

@@ -3,7 +3,8 @@
 // сообщение в Telegram. Чистые функции: строки из базы на входе, готовые данные на выходе — легко проверить тестами.
 import { createHash } from "node:crypto";
 import { hwidDisplay, hwidMatches, parseHwid, UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, ClientInfo, LicenseRow, RequestRow, TrialRow } from "./store.js";
+import { add, sumsText, zero } from "./sums.js";
+import type { ActivationRow, AuditRow, ClientInfo, LicenseRow, PaymentRow, RequestRow, TrialRow } from "./store.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 /** Ташкент: UTC+5 круглый год. */
@@ -351,6 +352,8 @@ export interface DigestInput {
   clients: ClientView[];
   trialDays: number;
   hubUrl: string;
+  /** Оплаты (раздел «Деньги»): за сутки — отдельной строкой. */
+  payments?: PaymentRow[];
 }
 
 /**
@@ -372,13 +375,15 @@ export function dailyDigest(d: DigestInput): string | null {
     .filter((l) => l.status !== "blocked" && l.expiresAt && l.expiresAt.getTime() > t && l.expiresAt.getTime() <= t + REMIND_DAYS * DAY)
     .sort((a, b) => a.expiresAt!.getTime() - b.expiresAt!.getTime());
   const birthdays = birthdaysThisMonth(d.clients, d.now).filter((b) => b.today);
-  if (!newRequests.length && !newPcs.length && !ended.length && !ending.length && !birthdays.length) return null;
+  const paid = (d.payments ?? []).filter((p) => p.paidAt && p.paidAt.getTime() > dayAgo && p.paidAt.getTime() <= t);
+  if (!newRequests.length && !newPcs.length && !ended.length && !ending.length && !birthdays.length && !paid.length) return null;
 
   const date = d.now.toLocaleDateString("ru-RU", { timeZone: "Asia/Tashkent", weekday: "long", day: "numeric", month: "long" });
   const lines = [`☀️ <b>Strassio · ${date}</b>`];
   if (newRequests.length || waiting) lines.push(`Заявки за сутки: ${newRequests.length}${waiting ? ` · ждут ответа: ${waiting}` : ""}`);
   if (newPcs.length) lines.push(`Новые активации: ${newPcs.length}`);
   if (ended.length) lines.push(`Закончился пробный: ${ended.length}${notBought ? ` · без покупки: ${notBought}` : ""}`);
+  if (paid.length) lines.push(`💰 Оплаты за сутки: ${paid.length} · ${sumsText(paid.reduce((sum, p) => add(sum, p.currency, p.amount), zero()))}`);
   if (ending.length) {
     lines.push("", `⏳ <b>Ключи на исходе (${REMIND_DAYS} дней и меньше)</b>`);
     for (const l of ending.slice(0, 20)) {

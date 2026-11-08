@@ -301,14 +301,14 @@ test("cron: без секрета или с чужим — 404; с секрет�
   assert.equal((await s.plain("GET", "/api/cron/daily")).status, 404);
   assert.equal((await s.plain("GET", "/api/cron/daily", null, { authorization: "Bearer wrong" })).status, 404);
   const auth = { authorization: "Bearer " + CRON };
-  assert.deepEqual((await s.plain("GET", "/api/cron/daily", null, auth)).json, { ok: true, sent: false, empty: true });
+  assert.deepEqual((await s.plain("GET", "/api/cron/daily", null, auth)).json, { ok: true, sent: false, empty: true, weekly: false });
   assert.equal(s.sent.length, 0);
 
   await key(s, 5, client({ firstName: "Сардор", phone: "+998 99 321 00 99" }));
   await key(s, 20, client({ firstName: "Нескоро" }));
   await key(s, 365, client({ firstName: "Именинник", birthday: "1990-11-08", telegram: "imen" }));
   const r = await s.plain("GET", "/api/cron/daily", null, auth);
-  assert.deepEqual(r.json, { ok: true, sent: true, empty: false });
+  assert.deepEqual(r.json, { ok: true, sent: true, empty: false, weekly: false });
   const text = s.sent.at(-1)!;
   assert.match(text, /Ключи на исходе \(7 дней и меньше\)/);
   assert.match(text, /Сардор, \+998 99 321 00 99 — 5 дн\./);

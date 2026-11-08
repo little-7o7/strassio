@@ -84,6 +84,41 @@ export interface UpdateRow {
 
 export type NewLicense = Omit<LicenseRow, "id">;
 
+// ---------- Деньги (хаб, владелец 2026-11-08) ----------
+
+export type Currency = "UZS" | "USD";
+/** Как заплатили; "" — ещё не заплатили (долг). */
+export type PayMethod = "cash" | "card" | "transfer" | "";
+
+/** Тариф: название, срок (null — бессрочно) и цена. Выключенный не предлагается, но старые оплаты его помнят по имени. */
+export interface TariffRow {
+  id: number;
+  name: string;
+  days: number | null;
+  price: number;
+  currency: Currency;
+  active: boolean;
+  createdAt: Date;
+}
+
+/**
+ * Оплата ключа: продажа или продление. paidAt null — долг (ключ выдан, денег ещё нет). Привязана к ключу по serial,
+ * а не по id: ключ удалили — оплата остаётся в доходе.
+ */
+export interface PaymentRow {
+  id: number;
+  serial: string;
+  kind: "sale" | "renewal";
+  amount: number;
+  currency: Currency;
+  method: PayMethod;
+  /** Название тарифа на момент оплаты; "" — своя сумма. */
+  tariff: string;
+  note: string;
+  createdAt: Date;
+  paidAt: Date | null;
+}
+
 /** Границы для сводки хаба: сейчас, «скоро» (через 30 дней), сутки назад, начало ещё идущих пробных. */
 export interface StatsWindow {
   now: Date;
@@ -169,4 +204,18 @@ export interface Store {
   allActivations(limit: number): Promise<ActivationRow[]>;
   /** Журнал с фильтрами, новые сверху. */
   auditSearch(filter: AuditFilter, limit: number): Promise<AuditRow[]>;
+
+  // ---------- Деньги ----------
+  listTariffs(): Promise<TariffRow[]>;
+  findTariff(id: number): Promise<TariffRow | null>;
+  insertTariff(row: Omit<TariffRow, "id">): Promise<TariffRow>;
+  updateTariff(row: TariffRow): Promise<void>;
+  insertPayment(row: Omit<PaymentRow, "id">): Promise<PaymentRow>;
+  findPayment(id: number): Promise<PaymentRow | null>;
+  updatePayment(row: PaymentRow): Promise<void>;
+  deletePayment(id: number): Promise<void>;
+  /** Все оплаты, новые сверху. */
+  listPayments(limit: number): Promise<PaymentRow[]>;
+  /** Оплаты одного ключа, новые сверху. */
+  paymentsFor(serial: string): Promise<PaymentRow[]>;
 }

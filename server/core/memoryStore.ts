@@ -1,7 +1,7 @@
 // Хранилище в памяти — для тестов и локального запуска без базы.
 import { UNKNOWN } from "./hwid.js";
 import { phoneQuery } from "./insights.js";
-import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, PaymentRow, RequestRow, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
 
 export class MemoryStore implements Store {
   licenses: LicenseRow[] = [];
@@ -10,6 +10,8 @@ export class MemoryStore implements Store {
   log: AuditRow[] = [];
   updates: UpdateRow[] = [];
   requests: RequestRow[] = [];
+  tariffs: TariffRow[] = [];
+  payments: PaymentRow[] = [];
   /** nonce → до какого времени (секунды Unix) помнить. */
   nonces = new Map<string, number>();
   private nextId = 1;
@@ -169,6 +171,50 @@ export class MemoryStore implements Store {
       .reverse()
       .slice(0, limit)
       .map((e) => ({ ...e }));
+  }
+
+  async listTariffs() {
+    return this.tariffs.map((t) => ({ ...t }));
+  }
+
+  async findTariff(id: number) {
+    return clone(this.tariffs.find((t) => t.id === id) ?? null);
+  }
+
+  async insertTariff(row: Omit<TariffRow, "id">) {
+    const created = { ...row, id: this.nextId++ };
+    this.tariffs.push(created);
+    return { ...created };
+  }
+
+  async updateTariff(row: TariffRow) {
+    this.tariffs = this.tariffs.map((t) => (t.id === row.id ? { ...row } : t));
+  }
+
+  async insertPayment(row: Omit<PaymentRow, "id">) {
+    const created = { ...row, id: this.nextId++ };
+    this.payments.push(created);
+    return { ...created };
+  }
+
+  async findPayment(id: number) {
+    return clone(this.payments.find((p) => p.id === id) ?? null);
+  }
+
+  async updatePayment(row: PaymentRow) {
+    this.payments = this.payments.map((p) => (p.id === row.id ? { ...row } : p));
+  }
+
+  async deletePayment(id: number) {
+    this.payments = this.payments.filter((p) => p.id !== id);
+  }
+
+  async listPayments(limit: number) {
+    return this.payments.slice().reverse().slice(0, limit).map((p) => ({ ...p }));
+  }
+
+  async paymentsFor(serial: string) {
+    return this.payments.filter((p) => p.serial === serial).reverse().map((p) => ({ ...p }));
   }
 }
 
