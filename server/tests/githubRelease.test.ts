@@ -19,6 +19,17 @@ const BODY = [
   "- Установщики теперь лежат в strassio-releases.",
   "",
   "Пробный период — 14 дней.",
+  "",
+  "---",
+  "",
+  "Close CorelDRAW and run **Strassio-Setup-0.9.0.exe** — it installs over the previous version.",
+  "",
+  "**What's new**",
+  "- **The plugin tells you about a new version.** On start and once a day",
+  "  a “New version available” line may appear.",
+  "- Installers now live in strassio-releases.",
+  "",
+  "Trial — 14 days.",
 ].join("\r\n");
 
 function release(extra: Record<string, unknown> = {}) {
@@ -63,6 +74,7 @@ test("stable: версия, ссылка, SHA-256 по файлу и «что н
     url: EXE_URL,
     sha256: SHA,
     notesRu: "• Плагин сам сообщает о новой версии. При запуске и раз в сутки может появиться строка «Доступна новая версия».\n• Установщики теперь лежат в strassio-releases.",
+    notesEn: "• The plugin tells you about a new version. On start and once a day a “New version available” line may appear.\n• Installers now live in strassio-releases.",
   });
 });
 
@@ -86,6 +98,7 @@ test("API недоступен (лимит) — тег из перенаправ
   assert.equal(result.release.url, EXE_URL);
   assert.equal(result.release.sha256, SHA);
   assert.equal(result.release.notesRu, "");
+  assert.equal(result.release.notesEn, "");
 });
 
 test("beta: самый свежий выпуск, в том числе пробный; черновики пропускаются", async () => {
@@ -130,4 +143,11 @@ test("токен GitHub (если задан) уходит только в API",
 test("«что нового»: без раздела — весь текст без звёздочек", () => {
   assert.equal(whatsNew("Просто **текст**\nвторая строка"), "Просто текст\nвторая строка");
   assert.equal(whatsNew("**Что нового**\n\n- раз\n- два\n\nхвост"), "• раз\n• два");
+});
+
+test("«what's new» по-английски: свой раздел; нет раздела — пусто, русский текст не подставляется", () => {
+  assert.equal(whatsNew("**Что нового**\n- раз\n\n**What’s new:**\n- one\n- two", "en"), "• one\n• two");
+  assert.equal(whatsNew("**Что нового**\n- раз\n\n**What’s new:**\n- one\n- two"), "• раз");
+  assert.equal(whatsNew("Просто **текст**", "en"), "");
+  assert.equal(whatsNew("What's New\n- one", "en"), "• one");
 });

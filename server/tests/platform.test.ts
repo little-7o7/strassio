@@ -29,7 +29,7 @@ function setup(options: { keys?: boolean; password?: string } = {}) {
   let now = new Date("2026-11-08T10:00:00Z");
   const clock = () => now;
   const signer = new Signer(keys.privateKey);
-  const release = { ok: true as const, release: { tag: "v0.9.2", version: "0.9.2", url: "https://github.com/x/y.exe", sha256: "a".repeat(64), notesRu: "Новое" } };
+  const release = { ok: true as const, release: { tag: "v0.9.2", version: "0.9.2", url: "https://github.com/x/y.exe", sha256: "a".repeat(64), notesRu: "Новое", notesEn: "New" } };
   const platform = new Platform({
     service: new LicenseService(store, signer, clock, "hub"),
     keys: options.keys === false ? null : platformKeys(KEY, SECRET),

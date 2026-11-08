@@ -92,7 +92,9 @@ Strassio/
   и установщик собирает GitHub Actions (`.github/workflows/build.yml`) после каждого push в master.
   После push проверить запуск: `gh run list --limit 1`, при ошибке — `gh run view <id> --log-failed`.
 - Выпуск версии: одинаковая версия в `Strassio.Corel.csproj` и `installer/Strassio.iss`, запись в CHANGELOG,
-  текст выпуска в `docs/releases/vX.Y.Z.md` (первая строка `# Strassio X.Y.Z — …`), затем
+  текст выпуска в `docs/releases/vX.Y.Z.md` (первая строка `# Strassio X.Y.Z — …`) на двух языках: сначала
+  по-русски с разделом `**Что нового**`, после строки `---` то же по-английски с `**What's new**` (на GitHub
+  смотрят и иностранцы; хаб берёт оба раздела в «Что нового» при публикации обновления), затем
   `git tag vX.Y.Z && git push origin master vX.Y.Z` — GitHub сам соберёт установщик и выложит выпуск
   в публичный `little-7o7/strassio-releases` (секрет `RELEASES_TOKEN`). Тег с дефисом (`v1.0.0-beta.1`) —
   пробный выпуск. Без git (облачная сессия не может отправить тег): запустить `build.yml` на master с

@@ -21,6 +21,8 @@ export interface ReleaseDraft {
   url: string;
   sha256: string;
   notesRu: string;
+  /** Раздел «What's new» того же текста выпуска; нет его — пусто (владелец 2026-11-08: на GitHub и иностранцы). */
+  notesEn: string;
 }
 
 export type ReleaseResult = { ok: true; release: ReleaseDraft } | { ok: false; error: string };
@@ -90,8 +92,8 @@ export async function latestRelease(
   const digest = typeof asset?.digest === "string" ? asset.digest.toLowerCase() : "";
   if (digest.startsWith("sha256:") && digest.substring(7) !== sha256) return { ok: false, error: "digest_mismatch" };
 
-  const notesRu = typeof release?.body === "string" ? whatsNew(release.body) : "";
-  return { ok: true, release: { tag, version, url, sha256, notesRu } };
+  const body = typeof release?.body === "string" ? release.body : "";
+  return { ok: true, release: { tag, version, url, sha256, notesRu: body && whatsNew(body), notesEn: body && whatsNew(body, "en") } };
 }
 
 async function fromApi(beta: boolean, fetcher: Fetcher, repo: string, token: string | undefined): Promise<ApiRelease | null> {
@@ -118,15 +120,19 @@ async function tagFromRedirect(fetcher: Fetcher, repo: string): Promise<string |
   return match ? decodeURIComponent(match[1]) : null;
 }
 
+const HEADING = { ru: /^\s*\**\s*что нового\s*\**\s*:?\s*\**\s*$/i, en: /^\s*\**\s*what['’]?s new\s*\**\s*:?\s*\**\s*$/i };
+
 /**
- * Из текста выпуска (docs/releases/vX.Y.Z.md без заголовка) — только список под «Что нового», каждый пункт
- * одной строкой, без звёздочек Markdown. Нет такого раздела — весь текст без звёздочек.
+ * Из текста выпуска (docs/releases/vX.Y.Z.md без заголовка) — только список под «Что нового» (или «What's new»
+ * для английского), каждый пункт одной строкой, без звёздочек Markdown. Нет русского раздела — весь текст без
+ * звёздочек; нет английского — пусто (русский текст английским не выдаём).
  */
-export function whatsNew(body: string): string {
+export function whatsNew(body: string, lang: "ru" | "en" = "ru"): string {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
-  const start = lines.findIndex((l) => /^\s*\**\s*что нового\s*\**\s*:?\s*$/i.test(l));
+  const start = lines.findIndex((l) => HEADING[lang].test(l));
   let section: string[];
   if (start < 0) {
+    if (lang === "en") return "";
     section = lines;
   } else {
     section = [];

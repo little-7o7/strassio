@@ -194,7 +194,7 @@ test("сайт: подбор почты к чужому ключу упирае�
 });
 
 test("админка: «Заполнить из GitHub» и пробная версия в «Опубликовать»", async () => {
-  const draft = { tag: "v0.9.0", version: "0.9.0", url: "https://github.com/little-7o7/strassio-releases/releases/download/v0.9.0/a.exe", sha256: "a".repeat(64), notesRu: "• новое" };
+  const draft = { tag: "v0.9.0", version: "0.9.0", url: "https://github.com/little-7o7/strassio-releases/releases/download/v0.9.0/a.exe", sha256: "a".repeat(64), notesRu: "• новое", notesEn: "• new" };
   const channels: string[] = [];
   const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey)), PASSWORD, undefined, undefined, undefined, undefined, async (channel) => {
     channels.push(channel);
