@@ -1,7 +1,8 @@
 // Хранилище в Postgres (SPEC 15). Драйвер не импортируется здесь: адаптер платформы передаёт функцию
 // query(текст, параметры) → строки. Таблицы создаются сами при первом запросе (CREATE ... IF NOT EXISTS).
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
+import { phoneQuery } from "./insights.js";
+import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
 
 export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
 
@@ -122,11 +123,13 @@ export class PgStore implements Store {
 
   async searchLicenses(query: string, limit: number) {
     const q = query.trim();
+    // Телефон в любом виде: сравниваются только цифры (последние 9); $3 = '' — запрос не похож на телефон.
     const rows = q
       ? await this.q(
           `SELECT * FROM licenses WHERE serial ILIKE $1 OR note ILIKE $1 OR client_first ILIKE $1 OR client_last ILIKE $1
-             OR client_phone ILIKE $1 OR client_email ILIKE $1 OR client_telegram ILIKE $1 ORDER BY id DESC LIMIT $2`,
-          ["%" + escapeLike(q) + "%", limit],
+             OR client_phone ILIKE $1 OR client_email ILIKE $1 OR client_telegram ILIKE $1
+             OR ($3 <> '' AND regexp_replace(client_phone, '[^0-9]', '', 'g') LIKE '%' || $3 || '%') ORDER BY id DESC LIMIT $2`,
+          ["%" + escapeLike(q) + "%", limit, phoneQuery(q)],
         )
       : await this.q("SELECT * FROM licenses ORDER BY id DESC LIMIT $1", [limit]);
     return rows.map(license);
@@ -218,7 +221,7 @@ export class PgStore implements Store {
 
   async auditLog(limit: number) {
     const rows = await this.q("SELECT * FROM audit_log ORDER BY id DESC LIMIT $1", [limit]);
-    return rows.map((r) => ({ id: Number(r.id), at: new Date(r.at), actor: r.actor, action: r.action, serial: r.serial, details: r.details }));
+    return rows.map(AUDIT_ROW);
   }
 
   async latestUpdate(channel: string) {
@@ -298,6 +301,31 @@ export class PgStore implements Store {
   async ping() {
     await this.q("SELECT 1");
   }
+
+  async allLicenses(limit: number) {
+    return (await this.q("SELECT * FROM licenses ORDER BY id DESC LIMIT $1", [limit])).map(license);
+  }
+
+  async allActivations(limit: number) {
+    return (await this.q("SELECT * FROM activations ORDER BY id LIMIT $1", [limit])).map(activation);
+  }
+
+  async auditSearch(f: AuditFilter, limit: number) {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    const add = (sql: string, value: unknown) => {
+      params.push(value);
+      where.push(sql.replace("?", "$" + params.length));
+    };
+    if (f.serial) add("serial = ?", f.serial);
+    if (f.actors?.length) add("actor = ANY(?)", f.actors);
+    if (f.action) add("action = ?", f.action);
+    if (f.from) add("at >= ?", f.from);
+    if (f.to) add("at < ?", f.to);
+    params.push(limit);
+    const rows = await this.q(`SELECT * FROM audit_log ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC LIMIT $${params.length}`, params);
+    return rows.map(AUDIT_ROW);
+  }
 }
 
 function license(r: Record<string, any>): LicenseRow {
@@ -361,3 +389,5 @@ function request(r: Record<string, any>): RequestRow {
     serial: r.serial ?? "",
   };
 }
+
+const AUDIT_ROW = (r: Record<string, any>): AuditRow => ({ id: Number(r.id), at: new Date(r.at), actor: r.actor, action: r.action, serial: r.serial, details: r.details });

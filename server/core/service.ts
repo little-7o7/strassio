@@ -2,7 +2,9 @@
 // через Store, подпись — через Signer. Ответы клиенту: { ok: true, license } или { ok: false, error }.
 import { Signer, SignedDocument, newSerial, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
-import type { ActivationRow, ClientInfo, LicenseRow, RequestRow, Store, UpdateRow } from "./store.js";
+import { birthdaysThisMonth, cleanup, clientId, clientKey, clientViews, computerBriefs, countVersions, dailyDigest, requestMessage, activationMessage, suspiciousKeys, trialInsights, type ClientView } from "./insights.js";
+import type { ActivationRow, AuditFilter, ClientInfo, LicenseRow, RequestRow, Store, UpdateRow } from "./store.js";
+import type { Notifier } from "./telegram.js";
 
 export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
@@ -75,6 +77,8 @@ export interface AdminLicenseView {
   note: string;
   createdAt: string;
   client: ClientInfo;
+  /** Карточка клиента в хабе; "" — клиент не указан. */
+  clientId: string;
   computers: Array<{ id: number; code: string; hwid: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
 }
 
@@ -111,6 +115,8 @@ export function parseClient(value: unknown): ClientInfo | null {
 export const EMPTY_CLIENT: ClientInfo = { firstName: "", lastName: "", phone: "", email: "", birthday: "", telegram: "" };
 
 const REQUEST_ACTIONS = ["new", "working", "rejected", "delete"] as const;
+/** Сводки хаба читают все ключи разом: для малого бизнеса это сотни строк; больше — значит пора считать в базе. */
+const ALL = 20000;
 
 export class LicenseService {
   constructor(
@@ -120,6 +126,21 @@ export class LicenseService {
     /** Кто делает действия «админки» — для журнала: «admin» (старая /adminpanel) или «hub» (хаб little_7o7). */
     private readonly adminActor: string = "admin",
   ) {}
+
+  private notifier: Notifier | null = null;
+  private hub = "https://little-7o7.vercel.app";
+
+  /** Telegram владельцу: новая заявка, новая активация, утренняя сводка. null — бот выключен. */
+  useNotifier(notifier: Notifier | null, hubUrl: string): this {
+    this.notifier = notifier;
+    this.hub = hubUrl;
+    return this;
+  }
+
+  /** Сообщение не ушло (нет сети, Telegram не ответил) — не мешает основному действию. */
+  private async notify(html: string): Promise<boolean> {
+    return this.notifier ? this.notifier(html).catch(() => false) : false;
+  }
 
   // ---------- Клиент (плагин) ----------
 
@@ -139,12 +160,15 @@ export class LicenseService {
     }
 
     if (active.length >= PCS_PER_KEY) {
+      // Попытка на другом компьютере, когда место занято: по таким попыткам хаб замечает подозрительные ключи.
+      await this.log("client", "occupied", license!.serial, input.hwid);
       return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     }
 
     const created = await this.store.insertActivation(this.newActivation(license!.id, input));
     if (await this.overLimit(created)) return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     await this.log("client", "activate", license!.serial, input.hwid);
+    await this.notify(activationMessage(license!, created, this.hub));
     return this.issue(license!, created.hwid);
   }
 
@@ -176,6 +200,7 @@ export class LicenseService {
 
     const created = await this.store.insertActivation(this.newActivation(license!.id, input));
     if (await this.overLimit(created)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
+    await this.notify(activationMessage(license!, created, this.hub));
     return this.issue(license!, created.hwid);
   }
 
@@ -303,6 +328,7 @@ export class LicenseService {
     const message = typeof messageValue === "string" ? messageValue.trim().slice(0, 1000) : "";
     const row = await this.store.insertRequest({ createdAt: this.clock(), client, message, status: "new", serial: "" });
     await this.log("site", "request", "", `#${row.id} ${client.firstName} ${client.lastName}, ${client.phone}`);
+    await this.notify(requestMessage(row, this.hub));
     return { ok: true };
   }
 
@@ -466,6 +492,20 @@ export class LicenseService {
     return this.store.auditLog(limit);
   }
 
+  /** Журнал с фильтрами (хаб): ключ, кто, действие, даты. */
+  auditSearch(filter: AuditFilter, limit = 200) {
+    return this.store.auditSearch(filter, limit);
+  }
+
+  /** История ключа: активации, переносы, продления, блокировки — всё из журнала по этому ключу. */
+  async keyHistory(serialText: unknown) {
+    const serial = normalizeSerial(serialText);
+    const license = serial ? await this.store.findLicense(serial) : null;
+    if (!license) return null;
+    const rows = await this.store.auditSearch({ serial: license.serial }, 200);
+    return rows.map((e) => ({ at: iso(e.at), actor: e.actor, action: e.action, details: shortCodes(e.details) }));
+  }
+
   // ---------- Сайт: «Моя лицензия» (по одному ключу, решение автора 22.09.2026) ----------
 
   // ---------- Хаб little_7o7 (/api/platform) ----------
@@ -485,6 +525,7 @@ export class LicenseService {
       note: license.note,
       createdAt: iso(license.createdAt),
       client: { ...license.client },
+      clientId: clientKey(license.client) ? clientId(clientKey(license.client)) : "",
       computers: activations.map((a) => ({
         id: a.id,
         code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
@@ -521,6 +562,67 @@ export class LicenseService {
 
   ping(): Promise<void> {
     return this.store.ping();
+  }
+
+  /** Всё сразу для сводок хаба: ключи, активации, заявки, пробные, последний выпуск stable. */
+  private async everything() {
+    const [licenses, activations, requests, trials, updates] = await Promise.all([
+      this.store.allLicenses(ALL),
+      this.store.allActivations(ALL * 2),
+      this.store.listRequests(ALL),
+      this.store.listTrials(ALL),
+      this.updates(),
+    ]);
+    return { licenses, activations, requests, trials, updates, stable: updates.stable?.version ?? null, now: this.clock() };
+  }
+
+  /** Клиенты: один человек — одна карточка (все ключи, компьютеры, заявки, заметки); дни рождения в этом месяце. */
+  async clients(): Promise<{ clients: ClientView[]; birthdays: ReturnType<typeof birthdaysThisMonth> }> {
+    const d = await this.everything();
+    const clients = clientViews(d.licenses, d.activations, d.requests, d.stable, d.now);
+    return { clients, birthdays: birthdaysThisMonth(clients, d.now) };
+  }
+
+  /** Подключённые компьютеры: версии плагина и CorelDRAW, «не обновился», «давно не открывали». */
+  async computers() {
+    const d = await this.everything();
+    const computers = computerBriefs(d.licenses, d.activations, d.stable, d.now);
+    const online = computers.filter((c) => !c.offline);
+    return {
+      latest: { stable: d.stable, beta: d.updates.beta?.version ?? null },
+      plugin: countVersions(online.map((c) => c.pluginVersion)),
+      corel: countVersions(online.map((c) => c.corelVersion)),
+      computers,
+    };
+  }
+
+  /** Все ключи для выгрузки в Excel. */
+  async allKeys(): Promise<AdminLicenseView[]> {
+    const d = await this.everything();
+    const byLicense = new Map<number, ActivationRow[]>();
+    for (const a of d.activations) byLicense.set(a.licenseId, [...(byLicense.get(a.licenseId) ?? []), a]);
+    return d.licenses.map((l) => this.adminView(l, byLicense.get(l.id) ?? []));
+  }
+
+  /** Уборка данных и то, на что стоит взглянуть: ключи без клиента, один телефон — разные имена, старые заявки,
+   * давно истёкшие ключи, подозрительные ключи, пробные без покупки и похожие компьютеры. */
+  async attention() {
+    const d = await this.everything();
+    const occupied = await this.store.auditSearch({ action: "occupied", from: new Date(d.now.getTime() - 90 * DAY) }, 5000);
+    return {
+      ...cleanup(d.licenses, d.requests, d.now),
+      suspicious: suspiciousKeys(d.licenses, d.activations, occupied, d.now),
+      trials: trialInsights(d.trials, d.activations, d.now, TRIAL_DAYS),
+    };
+  }
+
+  /** Утреннее сообщение владельцу (cron в 9:00 по Ташкенту). Нечего сказать или бот выключен — не отправляется. */
+  async sendDailyDigest(): Promise<{ sent: boolean; empty: boolean }> {
+    const d = await this.everything();
+    const clients = clientViews(d.licenses, d.activations, d.requests, d.stable, d.now);
+    const text = dailyDigest({ now: d.now, licenses: d.licenses, activations: d.activations, requests: d.requests, trials: d.trials, clients, trialDays: TRIAL_DAYS, hubUrl: this.hub });
+    if (!text) return { sent: false, empty: true };
+    return { sent: await this.notify(text), empty: false };
   }
 
   /** Главная хаба: числа, «требует внимания» (ключи, кончающиеся за 30 дней, и новые заявки), что опубликовано. */
@@ -785,4 +887,9 @@ export function maskEmail(email: string): string {
 /** Активация файлом лицензии без интернета (из админки или с сайта): плагин с ним сервер не спрашивает. */
 function isOfflineSeat(a: ActivationRow): boolean {
   return a.pluginVersion === "offline" || a.pluginVersion === "site-offline";
+}
+
+/** Полные коды компьютеров в тексте журнала → короткие XXXX-XXXX-XXXX-XXXX, как в окне «Лицензия». */
+export function shortCodes(text: string): string {
+  return text.replace(/(?:[0-9a-f]{16}|-)(?:\.(?:[0-9a-f]{16}|-)){3}/g, (m) => hwidDisplay(parseHwid(m) ?? m.split(".")));
 }

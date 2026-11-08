@@ -108,11 +108,23 @@ export interface StoreStats {
 }
 export type NewActivation = Omit<ActivationRow, "id">;
 
+/** Журнал с фильтрами (хаб): ключ, кто (client, site, admin, hub), действие, даты [from, to). Пустое — без фильтра. */
+export interface AuditFilter {
+  serial?: string;
+  actors?: string[];
+  action?: string;
+  from?: Date;
+  to?: Date;
+}
+
 export interface Store {
   findLicense(serial: string): Promise<LicenseRow | null>;
   insertLicense(row: NewLicense): Promise<LicenseRow>;
   updateLicense(row: LicenseRow): Promise<void>;
-  /** Поиск для админки: по ключу, заметке, имени, фамилии, телефону или почте; пустой запрос — последние. */
+  /**
+   * Поиск для админки: по ключу, заметке, имени, фамилии, телефону или почте; пустой запрос — последние.
+   * Телефон — в любом виде: «+998 90 123 45 67», «8 90 1234567» и «901234567» находят один и тот же номер.
+   */
   searchLicenses(query: string, limit: number): Promise<LicenseRow[]>;
   /** Удалить ключ полностью — вместе со всеми его активациями (журнал остаётся). */
   deleteLicense(id: number): Promise<void>;
@@ -151,4 +163,10 @@ export interface Store {
   expiringLicenses(now: Date, soon: Date, limit: number): Promise<LicenseRow[]>;
   /** База отвечает (для «Состояния» в хабе). */
   ping(): Promise<void>;
+  /** Все ключи, новые сверху (клиенты, выгрузка, отчёты хаба). */
+  allLicenses(limit: number): Promise<LicenseRow[]>;
+  /** Все активации всех ключей. */
+  allActivations(limit: number): Promise<ActivationRow[]>;
+  /** Журнал с фильтрами, новые сверху. */
+  auditSearch(filter: AuditFilter, limit: number): Promise<AuditRow[]>;
 }

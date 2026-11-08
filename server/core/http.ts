@@ -102,6 +102,16 @@ export class App {
 
   private readonly adminPassword: string | undefined;
   private platform: Platform | null = null;
+  private cronSecret = "";
+
+  /**
+   * Ежедневная задача (Vercel Cron, 9:00 по Ташкенту): утреннее сообщение владельцу в Telegram. Vercel присылает
+   * «Authorization: Bearer CRON_SECRET»; без секрета (короче 16 знаков) или с чужим — 404, как несуществующий адрес.
+   */
+  useCron(secret: string | undefined): this {
+    this.cronSecret = (secret ?? "").trim();
+    return this;
+  }
 
   /** Закрытый API для хаба little_7o7 (/api/platform/*). Без него эти адреса отвечают 404, как любые несуществующие. */
   usePlatform(platform: Platform): this {
@@ -130,6 +140,13 @@ export class App {
     // Админка — только /adminpanel. Главная «/» — статический сайт.
     if (req.method === "GET" && path === "/adminpanel") {
       return { status: 200, html: ADMIN_PAGE };
+    }
+
+    if (path === "/api/cron/daily") {
+      if (req.method !== "GET" || this.cronSecret.length < 16 || !sameText(req.headers["authorization"] ?? "", "Bearer " + this.cronSecret)) {
+        return { status: 404, json: { ok: false, error: "not_found" } };
+      }
+      return { status: 200, json: { ok: true, ...(await this.service.sendDailyDigest()) } };
     }
 
     if (req.method === "GET" && path === "/api/health") {
@@ -293,6 +310,12 @@ export class App {
     const b = createHash("sha256").update(this.adminPassword!).digest();
     return given.length > 0 && timingSafeEqual(a, b);
   }
+}
+
+function sameText(a: string, b: string): boolean {
+  const x = createHash("sha256").update(a).digest();
+  const y = createHash("sha256").update(b).digest();
+  return timingSafeEqual(x, y);
 }
 
 function decodeHeader(value: string): string {

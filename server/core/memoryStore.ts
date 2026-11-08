@@ -1,6 +1,7 @@
 // Хранилище в памяти — для тестов и локального запуска без базы.
 import { UNKNOWN } from "./hwid.js";
-import type { ActivationRow, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
+import { phoneQuery } from "./insights.js";
+import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, RequestRow, StatsWindow, Store, StoreStats, TrialRow, UpdateRow } from "./store.js";
 
 export class MemoryStore implements Store {
   licenses: LicenseRow[] = [];
@@ -29,8 +30,9 @@ export class MemoryStore implements Store {
 
   async searchLicenses(query: string, limit: number) {
     const q = query.trim().toLowerCase();
+    const digits = phoneQuery(q);
     return this.licenses
-      .filter((l) => !q || [l.serial, l.note, l.client.firstName, l.client.lastName, l.client.phone, l.client.email, l.client.telegram].some((t) => t.toLowerCase().includes(q)))
+      .filter((l) => !q || [l.serial, l.note, l.client.firstName, l.client.lastName, l.client.phone, l.client.email, l.client.telegram].some((t) => t.toLowerCase().includes(q)) || (!!digits && l.client.phone.replace(/\D/g, "").includes(digits)))
       .slice()
       .reverse()
       .slice(0, limit)
@@ -152,6 +154,22 @@ export class MemoryStore implements Store {
   }
 
   async ping() {}
+
+  async allLicenses(limit: number) {
+    return this.licenses.slice().reverse().slice(0, limit).map((l) => ({ ...l, client: { ...l.client } }));
+  }
+
+  async allActivations(limit: number) {
+    return this.activationRows.slice(0, limit).map((a) => ({ ...a }));
+  }
+
+  async auditSearch(f: AuditFilter, limit: number) {
+    return this.log
+      .filter((e) => (!f.serial || e.serial === f.serial) && (!f.actors?.length || f.actors.includes(e.actor)) && (!f.action || e.action === f.action) && (!f.from || e.at >= f.from) && (!f.to || e.at < f.to))
+      .reverse()
+      .slice(0, limit)
+      .map((e) => ({ ...e }));
+  }
 }
 
 function clone<T extends object>(row: T | null): T | null {

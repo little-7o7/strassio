@@ -9,8 +9,9 @@
 import { VERSION_PATTERN, isReleaseUrl, latestRelease, type ReleaseResult } from "./githubRelease.js";
 import { FailureLimiter, type HttpRequest, type HttpResponse } from "./http.js";
 import { same, verifySignature, type PlatformKeys } from "./platformAuth.js";
-import { parseClient, type LicenseService } from "./service.js";
+import { parseClient, shortCodes, type LicenseService } from "./service.js";
 import type { UpdateRow } from "./store.js";
+import { normalizeSerial } from "./crypto.js";
 
 export const PREFIX = "/api/platform/";
 
@@ -38,6 +39,17 @@ const missing = () => fail(404, "missing");
 const bad = () => fail(400, "bad_request");
 
 const SERIAL = "([A-Za-z0-9-]{12,24})";
+const CLIENT = "([A-Za-z0-9_-]{12})";
+const DAY = 24 * 60 * 60 * 1000;
+/** Кто в журнале: «hub» — хаб и старая админка вместе. */
+const WHO: Record<string, string[]> = { hub: ["hub", "admin"], client: ["client"], site: ["site"] };
+
+/** День ГГГГ-ММ-ДД по Ташкенту (UTC+5) → начало этого дня; плюс next — начало следующего. */
+function tashkentDay(value: string | null, next = false): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const t = Date.parse(value + "T00:00:00+05:00");
+  return Number.isNaN(t) ? undefined : new Date(t + (next ? DAY : 0));
+}
 const ID = "(\\d{1,12})";
 const REQUEST_STATUSES = ["new", "working", "rejected"] as const;
 
@@ -124,7 +136,11 @@ export class Platform {
       route("GET", "summary", async () => ok(await s.summary())),
 
       // ---------- Ключи ----------
-      route("GET", "licenses", async (_m, _b, req) => ok({ licenses: await s.licenseViews((req.query.get("q") ?? "").slice(0, 200)) })),
+      route("GET", "licenses", async (_m, _b, req) => ok({ licenses: req.query.get("all") === "1" ? await s.allKeys() : await s.licenseViews((req.query.get("q") ?? "").slice(0, 200)) })),
+      route("GET", `licenses/${SERIAL}/history`, async ([serial]) => {
+        const history = await s.keyHistory(serial);
+        return history ? ok({ history }) : missing();
+      }),
       route("GET", `licenses/${SERIAL}`, async ([serial]) => {
         const license = await s.licenseView(serial);
         return license ? ok({ license }) : missing();
@@ -165,6 +181,15 @@ export class Platform {
         return (await s.deleteLicense(license.serial)) ? ok() : missing();
       }, true),
       route("POST", `activations/${ID}/revoke`, async ([id]) => ((await s.revokeActivation(Number(id))) ? ok() : missing()), true),
+
+      // ---------- Клиенты, компьютеры, на что взглянуть (только чтение) ----------
+      route("GET", "clients", async () => ok(await s.clients())),
+      route("GET", `clients/${CLIENT}`, async ([id]) => {
+        const client = (await s.clients()).clients.find((c) => c.id === id);
+        return client ? ok({ client }) : missing();
+      }),
+      route("GET", "computers", async () => ok(await s.computers())),
+      route("GET", "attention", async () => ok(await s.attention())),
 
       // ---------- Заявки ----------
       route("GET", "requests", async () => ok({ requests: await s.listRequests() })),
@@ -213,7 +238,22 @@ export class Platform {
       // ---------- Журнал ----------
       route("GET", "audit", async (_m, _b, req) => {
         const n = Number(req.query.get("limit"));
-        return ok({ log: await s.auditLog(Number.isInteger(n) && n > 0 ? Math.min(n, 500) : 200) });
+        const limit = Number.isInteger(n) && n > 0 ? Math.min(n, 500) : 200;
+        const q = req.query;
+        const serial = q.get("serial") ? normalizeSerial(q.get("serial")) : null;
+        if (q.get("serial") && !serial) return ok({ log: [] });
+        const action = (q.get("action") ?? "").trim();
+        const filter = {
+          serial: serial ?? undefined,
+          actors: WHO[q.get("who") ?? ""],
+          action: /^[a-z_]{2,40}$/.test(action) ? action : undefined,
+          from: tashkentDay(q.get("from")),
+          to: tashkentDay(q.get("to"), true),
+        };
+        const plain = !filter.serial && !filter.actors && !filter.action && !filter.from && !filter.to;
+        const log = plain ? await s.auditLog(limit) : await s.auditSearch(filter, limit);
+        // Полные коды компьютеров (в журнале — для поиска подозрительных ключей) хабу — короткими, как в плагине.
+        return ok({ log: log.map((e) => ({ ...e, details: shortCodes(e.details) })) });
       }),
     ];
   }

@@ -9,6 +9,7 @@ import { requestTarget } from "../core/requestTarget.js";
 import { Platform } from "../core/platform.js";
 import { platformKeys } from "../core/platformAuth.js";
 import { LicenseService } from "../core/service.js";
+import { hubUrl, telegram } from "../core/telegram.js";
 
 let app: App | null = null;
 
@@ -30,7 +31,9 @@ function getApp(): App {
     adminPassword: process.env.ADMIN_PASSWORD,
     spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
   });
-  app = new App(new LicenseService(store, signer), process.env.ADMIN_PASSWORD).usePlatform(platform);
+  // Telegram владельцу (заявка, новая активация, утренняя сводка): выключен, пока нет TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID.
+  const site = new LicenseService(store, signer).useNotifier(telegram(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID), hubUrl(process.env.HUB_URL));
+  app = new App(site, process.env.ADMIN_PASSWORD).usePlatform(platform).useCron(process.env.CRON_SECRET);
   return app;
 }
 
