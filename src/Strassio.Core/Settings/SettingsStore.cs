@@ -109,16 +109,40 @@ namespace Strassio.Core.Settings
                 return null;
             }
 
+            // Файл занят (вторая копия CorelDRAW, антивирус) — он цел: не переименовывать, а подождать.
+            // Не вышло — ошибка наверх, иначе потом поверх настоящего файла записались бы настройки по умолчанию.
+            byte[] bytes;
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    bytes = File.ReadAllBytes(path);
+                    break;
+                }
+                catch (IOException) when (attempt < 5)
+                {
+                    System.Threading.Thread.Sleep(100 * attempt);
+                }
+            }
+
             try
             {
                 var serializer = new DataContractJsonSerializer(typeof(T));
-                using var stream = new MemoryStream(File.ReadAllBytes(path));
+                using var stream = new MemoryStream(bytes);
                 return (T?)serializer.ReadObject(stream);
             }
             catch (Exception)
             {
-                string backup = path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
-                File.Move(path, backup);
+                // Испорчен сам текст — откладываем в сторону, чтобы человек мог его вернуть.
+                try
+                {
+                    File.Move(path, path + ".broken-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+                }
+                catch (Exception)
+                {
+                    // Не переименовался — всё равно работаем с настройками по умолчанию.
+                }
+
                 return null;
             }
         }
@@ -142,12 +166,16 @@ namespace Strassio.Core.Settings
 
             string temp = path + ".tmp";
             File.WriteAllBytes(temp, bytes);
+
+            // Replace — одним шагом: сбой между «удалить» и «переименовать» больше не оставляет только .tmp.
             if (File.Exists(path))
             {
-                File.Delete(path);
+                File.Replace(temp, path, null);
             }
-
-            File.Move(temp, path);
+            else
+            {
+                File.Move(temp, path);
+            }
         }
     }
 }

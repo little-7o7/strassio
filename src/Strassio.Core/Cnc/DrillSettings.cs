@@ -286,12 +286,14 @@ namespace Strassio.Core.Cnc
                 problems.Add("drill.problem.clearance");
             }
 
-            if (!(PlungeFeed > 0) || PlungeFeed > 20000)
+            // Меньше 1 мм/мин в файле стало бы F0 — станок стоит или берёт свою подачу.
+            if (!(PlungeFeed >= 1) || PlungeFeed > 20000)
             {
                 problems.Add("drill.problem.feed");
             }
 
-            if (PeckMm < 0 || double.IsNaN(PeckMm))
+            // Слишком мелкий шаг — тысячи строк на отверстие: файл в гигабайты и нехватка памяти в CorelDRAW.
+            if (PeckMm < 0 || double.IsNaN(PeckMm) || (PeckMm > 0 && (PeckMm < 0.05 || DepthMm / PeckMm > 200)))
             {
                 problems.Add("drill.problem.peck");
             }
@@ -306,7 +308,7 @@ namespace Strassio.Core.Cnc
                 problems.Add("drill.problem.rpm");
             }
 
-            if (!(MillFeed > 0) || MillFeed > 20000)
+            if (!(MillFeed >= 1) || MillFeed > 20000)
             {
                 problems.Add("drill.problem.millFeed");
             }

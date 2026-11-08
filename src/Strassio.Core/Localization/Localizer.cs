@@ -106,8 +106,19 @@ namespace Strassio.Core.Localization
             }
         }
 
-        public string Format(string key, params object[] args) =>
-            string.Format(CultureInfo.CurrentCulture, this[key], args);
+        /// <summary>Текст с подстановкой; в чужом или правленом файле языка лишний {n} — текст как есть, без исключения.</summary>
+        public string Format(string key, params object[] args)
+        {
+            string text = this[key];
+            try
+            {
+                return string.Format(CultureInfo.CurrentCulture, text, args);
+            }
+            catch (FormatException)
+            {
+                return text;
+            }
+        }
 
         public void SetLanguage(string languageCode)
         {

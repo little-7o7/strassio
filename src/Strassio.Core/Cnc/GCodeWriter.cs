@@ -164,6 +164,9 @@ namespace Strassio.Core.Cnc
                     }
 
                     w.Line("T" + job.Tool.ToString(CultureInfo.InvariantCulture) + " M6");
+
+                    // После смены сверла высота — та, что оставил станок: сначала подъём, потом X/Y.
+                    w.Line("G0 Z" + Z(s.ClearanceMm));
                 }
 
                 int rpm = job.Rpm > 0 ? job.Rpm : s.SpindleRpm;

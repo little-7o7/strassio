@@ -35,6 +35,28 @@ namespace Strassio.Core.Methods
         /// крайними рядами, L5, L6, L8). Нет таблицы или размера в ней — берётся основной камень.
         /// </param>
         /// <param name="guides">Вторая линия для F7 (вторая кривая перехода) и F8 (направляющая).</param>
+        /// <summary>
+        /// Параметры из пресета, settings.json или «живой» стразы в чужом .cdr не проходили через поля докера:
+        /// число вне границ поля (например, зазор −2,4 мм) зацикливало расчёт и вешало CorelDRAW.
+        /// Такие числа берутся по умолчанию.
+        /// </summary>
+        private static MethodParameters WithinLimits(MethodKind kind, MethodParameters p)
+        {
+            MethodParameters? fixedCopy = null;
+            MethodParameters? defaults = null;
+            foreach (MethodField f in MethodCatalog.Get(kind).Fields)
+            {
+                if ((f.Kind == FieldKind.Length || f.Kind == FieldKind.Integer || f.Kind == FieldKind.Angle) && !f.Accepts(f.GetNumber(fixedCopy ?? p)))
+                {
+                    fixedCopy ??= p.Clone();
+                    defaults ??= new MethodParameters();
+                    f.TrySetNumber(fixedCopy, f.GetNumber(defaults));
+                }
+            }
+
+            return fixedCopy ?? p;
+        }
+
         public static MethodResult Run(
             MethodKind kind, IReadOnlyList<Curve> contours, double stoneDiameterMm, MethodParameters p,
             IReadOnlyDictionary<string, double>? sizes = null, IReadOnlyList<Curve>? guides = null)
@@ -49,6 +71,7 @@ namespace Strassio.Core.Methods
                 throw new ArgumentNullException(nameof(p));
             }
 
+            p = WithinLimits(kind, p);
             double d = stoneDiameterMm;
             switch (kind)
             {

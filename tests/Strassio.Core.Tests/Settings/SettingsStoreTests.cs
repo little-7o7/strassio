@@ -120,4 +120,19 @@ public class SettingsStoreTests : IDisposable
 
         Assert.Contains(back.Sets[0].Sizes[0].Colors, c => c.Name == "Сапфир" && c.Rgb == "#1E40AF");
     }
+
+    [Fact]
+    public void BusyStonesFile_IsNotRenamed_AndNotReplacedByDefaults()
+    {
+        // Файл занят (вторая копия CorelDRAW, антивирус) — он цел: ни «.broken», ни таблицы по умолчанию.
+        var store = new SettingsStore(dir);
+        store.SaveStones(new SettingsStore(dir).LoadStones());
+        using (new FileStream(store.StonesPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            Assert.ThrowsAny<IOException>(() => store.LoadStones());
+        }
+
+        Assert.Empty(Directory.GetFiles(dir, "stones.json.broken-*"));
+        Assert.NotEmpty(store.LoadStones().Sets);
+    }
 }

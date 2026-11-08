@@ -36,12 +36,19 @@ namespace Strassio.Core.Cnc
     /// </summary>
     public static class GCodeCheck
     {
-        public static GCodeRun Run(string program, double millLimitMm = 0)
+        /// <summary>
+        /// Допуск дофрезеровки: центр отверстия и точка круга округлены до 0.001 каждая (до √2·0.0005 мм),
+        /// поэтому точка может оказаться дальше круга на ~0.0014 мм — это не ошибка.
+        /// </summary>
+        private const double MillTolerance = 2e-3;
+
+        /// <param name="manualSpindle">Обороты 0 — шпиндель включают руками: M3/M5 в файле нет, и это не ошибка.</param>
+        public static GCodeRun Run(string program, double millLimitMm = 0, bool manualSpindle = false)
         {
             var run = new GCodeRun();
             double x = 0, y = 0, z = double.NaN;
             int motion = 0;
-            bool spindle = false;
+            bool spindle = manualSpindle;
             int tool = 0;
             bool retractToR = true;
             double cycleZ = 0, cycleR = 0, cycleQ = 0, initialZ = 0;
@@ -120,6 +127,11 @@ namespace Strassio.Core.Cnc
                     run.Problems.Add($"line {ln + 1}: tool change below safe height");
                 }
 
+                if (changeTool)
+                {
+                    z = double.NaN; // где сверло после смены — решает станок: до X/Y нужен свой подъём по Z
+                }
+
                 if (motion == 81 || motion == 83)
                 {
                     if (nz.HasValue) cycleZ = nz.Value;
@@ -176,7 +188,7 @@ namespace Strassio.Core.Cnc
                         // Внутри материала — только дофрезеровка: на подаче, по горизонтали, внутри своего отверстия.
                         var hole = inHole ? run.Holes[run.Holes.Count - 1] : default;
                         double side = inHole ? Point2D.Distance(hole.At, new Point2D(toX, toY)) : double.MaxValue;
-                        if (motion != 1 || !inHole || Math.Abs(toZ - z) > 1e-9 || side > millLimitMm + 1e-3)
+                        if (motion != 1 || !inHole || Math.Abs(toZ - z) > 1e-9 || side > millLimitMm + MillTolerance)
                         {
                             run.Problems.Add($"line {ln + 1}: X/Y move at or below the top of material (Z {Fmt(Math.Min(z, toZ))})");
                         }
@@ -240,7 +252,7 @@ namespace Strassio.Core.Cnc
                 run.Problems.Add("program does not end with M30");
             }
 
-            if (spindle)
+            if (spindle && !manualSpindle)
             {
                 run.Problems.Add("spindle is still on at the end");
             }

@@ -320,10 +320,16 @@ namespace Strassio.Core.Cnc
         /// настроек (если задан) откладывается от левого нижнего угла страницы. Нет ни того, ни другого —
         /// доской считается рамка рисунка.
         /// </param>
+        /// <summary>Отверстие с настоящими числами: NaN или бесконечность (битая фигура) пропускаются, а не роняют расчёт.</summary>
+        private static bool Usable(DrillHole h) =>
+            h.DiameterMm > 0 && !double.IsInfinity(h.DiameterMm) && Finite(h.Center.X) && Finite(h.Center.Y);
+
+        private static bool Finite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
+
         public static DrillPlan Plan(IEnumerable<DrillHole> holes, DrillSettings settings, DrillRack? rack = null, bool optimize = true, DrillBoard? page = null)
         {
             rack ??= DrillRack.Empty;
-            List<DrillHole> design = holes.Where(h => h.DiameterMm > 0 && !double.IsNaN(h.Center.X) && !double.IsNaN(h.Center.Y)).ToList();
+            List<DrillHole> design = holes.Where(Usable).ToList();
             if (design.Count == 0)
             {
                 return new DrillPlan(Array.Empty<DrillJob>(), Point2D.Zero, Point2D.Zero, Point2D.Zero, 0, Array.Empty<DrillMismatch>());
@@ -442,8 +448,10 @@ namespace Strassio.Core.Cnc
                     double travel = PathOrder.Length(ordered, Enumerable.Range(0, ordered.Length).ToArray(), Point2D.Zero, returnToStart: true);
 
                     DrillTool? tool = rack.Find(drill);
-                    double feed = tool != null && tool.Feed > 0 ? tool.Feed : settings.PlungeFeed;
-                    int rpm = settings.SpindleRpm > 0 ? (tool != null && tool.Rpm > 0 ? tool.Rpm : settings.SpindleRpm) : 0;
+                    // Подача и обороты сверла — из каталога (мог прийти из чужого файла настроек): вне пределов
+                    // каталога (DrillCatalog.Validate) берутся общие.
+                    double feed = tool != null && tool.Feed >= 1 && tool.Feed <= 20000 ? tool.Feed : settings.PlungeFeed;
+                    int rpm = settings.SpindleRpm > 0 ? (tool != null && tool.Rpm > 0 && tool.Rpm <= 100000 ? tool.Rpm : settings.SpindleRpm) : 0;
                     double millPath = radii.Sum(r => MillRings(r, drill).Sum(ring => 2 * Math.PI * ring + ring));
                     double seconds = Estimate(ordered.Length, travel, settings, feed) + millPath / Math.Max(settings.MillFeed, 1) * 60 + radii.Count(r => r > 0) * 0.3;
                     jobs.Add(new DrillJob(tools[drill], drill, sizes, color, ordered, travel, seconds, radii, marks, feed, rpm, tool?.Name ?? string.Empty));
@@ -487,7 +495,7 @@ namespace Strassio.Core.Cnc
         /// </summary>
         public static (int X, int Y) FitCopies(IEnumerable<DrillHole> holes, DrillSettings settings, DrillRack? rack, DrillBoard? page)
         {
-            List<DrillHole> design = holes.Where(h => h.DiameterMm > 0).ToList();
+            List<DrillHole> design = holes.Where(Usable).ToList();
             if (design.Count == 0)
             {
                 return (1, 1);
