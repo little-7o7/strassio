@@ -90,7 +90,12 @@ export type Currency = "UZS" | "USD";
 /** Как заплатили; "" — ещё не заплатили (долг). */
 export type PayMethod = "cash" | "card" | "transfer" | "";
 
-/** Тариф: название, срок (null — бессрочно) и цена. Выключенный не предлагается, но старые оплаты его помнят по имени. */
+/**
+ * Тариф: название, срок (null — навсегда) и цена. Общий (contractId null) или строка цены договора клиента. Цена может
+ * считаться от другого тарифа: «Год» = цена «Месяца» × 12 − скидка (baseId, discount; владелец 2026-11-08) — тогда
+ * price хранит уже посчитанную цену и пересчитывается при правке основного тарифа. kind "updates" — оплата обновлений
+ * для ключей «навсегда». Выключенный не предлагается, но старые оплаты и цены ключей его помнят.
+ */
 export interface TariffRow {
   id: number;
   name: string;
@@ -99,24 +104,116 @@ export interface TariffRow {
   currency: Currency;
   active: boolean;
   createdAt: Date;
+  contractId: number | null;
+  kind: TariffKind;
+  baseId: number | null;
+  /** «15%» или сумма «100»; "" — без скидки. */
+  discount: string;
+  /** Показывать на сайте (только общие тарифы). */
+  site: boolean;
+  /** Подпись: «выгоднее на 2 месяца». */
+  label: string;
+}
+
+export type TariffKind = "key" | "updates";
+
+/**
+ * Договор клиента («договор есть договор», владелец 2026-11-08). Клиента как строки в базе нет: договор помнит его
+ * clientKey (телефон, почта, Telegram или имя). Новый договор того же клиента закрывает прежний — старый остаётся в
+ * истории. Даты — ГГГГ-ММ-ДД или "".
+ */
+export interface ContractRow {
+  id: number;
+  clientKey: string;
+  number: string;
+  signedOn: string;
+  validFrom: string;
+  /** "" — бессрочно. */
+  validUntil: string;
+  /** ФИО или организация. */
+  party: string;
+  inn: string;
+  address: string;
+  /** Условия оплаты словами: «до 5 числа каждого месяца». */
+  terms: string;
+  /** День оплаты 1–31 (для напоминаний); null — не задан. */
+  payDay: number | null;
+  currency: Currency;
+  note: string;
+  status: "active" | "closed";
+  closedAt: Date | null;
+  createdAt: Date;
+}
+
+/** Файл договора (скан, PDF) — base64 в базе, до 3 МБ. */
+export interface ContractFileRow {
+  id: number;
+  contractId: number;
+  name: string;
+  type: string;
+  size: number;
+  data: string;
+  createdAt: Date;
 }
 
 /**
- * Оплата ключа: продажа или продление. paidAt null — долг (ключ выдан, денег ещё нет). Привязана к ключу по serial,
- * а не по id: ключ удалили — оплата остаётся в доходе.
+ * Цена ключа — закреплена за ключом при выдаче: договорились по $50, потом подняли до $60 — старые ключи продлеваются
+ * по $50, новые стоят $60 (владелец 2026-11-08). Меняется только явно.
+ */
+export interface KeyTermsRow {
+  serial: string;
+  contractId: number | null;
+  tariffId: number | null;
+  name: string;
+  /** Срок одного периода; null — навсегда. */
+  days: number | null;
+  price: number;
+  currency: Currency;
+  /** Ключ «навсегда»: обновления оплачены до; null — не задано. */
+  updatesUntil: Date | null;
+  since: Date;
+}
+
+export type PaymentKind = "sale" | "renewal" | "updates";
+
+/**
+ * Начисление по ключу: продажа, продление или обновления. Сколько должен — amount (0 — бесплатно), цена без скидки —
+ * listPrice. Деньги приходят частями (PaymentPartRow); paidAt — когда начисление закрыто полностью, null — долг.
+ * Привязано к ключу по serial, а не по id: ключ удалили — доход остаётся.
  */
 export interface PaymentRow {
   id: number;
   serial: string;
-  kind: "sale" | "renewal";
+  kind: PaymentKind;
   amount: number;
   currency: Currency;
-  method: PayMethod;
-  /** Название тарифа на момент оплаты; "" — своя сумма. */
+  /** Цена по договору или тарифу без скидки; 0 — не задана. */
+  listPrice: number;
+  /** Название тарифа или цены ключа; "" — своя сумма. */
   tariff: string;
+  contractId: number | null;
   note: string;
+  /** Срок оплаты долга ГГГГ-ММ-ДД или "". */
+  dueOn: string;
   createdAt: Date;
   paidAt: Date | null;
+}
+
+/**
+ * Поступление денег по начислению. Пришло amount в currency, засчитано credit в валюте начисления: договор в долларах,
+ * заплатили сумами — в доходе сумы, долг закрыт на столько долларов, сколько засчитали.
+ */
+export interface PaymentPartRow {
+  id: number;
+  paymentId: number;
+  amount: number;
+  currency: Currency;
+  /** Курс дня (сумов за доллар), когда валюта другая; 0 — та же валюта или засчитано вручную. */
+  rate: number;
+  credit: number;
+  method: Exclude<PayMethod, "">;
+  note: string;
+  paidAt: Date;
 }
 
 /** Границы для сводки хаба: сейчас, «скоро» (через 30 дней), сутки назад, начало ещё идущих пробных. */
@@ -213,9 +310,42 @@ export interface Store {
   insertPayment(row: Omit<PaymentRow, "id">): Promise<PaymentRow>;
   findPayment(id: number): Promise<PaymentRow | null>;
   updatePayment(row: PaymentRow): Promise<void>;
+  /** Удалить начисление вместе с его поступлениями. */
   deletePayment(id: number): Promise<void>;
-  /** Все оплаты, новые сверху. */
+  /** Все начисления, новые сверху. */
   listPayments(limit: number): Promise<PaymentRow[]>;
-  /** Оплаты одного ключа, новые сверху. */
+  /** Начисления одного ключа, новые сверху. */
   paymentsFor(serial: string): Promise<PaymentRow[]>;
+  insertPart(row: Omit<PaymentPartRow, "id">): Promise<PaymentPartRow>;
+  findPart(id: number): Promise<PaymentPartRow | null>;
+  deletePart(id: number): Promise<void>;
+  /** Поступления по этим начислениям, по порядку. */
+  partsOf(paymentIds: number[]): Promise<PaymentPartRow[]>;
+  /** Все поступления, по порядку. */
+  listParts(limit: number): Promise<PaymentPartRow[]>;
+
+  listContracts(): Promise<ContractRow[]>;
+  findContract(id: number): Promise<ContractRow | null>;
+  insertContract(row: Omit<ContractRow, "id">): Promise<ContractRow>;
+  updateContract(row: ContractRow): Promise<void>;
+  /** Удалить договор вместе с файлами; его цены выключаются, цены ключей остаются. */
+  deleteContract(id: number): Promise<void>;
+  /** Файлы договора без содержимого (data ""). */
+  contractFiles(contractId: number): Promise<ContractFileRow[]>;
+  findContractFile(id: number): Promise<ContractFileRow | null>;
+  insertContractFile(row: Omit<ContractFileRow, "id">): Promise<ContractFileRow>;
+  deleteContractFile(id: number): Promise<void>;
+
+  keyTerms(serial: string): Promise<KeyTermsRow | null>;
+  allKeyTerms(): Promise<KeyTermsRow[]>;
+  saveKeyTerms(row: KeyTermsRow): Promise<void>;
+
+  /** Настройки денег (скидка за количество и т. п.): ключ → текст; null — не задано. */
+  getSetting(key: string): Promise<string | null>;
+  setSetting(key: string, value: string): Promise<void>;
+  /** Курс ЦБ (сумов за доллар) на день ГГГГ-ММ-ДД; null — не сохранён. */
+  rateFor(day: string): Promise<number | null>;
+  saveRate(day: string, rate: number): Promise<void>;
+  /** Последний сохранённый курс; null — ни одного. */
+  latestRate(): Promise<number | null>;
 }

@@ -2,7 +2,7 @@
 // query(текст, параметры) → строки. Таблицы создаются сами при первом запросе (CREATE ... IF NOT EXISTS).
 import { UNKNOWN } from "./hwid.js";
 import { phoneQuery } from "./insights.js";
-import type { ActivationRow, AuditFilter, AuditRow, Currency, LicenseRow, NewActivation, NewLicense, NewRequest, PayMethod, PaymentRow, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditFilter, AuditRow, ContractFileRow, ContractRow, Currency, KeyTermsRow, LicenseRow, NewActivation, NewLicense, NewRequest, PaymentPartRow, PaymentRow, RequestRow, RequestStatus, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
 
 export type Query = (text: string, params?: unknown[]) => Promise<Record<string, any>[]>;
 
@@ -78,8 +78,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS platform_nonces (
      nonce TEXT PRIMARY KEY,
      until_sec BIGINT NOT NULL)`,
-  // Деньги (хаб, 2026-11-08): тарифы и оплаты ключей. Оплата помнит ключ по serial, без REFERENCES: удалённый ключ
-  // не стирает доход. paid_at NULL — долг.
+  // Деньги (хаб, 2026-11-08): тарифы (общие и цены договоров), договоры клиентов и их файлы, закреплённая цена ключа,
+  // начисления и поступления. Начисление помнит ключ по serial, без REFERENCES: удалённый ключ не стирает доход.
+  // paid_at NULL — долг.
   `CREATE TABLE IF NOT EXISTS tariffs (
      id SERIAL PRIMARY KEY,
      name TEXT NOT NULL,
@@ -87,19 +88,79 @@ const SCHEMA = [
      price NUMERIC(14,2) NOT NULL,
      currency TEXT NOT NULL DEFAULT 'UZS',
      active BOOLEAN NOT NULL DEFAULT true,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+     contract_id INT NULL,
+     kind TEXT NOT NULL DEFAULT 'key',
+     base_id INT NULL,
+     discount TEXT NOT NULL DEFAULT '',
+     site BOOLEAN NOT NULL DEFAULT false,
+     label TEXT NOT NULL DEFAULT '')`,
+  `CREATE TABLE IF NOT EXISTS contracts (
+     id SERIAL PRIMARY KEY,
+     client_key TEXT NOT NULL,
+     number TEXT NOT NULL DEFAULT '',
+     signed_on TEXT NOT NULL DEFAULT '',
+     valid_from TEXT NOT NULL DEFAULT '',
+     valid_until TEXT NOT NULL DEFAULT '',
+     party TEXT NOT NULL DEFAULT '',
+     inn TEXT NOT NULL DEFAULT '',
+     address TEXT NOT NULL DEFAULT '',
+     terms TEXT NOT NULL DEFAULT '',
+     pay_day INT NULL,
+     currency TEXT NOT NULL DEFAULT 'UZS',
+     note TEXT NOT NULL DEFAULT '',
+     status TEXT NOT NULL DEFAULT 'active',
+     closed_at TIMESTAMPTZ NULL,
      created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS contract_files (
+     id SERIAL PRIMARY KEY,
+     contract_id INT NOT NULL,
+     name TEXT NOT NULL,
+     type TEXT NOT NULL,
+     size INT NOT NULL,
+     data TEXT NOT NULL,
+     created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `CREATE TABLE IF NOT EXISTS key_terms (
+     serial TEXT PRIMARY KEY,
+     contract_id INT NULL,
+     tariff_id INT NULL,
+     name TEXT NOT NULL DEFAULT '',
+     days INT NULL,
+     price NUMERIC(14,2) NOT NULL,
+     currency TEXT NOT NULL DEFAULT 'UZS',
+     updates_until TIMESTAMPTZ NULL,
+     since TIMESTAMPTZ NOT NULL DEFAULT now())`,
   `CREATE TABLE IF NOT EXISTS payments (
      id SERIAL PRIMARY KEY,
      serial TEXT NOT NULL,
      kind TEXT NOT NULL DEFAULT 'sale',
      amount NUMERIC(14,2) NOT NULL,
      currency TEXT NOT NULL DEFAULT 'UZS',
-     method TEXT NOT NULL DEFAULT '',
+     list_price NUMERIC(14,2) NOT NULL DEFAULT 0,
      tariff TEXT NOT NULL DEFAULT '',
+     contract_id INT NULL,
      note TEXT NOT NULL DEFAULT '',
+     due_on TEXT NOT NULL DEFAULT '',
      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
      paid_at TIMESTAMPTZ NULL)`,
   `CREATE INDEX IF NOT EXISTS payments_serial ON payments(serial)`,
+  `CREATE TABLE IF NOT EXISTS payment_parts (
+     id SERIAL PRIMARY KEY,
+     payment_id INT NOT NULL,
+     amount NUMERIC(14,2) NOT NULL,
+     currency TEXT NOT NULL DEFAULT 'UZS',
+     rate NUMERIC(14,2) NOT NULL DEFAULT 0,
+     credit NUMERIC(14,2) NOT NULL,
+     method TEXT NOT NULL,
+     note TEXT NOT NULL DEFAULT '',
+     paid_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
+  `CREATE INDEX IF NOT EXISTS payment_parts_payment ON payment_parts(payment_id)`,
+  `CREATE TABLE IF NOT EXISTS money_settings (
+     key TEXT PRIMARY KEY,
+     value TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS usd_rates (
+     day TEXT PRIMARY KEY,
+     rate NUMERIC(14,2) NOT NULL)`,
 ];
 
 export class PgStore implements Store {
@@ -361,19 +422,26 @@ export class PgStore implements Store {
   }
 
   async insertTariff(t: Omit<TariffRow, "id">) {
-    const rows = await this.q("INSERT INTO tariffs (name, days, price, currency, active, created_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *", [t.name, t.days, t.price, t.currency, t.active, t.createdAt]);
+    const rows = await this.q(
+      `INSERT INTO tariffs (name, days, price, currency, active, created_at, contract_id, kind, base_id, discount, site, label)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [t.name, t.days, t.price, t.currency, t.active, t.createdAt, t.contractId, t.kind, t.baseId, t.discount, t.site, t.label],
+    );
     return tariff(rows[0]);
   }
 
   async updateTariff(t: TariffRow) {
-    await this.q("UPDATE tariffs SET name=$2, days=$3, price=$4, currency=$5, active=$6 WHERE id=$1", [t.id, t.name, t.days, t.price, t.currency, t.active]);
+    await this.q(
+      "UPDATE tariffs SET name=$2, days=$3, price=$4, currency=$5, active=$6, contract_id=$7, kind=$8, base_id=$9, discount=$10, site=$11, label=$12 WHERE id=$1",
+      [t.id, t.name, t.days, t.price, t.currency, t.active, t.contractId, t.kind, t.baseId, t.discount, t.site, t.label],
+    );
   }
 
   async insertPayment(p: Omit<PaymentRow, "id">) {
     const rows = await this.q(
-      `INSERT INTO payments (serial, kind, amount, currency, method, tariff, note, created_at, paid_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [p.serial, p.kind, p.amount, p.currency, p.method, p.tariff, p.note, p.createdAt, p.paidAt],
+      `INSERT INTO payments (serial, kind, amount, currency, list_price, tariff, contract_id, note, due_on, created_at, paid_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [p.serial, p.kind, p.amount, p.currency, p.listPrice, p.tariff, p.contractId, p.note, p.dueOn, p.createdAt, p.paidAt],
     );
     return payment(rows[0]);
   }
@@ -384,10 +452,14 @@ export class PgStore implements Store {
   }
 
   async updatePayment(p: PaymentRow) {
-    await this.q("UPDATE payments SET kind=$2, amount=$3, currency=$4, method=$5, tariff=$6, note=$7, paid_at=$8 WHERE id=$1", [p.id, p.kind, p.amount, p.currency, p.method, p.tariff, p.note, p.paidAt]);
+    await this.q(
+      "UPDATE payments SET kind=$2, amount=$3, currency=$4, list_price=$5, tariff=$6, contract_id=$7, note=$8, due_on=$9, paid_at=$10 WHERE id=$1",
+      [p.id, p.kind, p.amount, p.currency, p.listPrice, p.tariff, p.contractId, p.note, p.dueOn, p.paidAt],
+    );
   }
 
   async deletePayment(id: number) {
+    await this.q("DELETE FROM payment_parts WHERE payment_id = $1", [id]);
     await this.q("DELETE FROM payments WHERE id = $1", [id]);
   }
 
@@ -398,18 +470,149 @@ export class PgStore implements Store {
   async paymentsFor(serial: string) {
     return (await this.q("SELECT * FROM payments WHERE serial = $1 ORDER BY id DESC", [serial])).map(payment);
   }
+
+  async insertPart(p: Omit<PaymentPartRow, "id">) {
+    const rows = await this.q(
+      "INSERT INTO payment_parts (payment_id, amount, currency, rate, credit, method, note, paid_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *",
+      [p.paymentId, p.amount, p.currency, p.rate, p.credit, p.method, p.note, p.paidAt],
+    );
+    return part(rows[0]);
+  }
+
+  async findPart(id: number) {
+    const rows = await this.q("SELECT * FROM payment_parts WHERE id = $1", [id]);
+    return rows.length ? part(rows[0]) : null;
+  }
+
+  async deletePart(id: number) {
+    await this.q("DELETE FROM payment_parts WHERE id = $1", [id]);
+  }
+
+  async partsOf(paymentIds: number[]) {
+    if (!paymentIds.length) return [];
+    return (await this.q("SELECT * FROM payment_parts WHERE payment_id = ANY($1::int[]) ORDER BY id", [paymentIds])).map(part);
+  }
+
+  async listParts(limit: number) {
+    return (await this.q("SELECT * FROM payment_parts ORDER BY id LIMIT $1", [limit])).map(part);
+  }
+
+  async listContracts() {
+    return (await this.q("SELECT * FROM contracts ORDER BY id")).map(contract);
+  }
+
+  async findContract(id: number) {
+    const rows = await this.q("SELECT * FROM contracts WHERE id = $1", [id]);
+    return rows.length ? contract(rows[0]) : null;
+  }
+
+  async insertContract(c: Omit<ContractRow, "id">) {
+    const rows = await this.q(
+      `INSERT INTO contracts (client_key, number, signed_on, valid_from, valid_until, party, inn, address, terms, pay_day, currency, note, status, closed_at, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [c.clientKey, c.number, c.signedOn, c.validFrom, c.validUntil, c.party, c.inn, c.address, c.terms, c.payDay, c.currency, c.note, c.status, c.closedAt, c.createdAt],
+    );
+    return contract(rows[0]);
+  }
+
+  async updateContract(c: ContractRow) {
+    await this.q(
+      `UPDATE contracts SET client_key=$2, number=$3, signed_on=$4, valid_from=$5, valid_until=$6, party=$7, inn=$8, address=$9, terms=$10,
+         pay_day=$11, currency=$12, note=$13, status=$14, closed_at=$15 WHERE id=$1`,
+      [c.id, c.clientKey, c.number, c.signedOn, c.validFrom, c.validUntil, c.party, c.inn, c.address, c.terms, c.payDay, c.currency, c.note, c.status, c.closedAt],
+    );
+  }
+
+  async deleteContract(id: number) {
+    await this.q("DELETE FROM contract_files WHERE contract_id = $1", [id]);
+    await this.q("UPDATE tariffs SET active = false WHERE contract_id = $1", [id]);
+    await this.q("DELETE FROM contracts WHERE id = $1", [id]);
+  }
+
+  async contractFiles(contractId: number) {
+    return (await this.q("SELECT id, contract_id, name, type, size, '' AS data, created_at FROM contract_files WHERE contract_id = $1 ORDER BY id", [contractId])).map(contractFile);
+  }
+
+  async findContractFile(id: number) {
+    const rows = await this.q("SELECT * FROM contract_files WHERE id = $1", [id]);
+    return rows.length ? contractFile(rows[0]) : null;
+  }
+
+  async insertContractFile(f: Omit<ContractFileRow, "id">) {
+    const rows = await this.q(
+      "INSERT INTO contract_files (contract_id, name, type, size, data, created_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, contract_id, name, type, size, '' AS data, created_at",
+      [f.contractId, f.name, f.type, f.size, f.data, f.createdAt],
+    );
+    return contractFile(rows[0]);
+  }
+
+  async deleteContractFile(id: number) {
+    await this.q("DELETE FROM contract_files WHERE id = $1", [id]);
+  }
+
+  async keyTerms(serial: string) {
+    const rows = await this.q("SELECT * FROM key_terms WHERE serial = $1", [serial]);
+    return rows.length ? keyTerms(rows[0]) : null;
+  }
+
+  async allKeyTerms() {
+    return (await this.q("SELECT * FROM key_terms")).map(keyTerms);
+  }
+
+  async saveKeyTerms(t: KeyTermsRow) {
+    await this.q(
+      `INSERT INTO key_terms (serial, contract_id, tariff_id, name, days, price, currency, updates_until, since)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (serial) DO UPDATE SET contract_id=$2, tariff_id=$3, name=$4, days=$5, price=$6, currency=$7, updates_until=$8, since=$9`,
+      [t.serial, t.contractId, t.tariffId, t.name, t.days, t.price, t.currency, t.updatesUntil, t.since],
+    );
+  }
+
+  async getSetting(key: string) {
+    const rows = await this.q("SELECT value FROM money_settings WHERE key = $1", [key]);
+    return rows.length ? String(rows[0].value) : null;
+  }
+
+  async setSetting(key: string, value: string) {
+    await this.q("INSERT INTO money_settings (key, value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = $2", [key, value]);
+  }
+
+  async rateFor(day: string) {
+    const rows = await this.q("SELECT rate FROM usd_rates WHERE day = $1", [day]);
+    return rows.length ? Number(rows[0].rate) : null;
+  }
+
+  async saveRate(day: string, rate: number) {
+    await this.q("INSERT INTO usd_rates (day, rate) VALUES ($1,$2) ON CONFLICT (day) DO UPDATE SET rate = $2", [day, rate]);
+  }
+
+  async latestRate() {
+    const rows = await this.q("SELECT rate FROM usd_rates ORDER BY day DESC LIMIT 1");
+    return rows.length ? Number(rows[0].rate) : null;
+  }
 }
 
 // NUMERIC приходит строкой («1200000.00») — в число.
+const num = (v: unknown) => Number(v);
+const intOrNull = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+const cur = (v: unknown): Currency => (v === "USD" ? "USD" : "UZS");
+const bool = (v: unknown) => v === true || v === "t";
+
 function tariff(r: Record<string, any>): TariffRow {
   return {
     id: Number(r.id),
     name: r.name,
-    days: r.days === null || r.days === undefined ? null : Number(r.days),
-    price: Number(r.price),
-    currency: r.currency === "USD" ? "USD" : ("UZS" as Currency),
-    active: r.active === true || r.active === "t",
+    days: intOrNull(r.days),
+    price: num(r.price),
+    currency: cur(r.currency),
+    active: bool(r.active),
     createdAt: new Date(r.created_at),
+    contractId: intOrNull(r.contract_id),
+    kind: r.kind === "updates" ? "updates" : "key",
+    baseId: intOrNull(r.base_id),
+    discount: r.discount ?? "",
+    site: bool(r.site),
+    label: r.label ?? "",
   };
 }
 
@@ -417,14 +620,69 @@ function payment(r: Record<string, any>): PaymentRow {
   return {
     id: Number(r.id),
     serial: r.serial,
-    kind: r.kind === "renewal" ? "renewal" : "sale",
-    amount: Number(r.amount),
-    currency: r.currency === "USD" ? "USD" : "UZS",
-    method: (r.method ?? "") as PayMethod,
+    kind: r.kind === "renewal" || r.kind === "updates" ? r.kind : "sale",
+    amount: num(r.amount),
+    currency: cur(r.currency),
+    listPrice: num(r.list_price ?? 0),
     tariff: r.tariff ?? "",
+    contractId: intOrNull(r.contract_id),
     note: r.note ?? "",
+    dueOn: r.due_on ?? "",
     createdAt: new Date(r.created_at),
     paidAt: r.paid_at ? new Date(r.paid_at) : null,
+  };
+}
+
+function part(r: Record<string, any>): PaymentPartRow {
+  return {
+    id: Number(r.id),
+    paymentId: Number(r.payment_id),
+    amount: num(r.amount),
+    currency: cur(r.currency),
+    rate: num(r.rate ?? 0),
+    credit: num(r.credit),
+    method: r.method === "card" || r.method === "transfer" ? r.method : "cash",
+    note: r.note ?? "",
+    paidAt: new Date(r.paid_at),
+  };
+}
+
+function contract(r: Record<string, any>): ContractRow {
+  return {
+    id: Number(r.id),
+    clientKey: r.client_key,
+    number: r.number ?? "",
+    signedOn: r.signed_on ?? "",
+    validFrom: r.valid_from ?? "",
+    validUntil: r.valid_until ?? "",
+    party: r.party ?? "",
+    inn: r.inn ?? "",
+    address: r.address ?? "",
+    terms: r.terms ?? "",
+    payDay: intOrNull(r.pay_day),
+    currency: cur(r.currency),
+    note: r.note ?? "",
+    status: r.status === "closed" ? "closed" : "active",
+    closedAt: r.closed_at ? new Date(r.closed_at) : null,
+    createdAt: new Date(r.created_at),
+  };
+}
+
+function contractFile(r: Record<string, any>): ContractFileRow {
+  return { id: Number(r.id), contractId: Number(r.contract_id), name: r.name, type: r.type, size: Number(r.size), data: r.data ?? "", createdAt: new Date(r.created_at) };
+}
+
+function keyTerms(r: Record<string, any>): KeyTermsRow {
+  return {
+    serial: r.serial,
+    contractId: intOrNull(r.contract_id),
+    tariffId: intOrNull(r.tariff_id),
+    name: r.name ?? "",
+    days: intOrNull(r.days),
+    price: num(r.price),
+    currency: cur(r.currency),
+    updatesUntil: r.updates_until ? new Date(r.updates_until) : null,
+    since: new Date(r.since),
   };
 }
 

@@ -3,10 +3,13 @@
 import { Signer, SignedDocument, newSerial, normalizeSerial, toActivationCode } from "./crypto.js";
 import { hwidDisplay, hwidMatches, parseHwid } from "./hwid.js";
 import { birthdaysThisMonth, cleanup, clientId, clientKey, clientViews, computerBriefs, countVersions, dailyDigest, requestMessage, activationMessage, suspiciousKeys, trialInsights, type ClientView } from "./insights.js";
-import { isMonday, moneyReport, moneyTotals, paymentView, renewalOffer, sortTariffs, tariffView, weeklyDigest, type PaymentView } from "./money.js";
-import { formatSum, METHOD_LABEL } from "./sums.js";
-import type { ActivationRow, AuditFilter, ClientInfo, Currency, LicenseRow, PayMethod, PaymentRow, RequestRow, Store, TariffRow, UpdateRow } from "./store.js";
+import { Billing, INCLUDED_UPDATES_DAYS, type ChargeInput } from "./billing.js";
+import { dailyMoneyLines, isMonday, moneyReport, moneyTotals, paymentView, renewalOffer, requestOffer, tariffView, weeklyDigest, type PaymentView } from "./money.js";
+import { clientMoneyView, termsView } from "./moneyViews.js";
+import type { ActivationRow, AuditFilter, ClientInfo, KeyTermsRow, LicenseRow, RequestRow, Store, UpdateRow } from "./store.js";
+import type { RateSource } from "./rates.js";
 import type { Notifier } from "./telegram.js";
+import { formatSum } from "./sums.js";
 
 export const CHECK_EVERY_DAYS = 1;
 export const TRIAL_DAYS = 14;
@@ -82,27 +85,16 @@ export interface AdminLicenseView {
   /** Карточка клиента в хабе; "" — клиент не указан. */
   clientId: string;
   computers: Array<{ id: number; code: string; hwid: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
-  /** Только в карточке ключа: оплаты (новые сверху) и готовое «предложить продлить» (null — ключ бессрочный или заблокирован). */
+  /**
+   * Только в карточке ключа: начисления (новые сверху), готовое «предложить продлить» (null — ключ бессрочный или
+   * заблокирован), закреплённая цена ключа, договор (по цене ключа или действующий договор клиента) и до какого числа
+   * оплачены обновления ключа «навсегда».
+   */
   payments?: PaymentView[];
   offer?: { text: string; tariffId: number | null; tariff: string | null } | null;
-}
-
-/** Оплата из формы хаба (уже проверена в platform.ts). method "" — в долг. */
-export interface PaymentInput {
-  amount: number;
-  currency: Currency;
-  method: PayMethod;
-  tariff: string;
-  note: string;
-  kind?: "sale" | "renewal";
-}
-
-export interface TariffInput {
-  name: string;
-  days: number | null;
-  price: number;
-  currency: Currency;
-  active: boolean;
+  terms?: ReturnType<typeof termsView> | null;
+  contract?: { id: number; number: string; status: "active" | "closed" } | null;
+  updatesUntil?: string | null;
 }
 
 export interface KeyOptions {
@@ -110,8 +102,8 @@ export interface KeyOptions {
   days?: number | null;
   note?: string;
   client?: unknown;
-  /** Оплата за каждый ключ (продажа); null — без оплаты. */
-  payment?: PaymentInput | null;
+  /** Оплата за каждый ключ (продажа) — цена закрепляется за ключом; null — без оплаты. */
+  payment?: ChargeInput | null;
 }
 
 /** Данные клиента из админки: обрезаются по длине; почта и день рождения проверяются. null — ошибка. */
@@ -150,10 +142,27 @@ export class LicenseService {
     private readonly clock: () => Date = () => new Date(),
     /** Кто делает действия «админки» — для журнала: «admin» (старая /adminpanel) или «hub» (хаб little_7o7). */
     private readonly adminActor: string = "admin",
-  ) {}
+  ) {
+    this.billing = new Billing(store, clock, adminActor);
+  }
+
+  /** Деньги: тарифы, договоры, цены ключей, начисления и поступления. */
+  readonly billing: Billing;
 
   private notifier: Notifier | null = null;
   private hub = "https://little-7o7.vercel.app";
+
+  /** Курс ЦБ для оплат сумами и итогов (rates.ts, cbuRate). */
+  useRates(source: RateSource | null): this {
+    this.billing.useRates(source);
+    return this;
+  }
+
+  /** Сколько незаблокированных ключей у клиента (для скидки за количество); клиент не указан — 0. */
+  private async liveKeysOf(client: ClientInfo): Promise<number> {
+    const key = clientKey(client);
+    return key ? (await this.store.allLicenses(ALL)).filter((l) => l.status !== "blocked" && clientKey(l.client) === key).length : 0;
+  }
 
   /** Telegram владельцу: новая заявка, новая активация, утренняя сводка. null — бот выключен. */
   useNotifier(notifier: Notifier | null, hubUrl: string): this {
@@ -346,15 +355,30 @@ export class LicenseService {
    * Форма «Купить» (/buy): имя, фамилия и телефон обязательны; почта, день рождения, Telegram и
    * комментарий — по желанию. Заявка попадает в админку (вкладка «Заявки»).
    */
-  async submitRequest(clientValue: unknown, messageValue: unknown): Promise<{ ok: true } | { ok: false; error: "bad_client" | "missing" }> {
+  /** Заявка с сайта. tariff — id тарифа с карточки «Купить» на сайте: его название и цена идут первой строкой заявки
+   *  (цену берём из базы, а не из браузера; чужой или выключенный тариф — просто без строки). */
+  async submitRequest(clientValue: unknown, messageValue: unknown, tariffValue?: unknown): Promise<{ ok: true } | { ok: false; error: "bad_client" | "missing" }> {
     const client = parseClient(clientValue);
     if (!client) return { ok: false, error: "bad_client" };
     if (!client.firstName || !client.lastName || client.phone.replace(/\D/g, "").length < 5) return { ok: false, error: "missing" };
-    const message = typeof messageValue === "string" ? messageValue.trim().slice(0, 1000) : "";
+    const text = typeof messageValue === "string" ? messageValue.trim().slice(0, 1000) : "";
+    const chosen = tariffValue === undefined || tariffValue === null || tariffValue === "" ? undefined : (await this.sitePrices()).find((t) => String(t.id) === String(tariffValue));
+    const message = chosen ? [`Тариф: ${chosen.name} — ${formatSum(chosen.price, chosen.currency)}`, text].filter(Boolean).join("\n") : text;
     const row = await this.store.insertRequest({ createdAt: this.clock(), client, message, status: "new", serial: "" });
     await this.log("site", "request", "", `#${row.id} ${client.firstName} ${client.lastName}, ${client.phone}`);
     await this.notify(requestMessage(row, this.hub));
     return { ok: true };
+  }
+
+  /** Заявки для хаба: у заявки без ключа — готовое сообщение с ценами («напомнить»). */
+  async requestsWithOffers() {
+    const [requests, tariffs] = await Promise.all([this.listRequests(), this.store.listTariffs()]);
+    return requests.map((r) => (r.serial || r.status === "rejected" ? r : { ...r, offer: requestOffer(r, tariffs) }));
+  }
+
+  /** Цены для сайта: включённые общие тарифы с галочкой «на сайте», по сроку. */
+  async sitePrices() {
+    return (await this.billing.tariffs()).filter((t) => t.active && t.site && t.contractId === null && t.kind === "key").map((t) => ({ id: t.id, name: t.name, days: t.days, price: t.price, currency: t.currency, label: t.label }));
   }
 
   listRequests(): Promise<RequestRow[]> {
@@ -377,7 +401,7 @@ export class LicenseService {
   }
 
   /** Создать ключ по заявке: данные клиента переходят в ключ, заявка — «выполнена» и привязана к ключу. */
-  async requestKey(id: unknown, days: unknown, payment: PaymentInput | null = null): Promise<{ serial: string } | null> {
+  async requestKey(id: unknown, days: unknown, payment: ChargeInput | null = null): Promise<{ serial: string } | null> {
     const request = await this.store.findRequest(Number(id));
     if (!request || request.serial) return null;
     const [key] = await this.createKeys({
@@ -421,7 +445,11 @@ export class LicenseService {
     }
 
     await this.log(this.adminActor, "create_keys", keys.length === 1 ? keys[0].serial : "", `${count} шт., срок: ${options.days || "бессрочно"}`);
-    if (options.payment) for (const k of keys) await this.recordPayment(k.serial, { ...options.payment, kind: "sale" });
+    if (options.payment) {
+      // Скидка за количество: считаются и уже выданные ключи клиента, и эти.
+      const charge = await this.billing.withVolume(options.payment, await this.liveKeysOf(client));
+      for (const k of keys) await this.billing.charge(k.serial, { ...charge, kind: "sale", lockTerms: true });
+    }
     return keys;
   }
 
@@ -485,79 +513,107 @@ export class LicenseService {
     return license;
   }
 
-  /** Продлить ключ (days; 0 — бессрочно) и, если есть, записать оплату продления. */
-  async extendKey(serialText: unknown, days: number, payment: PaymentInput | null = null): Promise<LicenseRow | null> {
+  /** Продлить ключ (days; 0 — бессрочно) и, если есть, записать оплату продления. Ключ без цены получает её. */
+  async extendKey(serialText: unknown, days: number, payment: ChargeInput | null = null): Promise<LicenseRow | null> {
     const license = await this.adminLicense(serialText, "extend", days);
-    if (license && payment) await this.recordPayment(license.serial, { ...payment, kind: "renewal" });
+    if (license && payment) {
+      const charge = await this.billing.withVolume(payment, await this.liveKeysOf(license.client));
+      await this.billing.charge(license.serial, { ...charge, kind: payment.kind ?? "renewal", lockTerms: !(await this.store.keyTerms(license.serial)) });
+    }
     return license;
   }
 
   // ---------- Деньги ----------
 
-  /** Тарифы: включённые сверху, дальше по сроку. */
-  async tariffs(): Promise<TariffRow[]> {
-    return sortTariffs(await this.store.listTariffs());
-  }
-
-  findTariff(id: number): Promise<TariffRow | null> {
-    return Number.isInteger(id) && id > 0 ? this.store.findTariff(id) : Promise.resolve(null);
-  }
-
-  /** Новый тариф (id null) или правка; null — такого тарифа нет. */
-  async saveTariff(id: number | null, t: TariffInput): Promise<TariffRow | null> {
-    let row: TariffRow;
-    if (id === null) row = await this.store.insertTariff({ ...t, createdAt: this.clock() });
-    else {
-      const old = await this.findTariff(id);
-      if (!old) return null;
-      row = { ...old, ...t };
-      await this.store.updateTariff(row);
-    }
-    await this.log(this.adminActor, "tariff", "", `${row.name}: ${formatSum(row.price, row.currency)}, ${row.days ? row.days + " дн." : "бессрочно"}${row.active ? "" : ", выключен"}`);
-    return row;
-  }
-
-  /** Записать оплату или долг (method ""). Вид не указан — «продажа» для первой оплаты ключа, дальше «продление». */
-  async addPayment(serialText: unknown, input: PaymentInput): Promise<PaymentView | null> {
+  /** Цена ключа (для «по цене ключа»); null — ключа нет или цены у него нет. */
+  async termsOf(serialText: unknown): Promise<KeyTermsRow | null> {
     const serial = normalizeSerial(serialText);
-    const license = serial ? await this.store.findLicense(serial) : null;
+    return serial ? this.store.keyTerms(serial) : null;
+  }
+
+  async findKey(serialText: unknown): Promise<LicenseRow | null> {
+    const serial = normalizeSerial(serialText);
+    return serial ? this.store.findLicense(serial) : null;
+  }
+
+  /** Записать начисление по ключу. Вид не указан — «продажа» для первого, дальше «продление». */
+  async addPayment(serialText: unknown, input: ChargeInput): Promise<PaymentView | null> {
+    const license = await this.findKey(serialText);
     if (!license) return null;
     const kind = input.kind ?? ((await this.store.paymentsFor(license.serial)).length ? "renewal" : "sale");
-    return paymentView(await this.recordPayment(license.serial, { ...input, kind }));
+    const lockTerms = kind !== "updates" && !(await this.store.keyTerms(license.serial));
+    return paymentView(await this.billing.charge(license.serial, { ...input, kind, lockTerms }));
   }
 
-  private async recordPayment(serial: string, p: PaymentInput): Promise<PaymentRow> {
-    const now = this.clock();
-    const row = await this.store.insertPayment({ serial, kind: p.kind ?? "sale", amount: p.amount, currency: p.currency, method: p.method, tariff: p.tariff, note: p.note, createdAt: now, paidAt: p.method ? now : null });
-    await this.log(this.adminActor, "payment", serial, paymentText(row));
-    return row;
-  }
-
-  /** Долг оплачен: «missing» — нет такой оплаты, «already» — уже оплачена. */
-  async markPaid(id: number, method: Exclude<PayMethod, "">): Promise<PaymentView | "missing" | "already"> {
-    const row = Number.isInteger(id) && id > 0 ? await this.store.findPayment(id) : null;
-    if (!row) return "missing";
-    if (row.paidAt) return "already";
-    row.method = method;
-    row.paidAt = this.clock();
-    await this.store.updatePayment(row);
-    await this.log(this.adminActor, "paid", row.serial, paymentText(row));
+  /**
+   * Обновления ключа «навсегда» оплачены (владелец 2026-11-08: «навсегда», но обновления платные): начисление и ещё
+   * days к дате «обновления до». Ключ без цены (выдан раньше) — его год обновлений считается с даты выдачи.
+   */
+  async payUpdates(serialText: unknown, input: ChargeInput, days: number): Promise<PaymentView | "missing" | "not_forever"> {
+    const license = await this.findKey(serialText);
+    if (!license) return "missing";
+    if (license.expiresAt) return "not_forever";
+    if (!(await this.store.keyTerms(license.serial))) {
+      await this.store.saveKeyTerms({ serial: license.serial, contractId: null, tariffId: null, name: "", days: null, price: 0, currency: input.currency, updatesUntil: new Date(license.createdAt.getTime() + INCLUDED_UPDATES_DAYS * DAY), since: this.clock() });
+    }
+    const row = await this.billing.charge(license.serial, { ...input, kind: "updates", lockTerms: false });
+    await this.billing.extendUpdates(license.serial, days);
     return paymentView(row);
   }
 
-  async deletePayment(id: number): Promise<boolean> {
-    const row = Number.isInteger(id) && id > 0 ? await this.store.findPayment(id) : null;
-    if (!row) return false;
-    await this.store.deletePayment(row.id);
-    await this.log(this.adminActor, "payment_delete", row.serial, paymentText(row));
-    return true;
+  /** clientKey клиента по его адресу в хабе; null — нет такого клиента. */
+  async clientKeyOf(id: string): Promise<string | null> {
+    for (const l of await this.store.allLicenses(ALL)) {
+      const key = clientKey(l.client);
+      if (key && clientId(key) === id) return key;
+    }
+    return null;
   }
 
-  /** Раздел «Деньги»: доход, долги, оплаты, ключи за месяц, воронка, средний чек и тарифы. */
+  /** Деньги клиента для его карточки: договоры (с ценами и файлами), цены ключей, начисления, долги и напоминание. */
+  async clientMoney(id: string) {
+    const [licenses, contracts, tariffs, terms, payments] = await Promise.all([this.store.allLicenses(ALL), this.store.listContracts(), this.store.listTariffs(), this.store.allKeyTerms(), this.store.listPayments(ALL)]);
+    const key = licenses.map((l) => clientKey(l.client)).find((k) => k && clientId(k) === id);
+    if (!key) return null;
+    const mine = licenses.filter((l) => clientKey(l.client) === key);
+    const serials = new Set(mine.map((l) => l.serial));
+    const own = payments.filter((p) => serials.has(p.serial));
+    const ids = new Set([...contracts.filter((c) => c.clientKey === key).map((c) => c.id), ...terms.filter((t) => serials.has(t.serial) && t.contractId).map((t) => t.contractId!)]);
+    const files = new Map(await Promise.all([...ids].map(async (c) => [c, await this.store.contractFiles(c)] as const)));
+    return clientMoneyView({ now: this.clock(), key, licenses: mine, contracts: contracts.filter((c) => ids.has(c.id)), tariffs, terms, payments: own, parts: await this.store.partsOf(own.map((p) => p.id)), files });
+  }
+
+  /** Продлить все ключи клиента разом по их цене (на periods периодов); ключи без цены и заблокированные — пропускаются. */
+  async extendClient(id: string, o: { periods: number; method: ChargeInput["method"]; dueOn: string; note: string }): Promise<string[] | null> {
+    const key = await this.clientKeyOf(id);
+    if (!key) return null;
+    const done: string[] = [];
+    for (const l of await this.store.allLicenses(ALL)) {
+      if (clientKey(l.client) !== key || l.status === "blocked") continue;
+      const t = await this.store.keyTerms(l.serial);
+      if (!t?.days) continue;
+      const amount = Math.round(t.price * o.periods * 100) / 100;
+      await this.extendKey(l.serial, t.days * o.periods, { amount, currency: t.currency, listPrice: amount, tariff: t.name, tariffId: t.tariffId, contractId: t.contractId, unitPrice: t.price, days: t.days, method: o.method, paidNow: null, dueOn: o.dueOn, note: o.note });
+      done.push(l.serial);
+    }
+    return done;
+  }
+
+  /** Раздел «Деньги»: доход, долги, начисления, ожидаемое, договоры, ключи за месяц, воронка, средний чек и тарифы. */
   async money() {
     const d = await this.everything();
-    const [payments, extended, tariffs] = await Promise.all([this.store.listPayments(ALL), this.store.auditSearch({ action: "extend" }, ALL), this.tariffs()]);
-    return { ...moneyReport({ now: d.now, payments, licenses: d.licenses, requests: d.requests, trials: d.trials, extended }), tariffs: tariffs.map(tariffView) };
+    const [payments, parts, extended, tariffs, terms, contracts, rate, volume] = await Promise.all([
+      this.store.listPayments(ALL),
+      this.store.listParts(ALL * 5),
+      this.store.auditSearch({ action: "extend" }, ALL),
+      this.billing.tariffs(),
+      this.store.allKeyTerms(),
+      this.store.listContracts(),
+      this.billing.rateToday(),
+      this.billing.volume(),
+    ]);
+    const report = moneyReport({ now: d.now, payments, parts, licenses: d.licenses, requests: d.requests, trials: d.trials, extended, terms, contracts, rate: rate.rate });
+    return { ...report, rateToday: rate, volume, tariffs: tariffs.map(tariffView) };
   }
 
   async revokeActivation(id: number): Promise<boolean> {
@@ -650,12 +706,19 @@ export class LicenseService {
     const serial = normalizeSerial(serialText);
     const license = serial ? await this.store.findLicense(serial) : null;
     if (!license) return null;
-    const [activations, payments, tariffs] = await Promise.all([this.store.activations(license.id), this.store.paymentsFor(license.serial), this.store.listTariffs()]);
-    const offer = license.expiresAt && license.status !== "blocked" ? renewalOffer(license, payments, tariffs, this.clock()) : null;
+    const [activations, payments, tariffs, terms, contracts] = await Promise.all([this.store.activations(license.id), this.store.paymentsFor(license.serial), this.store.listTariffs(), this.store.keyTerms(license.serial), this.store.listContracts()]);
+    const parts = await this.store.partsOf(payments.map((p) => p.id));
+    const offer = license.expiresAt && license.status !== "blocked" ? renewalOffer(license, terms, payments, tariffs, this.clock()) : null;
+    const key = clientKey(license.client);
+    const contract = contracts.find((c) => c.id === terms?.contractId) ?? contracts.filter((c) => key && c.clientKey === key && c.status === "active").at(-1) ?? null;
+    const updatesUntil = license.expiresAt ? null : terms?.updatesUntil ?? new Date(license.createdAt.getTime() + INCLUDED_UPDATES_DAYS * DAY);
     return {
       ...this.adminView(license, activations),
-      payments: payments.map(paymentView),
+      payments: payments.map((p) => paymentView(p, parts)),
       offer: offer ? { text: offer.text, tariffId: offer.tariff?.id ?? null, tariff: offer.tariff?.name ?? null } : null,
+      terms: terms ? termsView(terms) : null,
+      contract: contract ? { id: contract.id, number: contract.number, status: contract.status } : null,
+      updatesUntil: updatesUntil ? iso(updatesUntil) : null,
     };
   }
 
@@ -732,10 +795,13 @@ export class LicenseService {
    */
   async sendDailyDigest(): Promise<{ sent: boolean; empty: boolean; weekly: boolean }> {
     const d = await this.everything();
-    const payments = await this.store.listPayments(ALL);
+    const [payments, parts, terms] = await Promise.all([this.store.listPayments(ALL), this.store.listParts(ALL * 5), this.store.allKeyTerms()]);
     const clients = clientViews(d.licenses, d.activations, d.requests, d.stable, d.now);
-    const text = dailyDigest({ now: d.now, licenses: d.licenses, activations: d.activations, requests: d.requests, trials: d.trials, clients, trialDays: TRIAL_DAYS, hubUrl: this.hub, payments });
-    const week = isMonday(d.now) ? weeklyDigest({ now: d.now, payments, licenses: d.licenses, requests: d.requests, hubUrl: this.hub }) : null;
+    const blocked = await this.billing.autoBlock();
+    const licenses = blocked.length ? await this.store.allLicenses(ALL) : d.licenses;
+    const money = dailyMoneyLines({ now: d.now, payments, parts, licenses, terms, requests: d.requests, blocked, hubUrl: this.hub });
+    const text = dailyDigest({ now: d.now, licenses: d.licenses, activations: d.activations, requests: d.requests, trials: d.trials, clients, trialDays: TRIAL_DAYS, hubUrl: this.hub, money });
+    const week = isMonday(d.now) ? weeklyDigest({ now: d.now, payments, parts, licenses: d.licenses, requests: d.requests, hubUrl: this.hub }) : null;
     const weekly = week ? await this.notify(week) : false;
     if (!text) return { sent: false, empty: true, weekly };
     return { sent: await this.notify(text), empty: false, weekly };
@@ -746,19 +812,20 @@ export class LicenseService {
     const now = this.clock();
     const soon = new Date(now.getTime() + SOON_DAYS * DAY);
     const at = { now, soon, dayAgo: new Date(now.getTime() - DAY), trialSince: new Date(now.getTime() - TRIAL_DAYS * DAY) };
-    const [st, expiring, requests, updates, payments] = await Promise.all([
+    const [st, expiring, requests, updates, payments, parts] = await Promise.all([
       this.store.stats(at),
       this.store.expiringLicenses(now, soon, 20),
       this.store.listRequests(50),
       this.updates(),
       this.store.listPayments(ALL),
+      this.store.listParts(ALL * 5),
     ]);
     return {
       licenses: { total: st.licenses, active: st.licenses - st.blocked - st.expired, blocked: st.blocked, expired: st.expired, expiringSoon: st.expiring, unlimited: st.unlimited },
       computers: { active: st.computers, checkedToday: st.checkedSince },
       trials: { active: st.trialsActive, total: st.trials },
       requests: { new: st.requestsNew, working: st.requestsWorking },
-      money: moneyTotals(payments, now),
+      money: moneyTotals(payments, parts, now),
       updates: { stable: updates.stable ? { version: updates.stable.version, createdAt: iso(updates.stable.createdAt) } : null, beta: updates.beta ? { version: updates.beta.version, createdAt: iso(updates.beta.createdAt) } : null },
       attention: {
         expiring: expiring.map((l) => ({ serial: l.serial, expiresAt: iso(l.expiresAt!), daysLeft: Math.max(0, Math.ceil((l.expiresAt!.getTime() - now.getTime()) / DAY)), client: { ...l.client }, note: l.note })),
@@ -978,11 +1045,6 @@ export class LicenseService {
   private log(actor: string, action: string, serial: string, details: string) {
     return this.store.audit({ at: this.clock(), actor, action, serial, details });
   }
-}
-
-/** «1 200 000 сум, карта, Год» — для журнала. */
-function paymentText(p: PaymentRow): string {
-  return [formatSum(p.amount, p.currency), METHOD_LABEL[p.method], p.tariff, p.kind === "renewal" ? "продление" : "", p.note].filter(Boolean).join(", ").slice(0, 300);
 }
 
 function fail(error: ErrorCode): { ok: false; error: ErrorCode } {

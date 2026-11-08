@@ -30,6 +30,8 @@
       на почту, в Telegram или по SMS.</p>
 
     <form class="panel" id="form">
+      <label class="field" id="tariff-field" hidden>Тариф
+        <select id="tariff"><option value="">Ещё не выбрал — обсудим</option></select></label>
       <div class="row2">
         <label class="field">Имя *
           <input id="firstName" autocomplete="given-name" required maxlength="100"></label>
@@ -74,8 +76,22 @@
   </div>
 </footer>
 
+<script src="/prices.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+// Тарифы с сайта; пришли с карточки «Купить» (/buy?tariff=…) — он уже выбран.
+strassioPrices().then((list) => {
+  if (!list.length) return;
+  const want = new URLSearchParams(location.search).get("tariff");
+  for (const t of list) {
+    const o = document.createElement("option");
+    o.value = String(t.id);
+    o.textContent = t.name + " — " + priceText(t.price, t.currency) + " (" + periodText(t.days) + ")";
+    if (String(t.id) === want) o.selected = true;
+    $("tariff").append(o);
+  }
+  $("tariff-field").hidden = false;
+});
 const ERRORS = {
   missing: "Заполните имя, фамилию и телефон.",
   bad_client: "Проверьте почту, день рождения и Telegram (например, @username).",
@@ -93,7 +109,7 @@ $("form").onsubmit = async (e) => {
     const res = await fetch("/api/site/request", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ client, message: $("message").value, website: $("website").value }),
+      body: JSON.stringify({ client, message: $("message").value, tariff: $("tariff").value, website: $("website").value }),
     });
     const data = await res.json().catch(() => ({ ok: false }));
     if (res.status === 429) data.error = "too_many";

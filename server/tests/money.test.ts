@@ -6,12 +6,11 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import { generateKeys, Signer } from "../core/crypto.js";
 import { App } from "../core/http.js";
 import { MemoryStore } from "../core/memoryStore.js";
-import { formatSum, moneyReport, monthOf, renewalOffer, weeklyDigest } from "../core/money.js";
+import { dailyMoneyLines, formatSum, moneyReport, monthOf, renewalOffer, weeklyDigest, type MoneyInput } from "../core/money.js";
 import { Platform } from "../core/platform.js";
 import { platformKeys } from "../core/platformAuth.js";
-import { dailyDigest } from "../core/insights.js";
 import { EMPTY_CLIENT, LicenseService } from "../core/service.js";
-import type { AuditRow, LicenseRow, PaymentRow, RequestRow, TrialRow } from "../core/store.js";
+import type { AuditRow, LicenseRow, PaymentPartRow, PaymentRow, RequestRow, TariffRow, TrialRow } from "../core/store.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const KEY = "k".repeat(40);
@@ -26,8 +25,17 @@ const NOW = new Date("2026-11-09T04:00:00Z"); // понедельник, 9:00 п
 function lic(id: number, serial: string, createdAt: Date, extra: Partial<LicenseRow> = {}): LicenseRow {
   return { id, serial, plan: "full", status: "active", expiresAt: null, maxPcs: 1, transfersCount: 0, transfersSince: createdAt, note: "", createdAt, client: { ...EMPTY_CLIENT }, ...extra };
 }
-function pay(id: number, serial: string, amount: number, currency: "UZS" | "USD", at: Date, extra: Partial<PaymentRow> = {}): PaymentRow {
-  return { id, serial, kind: "sale", amount, currency, method: "cash", tariff: "", note: "", createdAt: at, paidAt: at, ...extra };
+/** Начисление; debt — ещё не оплачено. */
+function pay(id: number, serial: string, amount: number, currency: "UZS" | "USD", at: Date, extra: Partial<PaymentRow> & { debt?: boolean } = {}): PaymentRow {
+  const { debt, ...rest } = extra;
+  return { id, serial, kind: "sale", amount, currency, listPrice: 0, tariff: "", contractId: null, note: "", dueOn: "", createdAt: at, paidAt: debt ? null : at, ...rest };
+}
+/** Оплаченные начисления — одним поступлением в день оплаты. */
+const partsOf = (rows: PaymentRow[], rate = 0): PaymentPartRow[] =>
+  rows.filter((p) => p.paidAt && p.amount > 0).map((p) => ({ id: 1000 + p.id, paymentId: p.id, amount: p.amount, currency: p.currency, rate, credit: p.amount, method: "cash", note: "", paidAt: p.paidAt! }));
+const report = (x: Omit<MoneyInput, "parts" | "terms" | "contracts" | "rate"> & Partial<MoneyInput>) => moneyReport({ parts: partsOf(x.payments), terms: [], contracts: [], rate: 0, ...x });
+function tariff(id: number, name: string, days: number | null, price: number, extra: Partial<TariffRow> = {}): TariffRow {
+  return { id, name, days, price, currency: "UZS", active: true, createdAt: ago(100), contractId: null, kind: "key", baseId: null, discount: "", site: false, label: "", ...extra };
 }
 const ago = (days: number) => new Date(NOW.getTime() - days * DAY);
 const ivan = { ...EMPTY_CLIENT, firstName: "Иван", lastName: "Петров", phone: "+998 90 111 22 33" };
@@ -48,11 +56,11 @@ test("отчёт: доход по месяцам в двух валютах, д�
   const licenses = [lic(1, "STRS-A", ago(35), { client: ivan }), lic(2, "STRS-B", ago(5), { client: olga }), lic(3, "STRS-C", ago(3), { client: ivan })];
   const payments = [
     pay(1, "STRS-A", 1000000, "UZS", ago(35)), // 5 октября
-    pay(2, "STRS-B", 50, "USD", ago(5), { method: "card" }),
+    pay(2, "STRS-B", 50, "USD", ago(5)),
     pay(3, "STRS-C", 500000, "UZS", ago(3)),
-    pay(4, "STRS-C", 300000, "UZS", ago(2), { method: "", paidAt: null, kind: "renewal" }), // долг
+    pay(4, "STRS-C", 300000, "UZS", ago(2), { debt: true, kind: "renewal" }), // долг
   ];
-  const r = moneyReport({ now: NOW, payments, licenses, requests: [], trials: [], extended: [] });
+  const r = report({ now: NOW, payments, licenses, requests: [], trials: [], extended: [] });
   assert.equal(r.months.length, 12);
   assert.equal(r.months.at(-1)!.month, "2026-11");
   assert.deepEqual(r.thisMonth, { UZS: 500000, USD: 50 });
@@ -67,7 +75,7 @@ test("отчёт: доход по месяцам в двух валютах, д�
   assert.deepEqual(r.average.check, { UZS: 750000, USD: 50 });
   assert.deepEqual(r.average.perClient, { UZS: 1500000, USD: 50 });
   assert.equal(r.average.clients, 2);
-  const odd = moneyReport({ now: NOW, payments: [pay(1, "STRS-A", 100, "UZS", ago(1)), pay(2, "STRS-A", 101, "UZS", ago(1)), pay(3, "STRS-A", 102, "UZS", ago(1)), pay(4, "STRS-B", 10, "USD", ago(1)), pay(5, "STRS-B", 10.01, "USD", ago(1))], licenses, requests: [], trials: [], extended: [] });
+  const odd = report({ now: NOW, payments: [pay(1, "STRS-A", 100, "UZS", ago(1)), pay(2, "STRS-A", 101, "UZS", ago(1)), pay(3, "STRS-A", 102, "UZS", ago(1)), pay(4, "STRS-B", 10, "USD", ago(1)), pay(5, "STRS-B", 10.01, "USD", ago(1))], licenses, requests: [], trials: [], extended: [] });
   assert.deepEqual(odd.average.check, { UZS: 101, USD: 10.01 }, "сумы — до целого, доллары — до цента");
   assert.equal(r.payments[0].id, 4, "новые сверху");
   assert.equal(r.payments[0].paid, false);
@@ -81,7 +89,7 @@ test("ключи за месяц: выдано, продлено (по журн�
     lic(4, "STRS-D", ago(70), { expiresAt: ago(1), status: "blocked" }), // заблокированный не считается
   ];
   const extended: AuditRow[] = [{ id: 1, at: ago(1), actor: "hub", action: "extend", serial: "STRS-C", details: "365" }];
-  const r = moneyReport({ now: NOW, payments: [], licenses, requests: [], trials: [], extended });
+  const r = report({ now: NOW, payments: [], licenses, requests: [], trials: [], extended });
   const nov = r.keys.at(-1)!;
   assert.deepEqual(nov, { month: "2026-11", issued: 2, renewed: 1, ended: 1 });
 });
@@ -94,25 +102,21 @@ test("воронка: заявки → пробные → ключи → про�
     { id: 1, at: ago(5), actor: "hub", action: "extend", serial: "STRS-B", details: "365" },
     { id: 2, at: ago(4), actor: "hub", action: "extend", serial: "STRS-B", details: "30" },
   ];
-  const r = moneyReport({ now: NOW, payments: [], licenses, requests, trials, extended });
+  const r = report({ now: NOW, payments: [], licenses, requests, trials, extended });
   assert.deepEqual(r.funnel.recent, { requests: 4, trials: 1, bought: 1, renewed: 1 });
   assert.deepEqual(r.funnel.all, { requests: 4, trials: 2, bought: 2, renewed: 1 });
 });
 
 test("предложить продлить: цена по последнему тарифу ключа, иначе все тарифы", () => {
   const l = lic(1, "STRS-AB12-CD34-EF56", ago(300), { expiresAt: new Date(NOW.getTime() + 5 * DAY), client: ivan });
-  const tariffs = [
-    { id: 1, name: "Месяц", days: 30, price: 150000, currency: "UZS" as const, active: true, createdAt: ago(100) },
-    { id: 2, name: "Год", days: 365, price: 1200000, currency: "UZS" as const, active: true, createdAt: ago(100) },
-    { id: 3, name: "Старый", days: 365, price: 1, currency: "UZS" as const, active: false, createdAt: ago(100) },
-  ];
-  const one = renewalOffer(l, [pay(1, l.serial, 1200000, "UZS", ago(300), { tariff: "Год" })], tariffs, NOW);
+  const tariffs = [tariff(1, "Месяц", 30, 150000), tariff(2, "Год", 365, 1200000), tariff(3, "Старый", 365, 1, { active: false })];
+  const one = renewalOffer(l, null, [pay(1, l.serial, 1200000, "UZS", ago(300), { tariff: "Год" })], tariffs, NOW);
   assert.match(one.text, /^Иван, здравствуйте!/);
   assert.match(one.text, /STRS-AB12-CD34-EF56/);
   assert.match(one.text, /14\.11\.2026/);
   assert.match(one.text, /Год — 1 200 000 сум/);
   assert.doesNotMatch(one.text, /Месяц/);
-  const all = renewalOffer({ ...l, client: { ...EMPTY_CLIENT } }, [], tariffs, NOW);
+  const all = renewalOffer({ ...l, client: { ...EMPTY_CLIENT } }, null, [], tariffs, NOW);
   assert.match(all.text, /^Здравствуйте!/);
   assert.match(all.text, /Месяц — 150 000 сум/);
   assert.match(all.text, /Год — 1 200 000 сум/);
@@ -123,9 +127,9 @@ test("предложить продлить: цена по последнему 
 
 test("итог недели: ключи, доход, новые клиенты, заявки и долги рядом с прошлой неделей; пусто — бот молчит", () => {
   const licenses = [lic(1, "STRS-A", ago(20), { client: ivan }), lic(2, "STRS-B", ago(3), { client: olga }), lic(3, "STRS-C", ago(2), { client: ivan })];
-  const payments = [pay(1, "STRS-A", 1000000, "UZS", ago(10)), pay(2, "STRS-B", 50, "USD", ago(3)), pay(3, "STRS-C", 400000, "UZS", ago(2), { method: "", paidAt: null })];
+  const payments = [pay(1, "STRS-A", 1000000, "UZS", ago(10)), pay(2, "STRS-B", 50, "USD", ago(3)), pay(3, "STRS-C", 400000, "UZS", ago(2), { debt: true })];
   const requests = [{ id: 1, createdAt: ago(1), client: { ...EMPTY_CLIENT }, message: "", status: "new", serial: "" } as RequestRow];
-  const text = weeklyDigest({ now: NOW, payments, licenses, requests, hubUrl: "https://hub.test" })!;
+  const text = weeklyDigest({ now: NOW, payments, parts: partsOf(payments), licenses, requests, hubUrl: "https://hub.test" })!;
   assert.match(text, /Итог недели/);
   assert.match(text, /Ключей выдано: 2 \(прошлая неделя: 0\)/);
   assert.match(text, /Доход: \$50 \(прошлая неделя: 1 000 000 сум\)/);
@@ -133,13 +137,13 @@ test("итог недели: ключи, доход, новые клиенты, 
   assert.match(text, /Заявок: 1/);
   assert.match(text, /Долги: 400 000 сум/);
   assert.match(text, /https:\/\/hub\.test\/admin\/strassio\/money/);
-  assert.equal(weeklyDigest({ now: NOW, payments: [], licenses: [], requests: [], hubUrl: "https://hub.test" }), null);
+  assert.equal(weeklyDigest({ now: NOW, payments: [], parts: [], licenses: [], requests: [], hubUrl: "https://hub.test" }), null);
 });
 
 test("утренняя сводка: оплаты за сутки отдельной строкой", () => {
   const payments = [pay(1, "STRS-A", 500000, "UZS", ago(0.5)), pay(2, "STRS-B", 20, "USD", ago(0.2)), pay(3, "STRS-C", 1, "UZS", ago(3))];
-  const text = dailyDigest({ now: NOW, licenses: [], activations: [], requests: [], trials: [], clients: [], trialDays: 14, hubUrl: "https://hub.test", payments })!;
-  assert.match(text, /Оплаты за сутки: 2 · 500 000 сум, \$20/);
+  const lines = dailyMoneyLines({ now: NOW, payments, parts: partsOf(payments), licenses: [], terms: [] });
+  assert.match(lines.join("\n"), /Оплаты за сутки: 2 · 500 000 сум, \$20/);
 });
 
 // ---------- Через API хаба ----------
@@ -231,7 +235,7 @@ test("продлить по тарифу — продление с оплато�
 test("оплаты: записать, отметить «оплачено», удалить только с паролем; деньги в отчёте", async () => {
   const s = setup();
   const serial = (await s.call("POST", "/api/platform/licenses", { days: 30, firstName: "Иван" })).json.keys[0];
-  assert.equal((await s.call("POST", `/api/platform/licenses/${serial}/payments`, { amount: 0 })).status, 400);
+  assert.equal((await s.call("POST", `/api/platform/licenses/${serial}/payments`, { amount: "много" })).status, 400);
   assert.equal((await s.call("POST", "/api/platform/licenses/STRS-0000-0000-0000/payments", { amount: 5 })).status, 404);
   const debt = await s.call("POST", `/api/platform/licenses/${serial}/payments`, { amount: 300000, currency: "UZS", method: "debt", note: "до пятницы" });
   assert.equal(debt.status, 200);

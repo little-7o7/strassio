@@ -8,6 +8,7 @@ import { PgStore } from "../core/pgStore.js";
 import { requestTarget } from "../core/requestTarget.js";
 import { Platform } from "../core/platform.js";
 import { platformKeys } from "../core/platformAuth.js";
+import { cbuRate } from "../core/rates.js";
 import { LicenseService } from "../core/service.js";
 import { hubUrl, telegram } from "../core/telegram.js";
 
@@ -26,13 +27,13 @@ function getApp(): App {
   const signer = new Signer(privateKey);
   // Хаб little_7o7 — закрытый API /api/platform: выключен (404), пока в Vercel нет PLATFORM_API_KEY и PLATFORM_API_SECRET.
   const platform = new Platform({
-    service: new LicenseService(store, signer, undefined, "hub"),
+    service: new LicenseService(store, signer, undefined, "hub").useRates(cbuRate),
     keys: platformKeys(process.env.PLATFORM_API_KEY, process.env.PLATFORM_API_SECRET),
     adminPassword: process.env.ADMIN_PASSWORD,
     spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
   });
   // Telegram владельцу (заявка, новая активация, утренняя сводка): выключен, пока нет TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID.
-  const site = new LicenseService(store, signer).useNotifier(telegram(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID), hubUrl(process.env.HUB_URL));
+  const site = new LicenseService(store, signer).useRates(cbuRate).useNotifier(telegram(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID), hubUrl(process.env.HUB_URL));
   app = new App(site).usePlatform(platform).useCron(process.env.CRON_SECRET);
   return app;
 }
@@ -42,7 +43,7 @@ function getApp(): App {
  * сам (req.body) — тогда текст восстанавливается JSON.stringify: хаб шлёт ровно JSON.stringify своего объекта, и
  * разбор с обратной записью даёт тот же текст.
  */
-async function readBody(req: IncomingMessage & { body?: unknown }): Promise<{ body: unknown; raw: string }> {
+async function readBody(req: IncomingMessage & { body?: unknown }, limit: number): Promise<{ body: unknown; raw: string }> {
   if (req.body !== undefined) {
     if (typeof req.body === "string") return { body: tryJson(req.body), raw: req.body };
     if (Buffer.isBuffer(req.body)) {
@@ -56,7 +57,7 @@ async function readBody(req: IncomingMessage & { body?: unknown }): Promise<{ bo
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > 64 * 1024) return { body: null, raw: "" }; // запросы плагина и хаба крошечные
+    if (size > limit) return { body: null, raw: "" }; // запросы плагина крошечные, хаба — до файла договора
     chunks.push(chunk as Buffer);
   }
 
@@ -82,7 +83,8 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
 
   let response;
   try {
-    const { body, raw } = await readBody(req);
+    // Хаб присылает файл договора (до 3 МБ в base64) — ему больше места, остальным 64 КБ.
+    const { body, raw } = await readBody(req, path.startsWith("/api/platform/") ? 4.4 * 1024 * 1024 : 64 * 1024);
     response = await getApp().handle({ method: req.method ?? "GET", path, query, headers, body, rawBody: raw, ip });
   } catch (error) {
     console.error(error);

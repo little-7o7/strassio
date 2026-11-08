@@ -1,7 +1,7 @@
 // Хранилище в памяти — для тестов и локального запуска без базы.
 import { UNKNOWN } from "./hwid.js";
 import { phoneQuery } from "./insights.js";
-import type { ActivationRow, AuditFilter, AuditRow, LicenseRow, NewActivation, NewLicense, NewRequest, PaymentRow, RequestRow, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
+import type { ActivationRow, AuditFilter, AuditRow, ContractFileRow, ContractRow, KeyTermsRow, LicenseRow, NewActivation, NewLicense, NewRequest, PaymentPartRow, PaymentRow, RequestRow, StatsWindow, Store, StoreStats, TariffRow, TrialRow, UpdateRow } from "./store.js";
 
 export class MemoryStore implements Store {
   licenses: LicenseRow[] = [];
@@ -12,6 +12,12 @@ export class MemoryStore implements Store {
   requests: RequestRow[] = [];
   tariffs: TariffRow[] = [];
   payments: PaymentRow[] = [];
+  parts: PaymentPartRow[] = [];
+  contracts: ContractRow[] = [];
+  files: ContractFileRow[] = [];
+  terms: KeyTermsRow[] = [];
+  settings = new Map<string, string>();
+  rates = new Map<string, number>();
   /** nonce → до какого времени (секунды Unix) помнить. */
   nonces = new Map<string, number>();
   private nextId = 1;
@@ -207,6 +213,7 @@ export class MemoryStore implements Store {
 
   async deletePayment(id: number) {
     this.payments = this.payments.filter((p) => p.id !== id);
+    this.parts = this.parts.filter((p) => p.paymentId !== id);
   }
 
   async listPayments(limit: number) {
@@ -215,6 +222,103 @@ export class MemoryStore implements Store {
 
   async paymentsFor(serial: string) {
     return this.payments.filter((p) => p.serial === serial).reverse().map((p) => ({ ...p }));
+  }
+
+  async insertPart(row: Omit<PaymentPartRow, "id">) {
+    const created = { ...row, id: this.nextId++ };
+    this.parts.push(created);
+    return { ...created };
+  }
+
+  async findPart(id: number) {
+    return clone(this.parts.find((p) => p.id === id) ?? null);
+  }
+
+  async deletePart(id: number) {
+    this.parts = this.parts.filter((p) => p.id !== id);
+  }
+
+  async partsOf(paymentIds: number[]) {
+    return this.parts.filter((p) => paymentIds.includes(p.paymentId)).map((p) => ({ ...p }));
+  }
+
+  async listParts(limit: number) {
+    return this.parts.slice(0, limit).map((p) => ({ ...p }));
+  }
+
+  async listContracts() {
+    return this.contracts.map((c) => ({ ...c }));
+  }
+
+  async findContract(id: number) {
+    return clone(this.contracts.find((c) => c.id === id) ?? null);
+  }
+
+  async insertContract(row: Omit<ContractRow, "id">) {
+    const created = { ...row, id: this.nextId++ };
+    this.contracts.push(created);
+    return { ...created };
+  }
+
+  async updateContract(row: ContractRow) {
+    this.contracts = this.contracts.map((c) => (c.id === row.id ? { ...row } : c));
+  }
+
+  async deleteContract(id: number) {
+    this.contracts = this.contracts.filter((c) => c.id !== id);
+    this.files = this.files.filter((f) => f.contractId !== id);
+    this.tariffs = this.tariffs.map((t) => (t.contractId === id ? { ...t, active: false } : t));
+  }
+
+  async contractFiles(contractId: number) {
+    return this.files.filter((f) => f.contractId === contractId).map((f) => ({ ...f, data: "" }));
+  }
+
+  async findContractFile(id: number) {
+    return clone(this.files.find((f) => f.id === id) ?? null);
+  }
+
+  async insertContractFile(row: Omit<ContractFileRow, "id">) {
+    const created = { ...row, id: this.nextId++ };
+    this.files.push(created);
+    return { ...created, data: "" };
+  }
+
+  async deleteContractFile(id: number) {
+    this.files = this.files.filter((f) => f.id !== id);
+  }
+
+  async keyTerms(serial: string) {
+    return clone(this.terms.find((t) => t.serial === serial) ?? null);
+  }
+
+  async allKeyTerms() {
+    return this.terms.map((t) => ({ ...t }));
+  }
+
+  async saveKeyTerms(row: KeyTermsRow) {
+    this.terms = [...this.terms.filter((t) => t.serial !== row.serial), { ...row }];
+  }
+
+  async getSetting(key: string) {
+    return this.settings.get(key) ?? null;
+  }
+
+  async setSetting(key: string, value: string) {
+    this.settings.set(key, value);
+  }
+
+  async rateFor(day: string) {
+    return this.rates.get(day) ?? null;
+  }
+
+  async saveRate(day: string, rate: number) {
+    this.rates.set(day, rate);
+  }
+
+  async latestRate() {
+    const days = [...this.rates.keys()].sort();
+    return days.length ? this.rates.get(days.at(-1)!)! : null;
   }
 }
 

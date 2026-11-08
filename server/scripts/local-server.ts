@@ -31,7 +31,7 @@ const app = new App(new LicenseService(store, signer)).usePlatform(platform);
 const PUBLIC = join(process.cwd(), "public");
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml",
-  ".png": "image/png", ".txt": "text/plain; charset=utf-8",
+  ".png": "image/png", ".txt": "text/plain; charset=utf-8", ".js": "text/javascript; charset=utf-8",
 };
 
 function staticFile(pathname: string): string | null {

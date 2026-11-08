@@ -16,6 +16,7 @@
     <nav>
       <a href="#features">Возможности</a>
       <a href="#examples">Примеры</a>
+      <a href="#prices" id="prices-link" hidden>Цены</a>
       <a href="#start">Как начать</a>
       <a href="#faq">Вопросы</a>
       <a href="/buy">Купить</a>
@@ -70,6 +71,15 @@
   </div>
 </section>
 
+<!-- Цены — тарифы с галочкой «на сайте» из хаба (GET /api/prices). Нет цен — раздела не видно. -->
+<section class="block" id="prices" hidden>
+  <div class="wrap">
+    <h2>Цены</h2>
+    <p class="sub">Один ключ — один компьютер. Нажмите «Купить» — мы свяжемся с вами и пришлём ключ.</p>
+    <div class="prices" id="price-list"></div>
+  </div>
+</section>
+
 <section class="block" id="start">
   <div class="wrap">
     <h2>Как начать</h2>
@@ -99,6 +109,44 @@
   </div>
 </section>
 </main>
+<script src="/prices.js"></script>
+<script>
+strassioPrices().then((list) => {
+  if (!list.length) return;
+  const box = document.getElementById("price-list");
+  for (const t of list) {
+    const card = document.createElement("div");
+    card.className = "card price";
+    const head = document.createElement("div");
+    head.className = "head";
+    const name = document.createElement("h3");
+    name.textContent = t.name;
+    head.append(name);
+    if (t.label) {
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      tag.textContent = t.label;
+      head.append(tag);
+    }
+    card.append(head);
+    const sum = document.createElement("p");
+    sum.className = "sum";
+    sum.textContent = priceText(t.price, t.currency);
+    card.append(sum);
+    const period = document.createElement("p");
+    period.textContent = periodText(t.days) + (perMonth(t) ? " · " + perMonth(t) : "");
+    card.append(period);
+    const buy = document.createElement("a");
+    buy.className = "btn primary";
+    buy.href = "/buy?tariff=" + encodeURIComponent(t.id);
+    buy.textContent = "Купить";
+    card.append(buy);
+    box.append(card);
+  }
+  document.getElementById("prices").hidden = false;
+  document.getElementById("prices-link").hidden = false;
+});
+</script>
 
 <footer>
   <div class="wrap">

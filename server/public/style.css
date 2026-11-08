@@ -439,7 +439,7 @@ form.panel, .panel {
 }
 
 label.field { display: block; font-size: 14px; color: var(--muted); margin-bottom: 16px; letter-spacing: 0; }
-label.field input, label.field textarea {
+label.field input, label.field textarea, label.field select {
   display: block;
   width: 100%;
   margin-top: 6px;
@@ -455,8 +455,8 @@ label.field input, label.field textarea {
   border-radius: var(--r-s);
   transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast);
 }
-label.field input:hover, label.field textarea:hover { background: var(--bg); }
-label.field input:focus, label.field textarea:focus {
+label.field input:hover, label.field textarea:hover, label.field select:hover { background: var(--bg); }
+label.field input:focus, label.field textarea:focus, label.field select:focus {
   outline: none;
   background: var(--card);
   border-color: var(--accent);
@@ -471,6 +471,23 @@ label.field input.mono, label.field textarea.mono {
 }
 
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* ── Цены (главная) ────────────────────────────────────────────────────────── */
+.prices { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.card.price { display: flex; flex-direction: column; gap: 8px; }
+.card.price .head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-height: 26px; }
+.card.price h3 { margin: 0; }
+.card.price .tag {
+  font-size: 13px;
+  font-weight: 550;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 3px 10px;
+  letter-spacing: 0;
+}
+.card.price .sum { color: var(--text); font-size: 34px; font-weight: 650; letter-spacing: -.03em; line-height: 1.1; margin-top: 4px; }
+.card.price .btn { margin-top: auto; align-self: stretch; text-align: center; }
 .msg { min-height: 24px; margin: 10px 0 0; font-size: 15px; }
 
 table.pcs { width: 100%; border-collapse: collapse; font-size: 15px; }

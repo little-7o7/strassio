@@ -3,16 +3,20 @@
 //
 // Без верной подписи (core/platformAuth.ts) ответ тот же, что на несуществующий адрес: 404 not_found — снаружи не видно,
 // что API есть. Свои ошибки подписанных запросов — коды: missing (нет такого ключа, заявки…), bad_request, bad_client,
-// confirm, already_has_key, already_paid, password_required, wrong_password, password_not_set, github, too_many_requests.
-// Опасное (заблокировать, удалить ключ, отозвать компьютер, удалить пробный, опубликовать обновление, удалить оплату) — только с паролем
+// confirm, already_has_key, already_paid, too_much, bad_base, not_forever, too_many_files, password_required,
+// wrong_password, password_not_set, github, too_many_requests.
+// Опасное (заблокировать, удалить ключ, отозвать компьютер, удалить пробный, опубликовать обновление, удалить начисление,
+// поступление, договор или его файл) — только с паролем
 // админки Strassio (ADMIN_PASSWORD) в теле: хаб его не хранит, человек вводит его каждый раз (решение владельца 2026-11-08).
 import { VERSION_PATTERN, isReleaseUrl, latestRelease, type ReleaseResult } from "./githubRelease.js";
 import { FailureLimiter, type HttpRequest, type HttpResponse } from "./http.js";
 import { same, verifySignature, type PlatformKeys } from "./platformAuth.js";
+import { UPDATES_DAYS } from "./billing.js";
 import { tariffView } from "./money.js";
-import { parseClient, shortCodes, type LicenseService, type PaymentInput, type TariffInput } from "./service.js";
-import { CURRENCIES } from "./sums.js";
-import type { Currency, PayMethod, TariffRow, UpdateRow } from "./store.js";
+import { chargeFrom, contractFrom, dayFrom, daysFrom, fileFrom, given, isPaidMethod, partFrom, tariffFrom, termsFrom, type ChargeForm } from "./moneyInput.js";
+import { fileView } from "./moneyViews.js";
+import { parseClient, shortCodes, type LicenseService } from "./service.js";
+import type { KeyTermsRow, TariffKind, UpdateRow } from "./store.js";
 import { normalizeSerial } from "./crypto.js";
 
 export const PREFIX = "/api/platform/";
@@ -58,38 +62,7 @@ const REQUEST_STATUSES = ["new", "working", "rejected"] as const;
 /** Клиент из плоских полей формы хаба (firstName, phone…); неверные почта, Telegram или день рождения — null. */
 const clientFrom = (body: Body) => parseClient({ firstName: body.firstName, lastName: body.lastName, phone: body.phone, email: body.email, birthday: body.birthday, telegram: body.telegram });
 
-/** Срок в днях: пусто — null (бессрочно), иначе целое 0…36500. */
-function daysFrom(value: unknown): number | null | undefined {
-  if (value === undefined || value === null || value === "") return null;
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 0 && n <= 36500 ? n : undefined;
-}
-
-/** Сумма: до 12 цифр и 2 знаков после точки (или запятой), пробелы между тысячами можно; больше нуля. null — неверно. */
-export function parseAmount(value: unknown): number | null {
-  if (typeof value !== "number" && typeof value !== "string") return null;
-  const text = String(value).replace(/[\s\u00a0]/g, "").replace(",", ".");
-  if (!/^\d{1,12}(\.\d{1,2})?$/.test(text)) return null;
-  const n = Number(text);
-  return n > 0 ? n : null;
-}
-
-const given = (v: unknown) => v !== undefined && v !== null && v !== "";
-const isCurrency = (v: unknown): v is Currency => CURRENCIES.includes(v as Currency);
-const PAID_METHODS = ["cash", "card", "transfer"] as const;
-type PaidMethod = (typeof PAID_METHODS)[number];
-const isPaidMethod = (v: unknown): v is PaidMethod => PAID_METHODS.includes(v as PaidMethod);
-
-/** Тариф из формы хаба; null — неверно. Срок пустой или 0 — бессрочно. */
-function tariffFrom(b: Body): TariffInput | null {
-  const name = typeof b.name === "string" ? b.name.trim().slice(0, 60) : "";
-  const days = daysFrom(b.days);
-  const price = parseAmount(b.price);
-  const currency = given(b.currency) ? b.currency : "UZS";
-  if (!name || days === undefined || price === null || !isCurrency(currency)) return null;
-  const active = b.active === undefined ? true : b.active === true || b.active === "true" || b.active === "on" || b.active === "1";
-  return { name, days: days || null, price, currency, active };
-}
+export { parseAmount } from "./moneyInput.js";
 
 export class Platform {
   private readonly service: LicenseService;
@@ -146,37 +119,16 @@ export class Platform {
     return null;
   }
 
-  /**
-   * Оплата из формы хаба: тариф (id), сумма, валюта, способ (cash, card, transfer или debt — в долг), заметка.
-   * Сумма пустая — цена тарифа (в его валюте). Ни тарифа, ни суммы — оплаты нет (payment null). null — неверно.
-   */
-  private async paymentFrom(b: Body, noteField: "note" | "payNote"): Promise<{ tariff: TariffRow | null; payment: PaymentInput | null } | null> {
-    let tariff: TariffRow | null = null;
-    if (given(b.tariff)) {
-      const id = String(b.tariff);
-      tariff = /^\d{1,9}$/.test(id) ? await this.service.findTariff(Number(id)) : null;
-      if (!tariff || !tariff.active) return null;
-    }
-    if (given(b.currency) && !isCurrency(b.currency)) return null;
-    const method = given(b.method) ? b.method : "cash";
-    if (method !== "debt" && !isPaidMethod(method)) return null;
-    let amount: number | null = tariff ? tariff.price : null;
-    let currency: Currency = tariff ? tariff.currency : "UZS";
-    if (given(b.amount)) {
-      amount = parseAmount(b.amount);
-      if (amount === null) return null;
-      if (isCurrency(b.currency)) currency = b.currency;
-    }
-    const raw = b[noteField];
-    const note = typeof raw === "string" ? raw.trim().slice(0, 200) : "";
-    const payMethod: PayMethod = method === "debt" ? "" : method;
-    return { tariff, payment: amount === null ? null : { amount, currency, method: payMethod, tariff: tariff?.name ?? "", note } };
+  /** Начисление из формы хаба (moneyInput.ts); terms — цена ключа для «по цене ключа». */
+  private charge(b: Body, terms: KeyTermsRow | null, noteField: "note" | "payNote", kinds: TariffKind[] = ["key"]): Promise<ChargeForm | null> {
+    return chargeFrom(b, { billing: this.service.billing, terms, noteField, kinds });
   }
 
-  /** Срок: свой (поле days) или из тарифа; ни того, ни другого — fallback. undefined — неверно. */
-  private daysOr(b: Body, tariff: TariffRow | null, fallback: number | null | undefined): number | null | undefined {
+  /** Срок: свой (поле days) или тариф × периоды (навсегда — 0); ни того, ни другого — fallback. undefined — неверно. */
+  private daysOr(b: Body, form: ChargeForm, fallback: number | null | undefined): number | null | undefined {
     if (given(b.days)) return daysFrom(b.days);
-    return tariff ? tariff.days ?? 0 : fallback;
+    if (form.termDays !== undefined) return form.termDays === null ? 0 : form.termDays * form.periods;
+    return fallback;
   }
 
   private buildRoutes(): Route[] {
@@ -209,29 +161,44 @@ export class Platform {
       route("POST", "licenses", async (_m, b) => {
         const client = clientFrom(b);
         if (!client) return fail(400, "bad_client");
-        const pay = await this.paymentFrom(b, "payNote");
+        const pay = await this.charge(b, null, "payNote");
         if (!pay) return bad();
-        const days = this.daysOr(b, pay.tariff, null);
+        const days = this.daysOr(b, pay, null);
         const count = b.count === undefined || b.count === "" ? 1 : Number(b.count);
         if (days === undefined || !Number.isInteger(count) || count < 1 || count > 500) return bad();
-        const keys = await s.createKeys({ count, days, note: typeof b.note === "string" ? b.note : "", client, payment: pay.payment });
+        const keys = await s.createKeys({ count, days, note: typeof b.note === "string" ? b.note : "", client, payment: pay.charge });
         return ok({ keys: keys.map((k) => k.serial) });
       }),
       route("POST", `licenses/${SERIAL}/block`, licenseAction("block"), true),
       route("POST", `licenses/${SERIAL}/unblock`, licenseAction("unblock")),
       route("POST", `licenses/${SERIAL}/extend`, async ([serial], b) => {
-        const pay = await this.paymentFrom(b, "payNote");
+        const pay = await this.charge(b, await s.termsOf(serial), "payNote");
         if (!pay) return bad();
-        const days = this.daysOr(b, pay.tariff, undefined);
+        const days = this.daysOr(b, pay, undefined);
         if (days === undefined || days === null) return bad();
-        return (await s.extendKey(serial, days, pay.payment)) ? ok() : missing();
+        return (await s.extendKey(serial, days, pay.charge)) ? ok() : missing();
       }),
       route("POST", `licenses/${SERIAL}/payments`, async ([serial], b) => {
-        const pay = await this.paymentFrom(b, "note");
-        if (!pay?.payment) return bad();
+        const pay = await this.charge(b, await s.termsOf(serial), "note");
+        if (!pay?.charge) return bad();
         const kind = b.kind === "sale" || b.kind === "renewal" ? b.kind : undefined;
-        const payment = await s.addPayment(serial, { ...pay.payment, kind });
+        const payment = await s.addPayment(serial, { ...pay.charge, kind });
         return payment ? ok({ payment }) : missing();
+      }),
+      // Обновления ключа «навсегда»: тариф «Обновления на год» (или своя сумма) — ещё год обновлений.
+      route("POST", `licenses/${SERIAL}/updates`, async ([serial], b) => {
+        const pay = await this.charge(b, null, "note", ["updates"]);
+        if (!pay?.charge) return bad();
+        const days = given(b.days) ? daysFrom(b.days) : (pay.termDays ?? UPDATES_DAYS) * pay.periods;
+        if (!days) return bad();
+        const r = await s.payUpdates(serial, pay.charge, days);
+        return r === "missing" ? missing() : r === "not_forever" ? fail(409, "not_forever") : ok({ payment: r });
+      }),
+      route("POST", `licenses/${SERIAL}/terms`, async ([serial], b) => {
+        const t = await termsFrom(b, s.billing);
+        if (!t) return bad();
+        const key = await s.findKey(serial);
+        return key ? ok({ terms: await s.billing.setTerms(key.serial, t) }) : missing();
       }),
       route("POST", `licenses/${SERIAL}/transfers`, licenseAction("reset_transfers")),
       route("POST", `licenses/${SERIAL}/note`, licenseAction("note", (b) => (typeof b.note === "string" ? b.note : ""))),
@@ -258,13 +225,49 @@ export class Platform {
       route("GET", "clients", async () => ok(await s.clients())),
       route("GET", `clients/${CLIENT}`, async ([id]) => {
         const client = (await s.clients()).clients.find((c) => c.id === id);
-        return client ? ok({ client }) : missing();
+        return client ? ok({ client, money: await s.clientMoney(id) }) : missing();
       }),
+      route("POST", `clients/${CLIENT}/contracts`, async ([id], b) => {
+        const c = contractFrom(b);
+        if (!c) return bad();
+        const key = await s.clientKeyOf(id);
+        if (!key) return missing();
+        const contract = await s.billing.saveContract(null, key, c);
+        return contract === "missing" ? missing() : ok({ contract: { id: contract.id } });
+      }),
+      // Продлить все ключи клиента по их ценам на periods периодов (заплатил вперёд за 3 месяца — periods 3).
+      route("POST", `clients/${CLIENT}/extend`, async ([id], b) => {
+        const periods = given(b.periods) ? Number(b.periods) : 1;
+        const method = given(b.method) ? b.method : "cash";
+        const dueOn = dayFrom(b.dueOn);
+        if (!Number.isInteger(periods) || periods < 1 || periods > 36 || (method !== "debt" && !isPaidMethod(method)) || dueOn === undefined) return bad();
+        const keys = await s.extendClient(id, { periods, method: method === "debt" ? "" : method, dueOn, note: typeof b.note === "string" ? b.note.trim().slice(0, 200) : "" });
+        return keys ? ok({ keys }) : missing();
+      }),
+      route("POST", `contracts/${ID}`, async ([id], b) => {
+        const c = contractFrom(b);
+        if (!c) return bad();
+        const contract = await s.billing.saveContract(Number(id), "", c);
+        return contract === "missing" ? missing() : ok({ contract: { id: contract.id } });
+      }),
+      route("POST", `contracts/${ID}/close`, async ([id]) => ((await s.billing.closeContract(Number(id))) ? ok() : missing())),
+      route("POST", `contracts/${ID}/delete`, async ([id]) => ((await s.billing.deleteContract(Number(id))) ? ok() : missing()), true),
+      route("POST", `contracts/${ID}/files`, async ([id], b) => {
+        const f = fileFrom(b);
+        if (!f) return bad();
+        const r = await s.billing.addFile(Number(id), f);
+        return r === "missing" ? missing() : r === "too_many" ? fail(409, "too_many_files") : ok({ file: fileView(r) });
+      }),
+      route("GET", `contract-files/${ID}`, async ([id]) => {
+        const f = await s.billing.file(Number(id));
+        return f ? ok({ file: { ...fileView(f), data: f.data } }) : missing();
+      }),
+      route("POST", `contract-files/${ID}/delete`, async ([id]) => ((await s.billing.deleteFile(Number(id))) ? ok() : missing()), true),
       route("GET", "computers", async () => ok(await s.computers())),
       route("GET", "attention", async () => ok(await s.attention())),
 
       // ---------- Заявки ----------
-      route("GET", "requests", async () => ok({ requests: await s.listRequests() })),
+      route("GET", "requests", async () => ok({ requests: await s.requestsWithOffers() })),
       route("POST", `requests/${ID}/status`, async ([id], b) => {
         if (!REQUEST_STATUSES.includes(b.status as (typeof REQUEST_STATUSES)[number])) return bad();
         return (await s.adminRequest(Number(id), b.status)) ? ok() : missing();
@@ -273,34 +276,53 @@ export class Platform {
         const request = await s.findRequest(id);
         if (!request) return missing();
         if (request.serial) return fail(409, "already_has_key", { serial: request.serial });
-        const pay = await this.paymentFrom(b, "payNote");
+        const pay = await this.charge(b, null, "payNote");
         if (!pay) return bad();
-        const days = this.daysOr(b, pay.tariff, null);
+        const days = this.daysOr(b, pay, null);
         if (days === undefined) return bad();
-        const key = await s.requestKey(request.id, days, pay.payment);
+        const key = await s.requestKey(request.id, days, pay.charge);
         return key ? ok({ serial: key.serial }) : missing();
       }),
       route("POST", `requests/${ID}/delete`, async ([id]) => ((await s.adminRequest(Number(id), "delete")) ? ok() : missing())),
 
       // ---------- Деньги ----------
       route("GET", "money", async () => ok(await s.money())),
-      route("GET", "tariffs", async () => ok({ tariffs: (await s.tariffs()).map(tariffView) })),
+      route("GET", "rate", async () => ok({ rate: await s.billing.rateToday() })),
+      // Курс дня от хаба: { date: "ГГГГ-ММ-ДД", source: "cbu", rates: { USD: 12650.5, … } } — сумов за единицу; берём доллар.
+      route("POST", "rates", async (_m, b) => {
+        const usd = b.rates && typeof b.rates === "object" ? Number((b.rates as Record<string, unknown>).USD) : NaN;
+        const got = await s.billing.acceptRate(String(b.date ?? ""), usd);
+        return got === "ok" ? ok({ rate: await s.billing.rateToday() }) : fail(400, got);
+      }),
+      // Скидка за количество: от minKeys ключей у клиента — percent от цены (0 — выключена).
+      route("POST", "money-settings", async (_m, b) => {
+        const minKeys = given(b.volumeMin) ? Number(b.volumeMin) : 0;
+        const percent = given(b.volumePercent) ? Number(String(b.volumePercent).replace(",", ".").replace(/%$/, "")) : 0;
+        if (!Number.isInteger(minKeys) || minKeys < 0 || minKeys > 1000 || !Number.isFinite(percent) || percent < 0 || percent >= 100) return bad();
+        return ok({ volume: await s.billing.saveVolume({ minKeys, percent: Math.round(percent * 100) / 100 }) });
+      }),
+      route("GET", "tariffs", async () => ok({ tariffs: (await s.billing.tariffs()).map(tariffView) })),
       route("POST", "tariffs", async (_m, b) => {
         const t = tariffFrom(b);
-        return t ? ok({ tariff: tariffView((await s.saveTariff(null, t))!) }) : bad();
+        if (!t) return bad();
+        const saved = await s.billing.saveTariff(null, t);
+        return typeof saved === "string" ? fail(400, saved) : ok({ tariff: tariffView(saved) });
       }),
       route("POST", `tariffs/${ID}`, async ([id], b) => {
         const t = tariffFrom(b);
         if (!t) return bad();
-        const saved = await s.saveTariff(Number(id), t);
-        return saved ? ok({ tariff: tariffView(saved) }) : missing();
+        const saved = await s.billing.saveTariff(Number(id), t);
+        return saved === "missing" ? missing() : typeof saved === "string" ? fail(400, saved) : ok({ tariff: tariffView(saved) });
       }),
+      // Пришли деньги по начислению — целиком или частью, другой валютой — по курсу дня.
       route("POST", `payments/${ID}/paid`, async ([id], b) => {
-        if (!isPaidMethod(b.method)) return bad();
-        const r = await s.markPaid(Number(id), b.method);
-        return r === "missing" ? missing() : r === "already" ? fail(409, "already_paid") : ok({ payment: r });
+        const part = partFrom(b);
+        if (!part) return bad();
+        const r = await s.billing.pay(Number(id), part);
+        return r === "missing" ? missing() : r === "already" ? fail(409, "already_paid") : r === "too_much" ? fail(400, "too_much") : ok({ payment: r });
       }),
-      route("POST", `payments/${ID}/delete`, async ([id]) => ((await s.deletePayment(Number(id))) ? ok() : missing()), true),
+      route("POST", `payments/${ID}/delete`, async ([id]) => ((await s.billing.deletePayment(Number(id))) ? ok() : missing()), true),
+      route("POST", `parts/${ID}/delete`, async ([id]) => ((await s.billing.deletePart(Number(id))) ? ok() : missing()), true),
 
       // ---------- Пробные ----------
       route("GET", "trials", async () => {

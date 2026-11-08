@@ -141,6 +141,12 @@ export class App {
       return { status: 200, json: { ok: true } };
     }
 
+    // Цены для сайта (тарифы с галочкой «на сайте» из хаба). Открыто: это то же, что видно на странице.
+    if (req.method === "GET" && path === "/api/prices") {
+      if (!this.clientLimiter.allow(req.ip)) return tooMany();
+      return { status: 200, json: { ok: true, prices: await this.service.sitePrices() } };
+    }
+
     if (req.method === "GET" && path === "/api/update/latest") {
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
       const doc = await this.service.latestUpdate(req.query.get("channel") ?? "stable");
@@ -184,7 +190,7 @@ export class App {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.requestLimiter.allow(req.ip)) return tooMany();
       if (typeof body.website === "string" && body.website.trim()) return { status: 200, json: { ok: true } };
-      const result = await this.service.submitRequest(body.client, body.message);
+      const result = await this.service.submitRequest(body.client, body.message, body.tariff);
       return { status: result.ok ? 200 : 400, json: result };
     }
 
