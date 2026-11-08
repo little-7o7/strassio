@@ -367,11 +367,20 @@ namespace Strassio.Corel
             }
             finally
             {
-                doc.Unit = prevUnit;
-                app.EventsEnabled = prevEventsEnabled;
-                app.Optimization = prevOptimization;
-                app.Refresh();
+                Restore(app, doc, prevUnit, prevEventsEnabled, prevOptimization);
             }
+        }
+
+        /// <summary>
+        /// Вернуть CorelDRAW как было — каждое по отдельности: не вернулись единицы (документ уже закрыли),
+        /// а перерисовка и события всё равно включаются, иначе CorelDRAW выглядит зависшим.
+        /// </summary>
+        private static void Restore(Corel.Interop.VGCore.Application app, Document doc, cdrUnit unit, bool eventsEnabled, bool optimization)
+        {
+            try { app.EventsEnabled = eventsEnabled; } catch (Exception) { }
+            try { app.Optimization = optimization; } catch (Exception) { }
+            try { doc.Unit = unit; } catch (Exception) { }
+            try { app.Refresh(); } catch (Exception) { }
         }
 
         /// <summary>Строка списка режимов удаления.</summary>

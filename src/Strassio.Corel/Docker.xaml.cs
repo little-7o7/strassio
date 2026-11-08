@@ -54,6 +54,15 @@ namespace Strassio.Corel
             refreshing = false;
             this.app = app as CorelApplication;
 
+            // Ошибка в обработчике кнопки или таймера ушла бы в цикл сообщений CorelDRAW и могла закрыть его
+            // вместе с несохранённым рисунком. Свои ошибки ловим и показываем внизу докера.
+            Loaded += (s, e) =>
+            {
+                Dispatcher.UnhandledException -= Dispatcher_UnhandledException;
+                Dispatcher.UnhandledException += Dispatcher_UnhandledException;
+            };
+            Unloaded += (s, e) => Dispatcher.UnhandledException -= Dispatcher_UnhandledException;
+
             DataContext = context.Localizer;
             context.Localizer.PropertyChanged += Localizer_PropertyChanged;
             context.SettingsChanged += Context_SettingsChanged;
@@ -183,6 +192,25 @@ namespace Strassio.Corel
             StatusText.Text = Loc.Format(statusKey, statusArgs);
             RefreshLicenseLine();
             RefreshUpdateLine();
+        }
+
+        private void Dispatcher_UnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+        {
+            // Только свои: ошибки CorelDRAW и других аддонов на том же потоке не трогаем.
+            if (e.Exception.ToString().IndexOf("Strassio.", StringComparison.Ordinal) < 0)
+            {
+                return;
+            }
+
+            e.Handled = true;
+            try
+            {
+                SetStatus("status.error", e.Exception.Message);
+            }
+            catch (Exception)
+            {
+                // Докер уже закрыт — главное, что CorelDRAW продолжает работать.
+            }
         }
 
         private void SetStatus(string key, params object[] args)
@@ -642,10 +670,7 @@ namespace Strassio.Corel
             }
             finally
             {
-                doc.Unit = prevUnit;
-                app.EventsEnabled = prevEventsEnabled;
-                app.Optimization = prevOptimization;
-                app.Refresh();
+                Restore(app, doc, prevUnit, prevEventsEnabled, prevOptimization);
             }
         }
 

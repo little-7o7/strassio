@@ -1118,7 +1118,7 @@ namespace Strassio.Corel
             // Самопроверка: файл «проигрывается» до записи. Если что-то опасно — не пишем ничего.
             foreach (GCodeFile file in files)
             {
-                GCodeRun run = GCodeCheck.Run(file.Text, file.MillLimitMm);
+                GCodeRun run = GCodeCheck.Run(file.Text, file.MillLimitMm, manualSpindle: s.SpindleRpm <= 0);
                 if (run.Problems.Count > 0 || run.Holes.Count != file.Holes)
                 {
                     MessageBox.Show(this, loc.Format("drill.error.check", file.Name, string.Join("\n", run.Problems.Take(5))), Title, MessageBoxButton.OK, MessageBoxImage.Error);
@@ -1134,15 +1134,43 @@ namespace Strassio.Corel
                 return;
             }
 
+            // Сначала все файлы — во временные. Кончилось место на флешке на третьем — старые файлы остаются
+            // как были, а не смесь новых, обрезанного и старых (станок выполнил бы не тот набор).
+            var temps = new List<string>();
             try
             {
                 foreach (GCodeFile file in files)
                 {
-                    File.WriteAllText(Path.Combine(chosenFolder, file.Name), file.Text, Encoding.ASCII);
+                    string temp = Path.Combine(chosenFolder, file.Name + ".tmp");
+                    temps.Add(temp);
+                    File.WriteAllText(temp, file.Text, Encoding.ASCII);
+                }
+
+                for (int i = 0; i < files.Count; i++)
+                {
+                    string target = Path.Combine(chosenFolder, files[i].Name);
+                    if (File.Exists(target))
+                    {
+                        File.Delete(target);
+                    }
+
+                    File.Move(temps[i], target);
                 }
             }
             catch (Exception ex)
             {
+                foreach (string temp in temps)
+                {
+                    try
+                    {
+                        File.Delete(temp);
+                    }
+                    catch (Exception)
+                    {
+                        // Не удалился — останется .tmp, станок его не возьмёт.
+                    }
+                }
+
                 MessageBox.Show(this, loc.Format("drill.error.write", ex.Message), Title, MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
