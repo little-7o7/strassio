@@ -201,7 +201,7 @@ const FILE_TYPES: Record<string, (b: Buffer) => boolean> = {
 export function fileFrom(b: Body): { name: string; type: string; data: string; size: number } | null {
   const type = typeof b.type === "string" ? b.type : "";
   const raw = typeof b.data === "string" ? b.data.replace(/^data:[^,]*,/, "").replace(/\s+/g, "") : "";
-  if (!FILE_TYPES[type] || !raw || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw) || raw.length > Math.ceil((MAX_FILE_BYTES * 4) / 3) + 4) return null;
+  if (!Object.hasOwn(FILE_TYPES, type) || !raw || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw) || raw.length > Math.ceil((MAX_FILE_BYTES * 4) / 3) + 4) return null;
   const bytes = Buffer.from(raw, "base64");
   if (!bytes.length || bytes.length > MAX_FILE_BYTES || !FILE_TYPES[type](bytes)) return null;
   // Имя — без пути и управляющих символов: только для показа и скачивания.
