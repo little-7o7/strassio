@@ -1,6 +1,7 @@
 # Закрытый API для хаба little_7o7 (`/api/platform`)
 
-Сделан 2026-11-08: админка Strassio переезжает в хаб little_7o7 (`little-7o7.vercel.app/admin` → Strassio), владелец:
+Сделан 2026-11-08: админка Strassio переехала в хаб little_7o7 (`little-7o7.vercel.app/admin` → Strassio), старые
+`/adminpanel` и `/api/admin/*` удалены в тот же день. Владелец:
 «dobav k little_7o7 admin panel xab, i udali adminku ot strassio». Хаб говорит со Strassio так же, как с Sarpo
 Business: подписанными запросами, в базу Strassio не ходит. Код: `server/core/platformAuth.ts` (подпись),
 `server/core/platform.ts` (адреса), тесты `server/tests/platform.test.ts`.

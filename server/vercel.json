@@ -19,10 +19,6 @@
   ],
   "rewrites": [
     {
-      "source": "/adminpanel",
-      "destination": "/api?__path=adminpanel"
-    },
-    {
       "source": "/api/:path*",
       "destination": "/api?__path=api/:path*"
     }
@@ -54,7 +50,7 @@
       ]
     },
     {
-      "source": "/(adminpanel|api/.*)",
+      "source": "/api/(.*)",
       "headers": [
         {
           "key": "Cache-Control",

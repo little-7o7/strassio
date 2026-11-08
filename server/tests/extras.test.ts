@@ -44,7 +44,7 @@ function setup() {
   const hub = new LicenseService(store, signer, clock, "hub");
   const site = new LicenseService(store, signer, clock).useNotifier(notifier, "https://hub.example");
   const platform = new Platform({ service: hub, keys: platformKeys(KEY, SECRET), adminPassword: "admin-pass-123", spendNonce: (n, u, s) => store.spendNonce(n, u, s), now: () => now.getTime() });
-  const app = new App(site, "admin-pass-123").usePlatform(platform).useCron(CRON);
+  const app = new App(site).usePlatform(platform).useCron(CRON);
 
   async function call(method: string, pathAndQuery: string, body?: Record<string, unknown>) {
     const [path, q] = pathAndQuery.split("?");
@@ -317,7 +317,7 @@ test("cron: без секрета или с чужим — 404; с секрет�
   assert.match(text, /Именинник \(36\), @imen/);
   assert.match(text, /с днём рождения/);
 
-  const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey)), "x").useCron("short");
+  const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey))).useCron("short");
   const r2 = await app.handle({ method: "GET", path: "/api/cron/daily", query: new URLSearchParams(), headers: { authorization: "Bearer short" }, body: null, ip: "1" });
   assert.equal(r2.status, 404, "секрет короче 16 знаков — cron выключен");
 });

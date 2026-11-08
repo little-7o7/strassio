@@ -42,7 +42,7 @@ Strassio/
   src/Strassio.Corel/          аддон CorelDRAW: кнопка, докер WPF, работа с документом (net48, AnyCPU)
   tests/Strassio.Core.Tests/   xUnit
   tools/Strassio.Preview/      консоль: рисует результат алгоритмов в SVG (out/preview/)
-  server/                      сервер лицензий и обновлений + админка (TypeScript, Vercel)
+  server/                      сервер лицензий и обновлений + API для хаба (TypeScript, Vercel)
   installer/                   установщик Inno Setup
 ```
 
@@ -100,7 +100,8 @@ Strassio/
   в публичный `little-7o7/strassio-releases` (секрет `RELEASES_TOKEN`). Тег с дефисом (`v1.0.0-beta.1`) —
   пробный выпуск. Без git (облачная сессия не может отправить тег): запустить `build.yml` на master с
   `release: true` (Actions → «Сборка установщика» → Run workflow → «Выпустить») — тег ставится сам.
-  Затем админка → «Обновления» → «Заполнить из GitHub» → «Опубликовать» (сервер сам берёт ссылку
+  Затем хаб (little-7o7.vercel.app/admin → Strassio) → «Обновления» → «Заполнить из GitHub» → «Опубликовать»
+  (своей админки у Strassio с 2026-11-08 нет; сервер сам берёт ссылку
   и считает SHA-256 по файлу выпуска, `server/core/githubRelease.ts`; они же — в Summary запуска).
 - Список проверки для автора начинается с «скачайте Strassio-Setup-X.Y.Z.exe со страницы
   https://github.com/little-7o7/strassio-releases/releases».

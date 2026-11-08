@@ -25,7 +25,7 @@ const platform = new Platform({
   adminPassword: password,
   spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
 });
-const app = new App(new LicenseService(store, signer), password).usePlatform(platform);
+const app = new App(new LicenseService(store, signer)).usePlatform(platform);
 
 // Сайт из public/ — как на Vercel: «/» → index.html, «/license» → license.html (cleanUrls).
 const PUBLIC = join(process.cwd(), "public");
@@ -76,6 +76,6 @@ createServer(async (req, res) => {
     res.end(JSON.stringify(response.json ?? {}));
   }
 }).listen(port, "127.0.0.1", () => {
-  console.log(`Strassio: локальный сервер http://localhost:${port} (сайт: /, админка: /adminpanel, пароль: ${password})`);
+  console.log(`Strassio: локальный сервер http://localhost:${port} (сайт: /, хаб: /api/platform, пароль для опасных действий: ${password})`);
   console.log(`PUBLIC_KEY=${signer.publicKeyXY()}`);
 });

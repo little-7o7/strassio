@@ -1,4 +1,4 @@
-// Адаптер Vercel: единственная функция, все пути (/api/*, /adminpanel) приходят сюда через vercel.json.
+// Адаптер Vercel: единственная функция, все пути /api/* приходят сюда через vercel.json.
 // Вся логика — в server/core (SPEC 15: при переезде на Cloudflare меняется только этот файл).
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { neon } from "@neondatabase/serverless";
@@ -33,7 +33,7 @@ function getApp(): App {
   });
   // Telegram владельцу (заявка, новая активация, утренняя сводка): выключен, пока нет TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID.
   const site = new LicenseService(store, signer).useNotifier(telegram(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID), hubUrl(process.env.HUB_URL));
-  app = new App(site, process.env.ADMIN_PASSWORD).usePlatform(platform).useCron(process.env.CRON_SECRET);
+  app = new App(site).usePlatform(platform).useCron(process.env.CRON_SECRET);
   return app;
 }
 

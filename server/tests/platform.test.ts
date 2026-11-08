@@ -39,7 +39,7 @@ function setup(options: { keys?: boolean; password?: string } = {}) {
     now: () => now.getTime(),
   });
   // Сайт и плагин — через обычный App: так же, как на Vercel.
-  const site = new App(new LicenseService(store, signer, clock), PASSWORD).usePlatform(platform);
+  const site = new App(new LicenseService(store, signer, clock)).usePlatform(platform);
 
   function req(method: string, pathAndQuery: string, body?: Record<string, unknown>, o: Opts = {}): HttpRequest {
     const [path, q] = pathAndQuery.split("?");

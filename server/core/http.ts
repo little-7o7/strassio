@@ -1,11 +1,8 @@
 // Маршруты API (SPEC 15) без привязки к платформе: адаптер (Vercel, Cloudflare, локальный сервер)
 // переводит свой запрос в HttpRequest и отдаёт HttpResponse как есть.
 import { createHash, timingSafeEqual } from "node:crypto";
-import { ADMIN_PAGE } from "./adminPage.js";
-import { isReleaseUrl, latestRelease, type ReleaseResult, VERSION_PATTERN } from "./githubRelease.js";
 import type { Platform } from "./platform.js";
 import type { LicenseService } from "./service.js";
-import { parseClient } from "./service.js";
 
 export interface HttpRequest {
   method: string;
@@ -89,18 +86,11 @@ export class FailureLimiter {
 export class App {
   constructor(
     private readonly service: LicenseService,
-    adminPassword: string | undefined,
     private readonly clientLimiter = new RateLimiter(30, 60_000),
-    private readonly adminFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly lookupFailures = new FailureLimiter(10, 15 * 60_000),
     private readonly requestLimiter = new RateLimiter(5, 60 * 60_000),
-    private readonly fetchRelease: (channel: string) => Promise<ReleaseResult> = (channel) => latestRelease(channel),
-  ) {
-    // Пробел или перенос строки по краям легко вставить в поле Vercel вместе с паролем — не считаем их.
-    this.adminPassword = adminPassword?.trim();
-  }
+  ) {}
 
-  private readonly adminPassword: string | undefined;
   private platform: Platform | null = null;
   private cronSecret = "";
 
@@ -137,10 +127,8 @@ export class App {
       return this.platform ? this.platform.handle(req) : NO_ROUTE;
     }
 
-    // Админка — только /adminpanel. Главная «/» — статический сайт.
-    if (req.method === "GET" && path === "/adminpanel") {
-      return { status: 200, html: ADMIN_PAGE };
-    }
+    // Старой админки (/adminpanel, /api/admin/*) больше нет: всё в хабе little_7o7 (владелец 2026-11-08), здесь
+    // эти адреса отвечают «нет такого адреса». Главная «/» — статический сайт.
 
     if (path === "/api/cron/daily") {
       if (req.method !== "GET" || this.cronSecret.length < 16 || !sameText(req.headers["authorization"] ?? "", "Bearer " + this.cronSecret)) {
@@ -210,105 +198,7 @@ export class App {
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }
 
-    if (path.startsWith("/api/admin/")) {
-      return this.admin(req, path.substring("/api/admin/".length), body);
-    }
-
     return NO_ROUTE;
-  }
-
-  private async admin(req: HttpRequest, action: string, body: Record<string, unknown>): Promise<HttpResponse> {
-    if (!this.adminPassword || this.adminPassword.length < 8) {
-      return { status: 503, json: { ok: false, error: "admin_disabled" } };
-    }
-
-    // Считаются только неудачные попытки — чтобы работа в админке не упиралась в лимит. После 10 неудач
-    // адрес ждёт даже с верным паролем: иначе лимит не мешает подбору.
-    if (this.adminFailures.blocked(req.ip)) return tooMany();
-    if (!this.isAdmin(req.headers["authorization"])) {
-      this.adminFailures.fail(req.ip);
-      return { status: 401, json: { ok: false, error: "unauthorized" } };
-    }
-
-    const s = this.service;
-    switch (req.method + " " + action) {
-      case "POST login":
-        return ok({});
-      case "POST keys": {
-        if (body.client !== undefined && !parseClient(body.client)) return { status: 400, json: { ok: false, error: "bad_client" } };
-        const keys = await s.createKeys({
-          count: Number(body.count) || 1,
-          days: Number(body.days) || null,
-          note: typeof body.note === "string" ? body.note : "",
-          client: body.client,
-        });
-        return ok({ keys, serials: keys.map((k) => k.serial) });
-      }
-      case "GET licenses":
-        return ok({ licenses: await s.search(req.query.get("q") ?? "") });
-      case "GET trials":
-        return ok({ trials: await s.listTrials() });
-      case "POST trial_delete":
-        return (await s.deleteTrial(body.id)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
-      case "GET requests":
-        return ok({ requests: await s.listRequests() });
-      case "POST request":
-        return (await s.adminRequest(body.id, body.action)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
-      case "POST request_key": {
-        const key = await s.requestKey(body.id, body.days);
-        return key ? ok({ key }) : { status: 404, json: { ok: false, error: "not_found" } };
-      }
-      case "POST license": {
-        if (body.action === "delete") {
-          return (await s.deleteLicense(body.serial)) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
-        }
-        if (body.action === "client" && !parseClient(body.value)) return { status: 400, json: { ok: false, error: "bad_client" } };
-        const license = await s.adminLicense(body.serial, String(body.action ?? ""), body.value);
-        return license ? ok({ license }) : { status: 404, json: { ok: false, error: "not_found" } };
-      }
-      case "POST revoke":
-        return (await s.revokeActivation(Number(body.id))) ? ok({}) : { status: 404, json: { ok: false, error: "not_found" } };
-      case "POST offline": {
-        const license = await s.offline(body.serial, body.hwid);
-        return license ? ok({ license }) : { status: 400, json: { ok: false, error: "bad_request" } };
-      }
-      case "POST update": {
-        const version = String(body.version ?? "").trim();
-        const url = String(body.url ?? "").trim();
-        const sha256 = String(body.sha256 ?? "").trim().toLowerCase();
-        if (!VERSION_PATTERN.test(version) || !isReleaseUrl(url) || !/^[0-9a-f]{64}$/.test(sha256)) {
-          return { status: 400, json: { ok: false, error: "bad_request" } };
-        }
-
-        await s.publishUpdate({
-          channel: String(body.channel ?? "stable"),
-          version,
-          url,
-          sha256,
-          notesRu: String(body.notesRu ?? ""),
-          notesEn: String(body.notesEn ?? ""),
-          minVersion: String(body.minVersion ?? ""),
-        });
-        return ok({});
-      }
-      // «Заполнить из GitHub»: версия, ссылка, SHA-256 (сервер считает сам) и «что нового» последнего выпуска.
-      case "GET release": {
-        const result = await this.fetchRelease(req.query.get("channel") === "beta" ? "beta" : "stable");
-        return result.ok ? ok({ release: result.release }) : { status: 502, json: result };
-      }
-      case "GET audit":
-        return ok({ log: await s.auditLog() });
-      default:
-        return { status: 404, json: { ok: false, error: "not_found" } };
-    }
-  }
-
-  private isAdmin(header: string | undefined): boolean {
-    // Браузер кодирует пароль (encodeURIComponent): в заголовке нельзя русские буквы.
-    const given = decodeHeader((header ?? "").replace(/^Bearer\s+/i, "")).trim();
-    const a = createHash("sha256").update(given).digest();
-    const b = createHash("sha256").update(this.adminPassword!).digest();
-    return given.length > 0 && timingSafeEqual(a, b);
   }
 }
 
@@ -316,14 +206,6 @@ function sameText(a: string, b: string): boolean {
   const x = createHash("sha256").update(a).digest();
   const y = createHash("sha256").update(b).digest();
   return timingSafeEqual(x, y);
-}
-
-function decodeHeader(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 }
 
 function ok(data: Record<string, unknown>): HttpResponse {
