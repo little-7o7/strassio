@@ -59,7 +59,7 @@ function setup(options: { keys?: boolean; password?: string } = {}) {
   return { store, platform, site, req, call, advance: (days: number) => (now = new Date(now.getTime() + days * DAY)), now: () => now };
 }
 
-const NOT_FOUND = { ok: false, error: "not_found" };
+const NOT_FOUND = { ok: false, error: "no_route" };
 
 test("API выключен без PLATFORM_API_KEY/SECRET: 404 на всё, как несуществующий адрес", async () => {
   const s = setup({ keys: false });
@@ -269,10 +269,11 @@ test("обновления: что опубликовано, «из GitHub», о
   const rel = await s.call("GET", "/api/platform/release?channel=beta");
   assert.equal(rel.json.release.version, "0.9.2");
 
-  const update = { channel: "stable", version: "0.9.2", minVersion: "", url: "https://github.com/x/y.exe", sha256: "A".repeat(64), notesRu: "Новое", notesEn: "New" };
+  const update = { channel: "stable", version: "0.9.2", minVersion: "", url: "https://github.com/little-7o7/strassio-releases/releases/download/v0.9.2/Strassio-Setup-0.9.2.exe", sha256: "A".repeat(64), notesRu: "Новое", notesEn: "New" };
   assert.equal((await s.call("POST", "/api/platform/updates", update)).json.error, "password_required");
   assert.equal((await s.call("POST", "/api/platform/updates", { ...update, version: "v1", adminPassword: PASSWORD })).json.error, "bad_request");
   assert.equal((await s.call("POST", "/api/platform/updates", { ...update, url: "http://x", adminPassword: PASSWORD })).json.error, "bad_request");
+  assert.equal((await s.call("POST", "/api/platform/updates", { ...update, url: "https://evil.example/x.exe", adminPassword: PASSWORD })).json.error, "bad_request");
   assert.equal((await s.call("POST", "/api/platform/updates", { ...update, adminPassword: PASSWORD })).status, 200);
   const now = (await s.call("GET", "/api/platform/updates")).json.updates;
   assert.equal(now.stable.version, "0.9.2");
