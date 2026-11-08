@@ -221,7 +221,8 @@ export class Billing {
       price = derived;
       currency = base.currency;
     }
-    const fields = { ...t, price, currency, contractId: null, site: t.site && t.kind === "key" };
+    // На сайте цены только в долларах (владелец 2026-11-08): тариф в сумах туда не попадает.
+    const fields = { ...t, price, currency, contractId: null, site: t.site && t.kind === "key" && currency === "USD" };
     const row = old ? { ...old, ...fields } : await this.store.insertTariff({ ...fields, createdAt: this.clock() });
     if (old) await this.store.updateTariff(row);
     await this.recompute(row);

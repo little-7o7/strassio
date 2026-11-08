@@ -376,9 +376,9 @@ export class LicenseService {
     return requests.map((r) => (r.serial || r.status === "rejected" ? r : { ...r, offer: requestOffer(r, tariffs) }));
   }
 
-  /** Цены для сайта: включённые общие тарифы с галочкой «на сайте», по сроку. */
+  /** Цены для сайта: включённые общие тарифы ключа в долларах с галочкой «на сайте», по сроку. Курса на сайте нет. */
   async sitePrices() {
-    return (await this.billing.tariffs()).filter((t) => t.active && t.site && t.contractId === null && t.kind === "key").map((t) => ({ id: t.id, name: t.name, days: t.days, price: t.price, currency: t.currency, label: t.label }));
+    return (await this.billing.tariffs()).filter((t) => t.active && t.site && t.contractId === null && t.kind === "key" && t.currency === "USD").map((t) => ({ id: t.id, name: t.name, days: t.days, price: t.price, currency: t.currency, label: t.label }));
   }
 
   listRequests(): Promise<RequestRow[]> {

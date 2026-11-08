@@ -414,9 +414,12 @@ test("общие тарифы: год от месяца со скидкой пе
   assert.equal((await s.call("POST", `${s.P}tariffs`, { name: "Плохо", days: 365, base: "999" })).status, 400);
   assert.equal((await s.call("POST", `${s.P}tariffs`, { name: "Цепочка", days: 365, base: String(year.json.tariff.id) })).status, 400);
   await s.call("POST", `${s.P}tariffs`, { name: "Скрытый", days: 90, price: 25, currency: "USD" });
+  // Тариф в сумах на сайт не попадает даже с галочкой: там цены только в $.
+  const uzs = (await s.call("POST", `${s.P}tariffs`, { name: "В сумах", days: 30, price: 120000, currency: "UZS", site: true })).json.tariff;
+  assert.equal(uzs.site, false);
   await withContract(s);
   const prices = (await s.call("GET", "/api/prices")).json.prices;
-  assert.deepEqual(prices.map((p: any) => [p.name, p.price, p.label]), [["Месяц", 12, ""], ["Год", 115.2, "выгоднее на 20%"]], "договорные и неотмеченные не видны");
+  assert.deepEqual(prices.map((p: any) => [p.name, p.price, p.label]), [["Месяц", 12, ""], ["Год", 115.2, "выгоднее на 20%"]], "договорные, неотмеченные и в сумах не видны");
   // Контрактную строку через общий маршрут не поправить.
   const line = (await s.call("GET", `${s.P}tariffs`)).json.tariffs.find((t: any) => t.contractId);
   assert.equal((await s.call("POST", `${s.P}tariffs/${line.id}`, { name: "x", days: 30, price: 1 })).status, 404);
