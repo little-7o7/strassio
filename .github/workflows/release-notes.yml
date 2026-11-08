@@ -1,0 +1,48 @@
+# Описание выпуска в публичном little-7o7/strassio-releases — всегда из docs/releases/vX.Y.Z.md.
+#
+# Поправили текст выпуска (например, дописали английский раздел «What's new», владелец 2026-11-08: на GitHub
+# смотрят и иностранцы) и отправили в master — описание выпуска на GitHub обновляется само. Хаб берёт из него
+# оба «Что нового» кнопкой «Заполнить из GitHub». Установщик здесь не собирается и не перевыкладывается.
+#
+# - push в master с изменённым docs/releases/*.md — обновляются выпуски этих файлов;
+# - изменился сам этот файл — обновляется последний выпуск (так он применился и в первый раз);
+# - вручную: Actions → «Описание выпуска» → Run workflow → тег (v0.9.1).
+# Выпуска с таким тегом ещё нет — файл пропускается: выпуск создаст «Сборка установщика».
+
+name: Описание выпуска
+
+on:
+  push:
+    branches: [master]
+    paths: ['docs/releases/*.md', '.github/workflows/release-notes.yml', '.github/scripts/release-notes.sh']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег выпуска, например v0.9.1'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+env:
+  RELEASES_REPO: little-7o7/strassio-releases
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Обновить описание выпусков
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: bash .github/scripts/release-notes.sh
