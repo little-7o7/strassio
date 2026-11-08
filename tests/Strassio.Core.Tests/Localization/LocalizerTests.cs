@@ -120,4 +120,12 @@ public class LocalizerTests : IDisposable
 
         return d ?? throw new InvalidOperationException("Не найден корень репозитория (Strassio.sln).");
     }
+
+    [Fact]
+    public void Format_BrokenPlaceholderInLanguageFile_GivesTextNotException()
+    {
+        File.WriteAllText(Path.Combine(dir, "ru.json"), "{ \"_language\": \"Русский\", \"stones\": \"Страз: {0} из {1}\" }");
+        var loc = new Localizer(dir, "ru");
+        Assert.Equal("Страз: {0} из {1}", loc.Format("stones", 5));
+    }
 }

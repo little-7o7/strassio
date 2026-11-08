@@ -353,4 +353,16 @@ public class MethodRunnerTests : IDisposable
 
         return current ?? throw new InvalidOperationException("Не найден Strassio.sln");
     }
+
+    [Fact]
+    public void ParamsOutsideFieldLimits_FromPresetOrOldFile_DoNotHang()
+    {
+        // Зазор −2,4 мм при камне 2,4 мм — шаг почти 0: раньше расчёт шёл бесконечно и вешал CorelDRAW.
+        var p = new MethodParameters { GapMm = -2.3999 };
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        MethodResult result = MethodRunner.Run(MethodKind.F2, new[] { Square(50) }, 2.4, p);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(3), watch.Elapsed.ToString());
+        Assert.NotEmpty(result.Stones);
+        Assert.Equal(-2.3999, p.GapMm); // свои параметры вызывающего не меняются
+    }
 }

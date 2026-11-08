@@ -90,6 +90,30 @@ public class DrillCatalogTests
         Assert.True(file.Text.IndexOf("T5 M6") < file.Text.IndexOf("M3 S12000"));
     }
 
+    [Theory]
+    [InlineData(2.9, 2.2)]
+    [InlineData(4.0, 3.0)]
+    [InlineData(5.0, 3.0)]
+    [InlineData(6.0, 3.5)]
+    public void Milling_NotRoundPositions_PassSelfCheck(double hole, double drill)
+    {
+        // Центр и точки круга округляются до 0,001 по отдельности — это не ход по материалу.
+        var table = new StoneTable();
+        table.Sets.Add(new StoneSet
+        {
+            Name = "Основной",
+            Sizes = { new StoneSize { Name = "big", DiameterMm = hole, DrillMm = drill, Colors = { new StoneColor { Name = "Кристалл", Rgb = "#E8EEF5" } } } },
+        });
+        table.Drills.Add(new DrillTool { DiameterMm = drill });
+        var s = new DrillSettings();
+        DrillPlan plan = DrillPlanner.Plan(Grid(20, 20, hole + 1.2345678, hole, "big", 3.1415926, 2.7182818), s, DrillRack.Of(table, null));
+        Assert.Equal(400, plan.Milled);
+        foreach (GCodeFile file in GCodeWriter.Files(plan, s, "mill"))
+        {
+            AssertSafe(file);
+        }
+    }
+
     [Fact]
     public void Milling_SmallerDrill_CirclesUpToHole()
     {

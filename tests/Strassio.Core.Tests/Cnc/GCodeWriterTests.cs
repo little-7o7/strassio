@@ -38,7 +38,7 @@ public class GCodeWriterTests
         int total = 0;
         foreach (GCodeFile file in files)
         {
-            GCodeRun run = GCodeCheck.Run(file.Text, file.MillLimitMm);
+            GCodeRun run = GCodeCheck.Run(file.Text, file.MillLimitMm, manualSpindle: s.SpindleRpm <= 0);
             Assert.True(run.Problems.Count == 0, file.Name + ": " + string.Join("; ", run.Problems));
             Assert.True(run.Ended);
             Assert.Equal(file.Holes, run.Holes.Count);
@@ -151,6 +151,18 @@ public class GCodeWriterTests
         Assert.Contains("T1 M6", file.Text);
         Assert.True(file.Text.IndexOf("T2 M6") < file.Text.IndexOf("T3 M6"));
         Assert.Equal(new[] { 2, 3, 1 }, GCodeCheck.Run(file.Text).Holes.Select(h => h.Tool).Distinct());
+
+        // После смены сверла высота неизвестна: сразу подъём по Z, и только потом X/Y.
+        string[] lines = file.Text.Split("\r\n");
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].EndsWith("M6"))
+            {
+                Assert.StartsWith("G0 Z", lines[i + 1]);
+            }
+        }
+
+        Assert.Contains(GCodeCheck.Run("G21\nG0 Z5\nT2 M6\nG0 X1 Y1\nG0 Z5\nM30").Problems, p => p.Contains("before Z is known"));
     }
 
     [Fact]
@@ -179,6 +191,10 @@ public class GCodeWriterTests
         Assert.DoesNotContain("(", text);
         Assert.DoesNotContain("M3 ", text);
         Assert.DoesNotContain("M5", text);
+
+        // Обороты 0 — шпиндель руками: такой файл сохраняется (раньше самопроверка его не пропускала).
+        AssertDrillsEverything(plan, GCodeWriter.Files(plan, s, "manual"), s);
+        Assert.NotEmpty(GCodeCheck.Run(text).Problems);
     }
 
     [Fact]
@@ -255,6 +271,10 @@ public class GCodeWriterTests
         Assert.Contains("drill.problem.repeat", new DrillSettings { RepeatX = 0 }.Problems());
         Assert.Contains("drill.problem.marks", new DrillSettings { MarksOffsetMm = -1 }.Problems());
         Assert.Contains("drill.problem.millFeed", new DrillSettings { MillFeed = 0 }.Problems());
+        Assert.Contains("drill.problem.feed", new DrillSettings { PlungeFeed = 0.01 }.Problems());
+        // Шаг 0,001 мм — тысячи строк на отверстие: файл в гигабайты.
+        Assert.Contains("drill.problem.peck", new DrillSettings { PeckMm = 0.001 }.Problems());
+        Assert.DoesNotContain("drill.problem.peck", new DrillSettings { PeckMm = 0.5 }.Problems());
     }
 
     [Fact]
