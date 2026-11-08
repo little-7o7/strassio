@@ -3,7 +3,7 @@
 //
 // Без верной подписи (core/platformAuth.ts) ответ тот же, что на несуществующий адрес: 404 not_found — снаружи не видно,
 // что API есть. Свои ошибки подписанных запросов — коды: missing (нет такого ключа, заявки…), bad_request, bad_client,
-// confirm, already_has_key, already_paid, too_much, bad_base, not_forever, too_many_files, password_required,
+// confirm, already_has_key, already_paid, too_much, no_rate, bad_base, not_forever, too_many_files, password_required,
 // wrong_password, password_not_set, github, too_many_requests.
 // Опасное (заблокировать, удалить ключ, отозвать компьютер, удалить пробный, опубликовать обновление, удалить начисление,
 // поступление, договор или его файл) — только с паролем
@@ -319,7 +319,7 @@ export class Platform {
         const part = partFrom(b);
         if (!part) return bad();
         const r = await s.billing.pay(Number(id), part);
-        return r === "missing" ? missing() : r === "already" ? fail(409, "already_paid") : r === "too_much" ? fail(400, "too_much") : ok({ payment: r });
+        return r === "missing" ? missing() : r === "already" ? fail(409, "already_paid") : r === "too_much" ? fail(400, "too_much") : r === "no_rate" ? fail(409, "no_rate") : ok({ payment: r });
       }),
       route("POST", `payments/${ID}/delete`, async ([id]) => ((await s.billing.deletePayment(Number(id))) ? ok() : missing()), true),
       route("POST", `parts/${ID}/delete`, async ([id]) => ((await s.billing.deletePart(Number(id))) ? ok() : missing()), true),

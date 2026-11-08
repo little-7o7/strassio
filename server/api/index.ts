@@ -83,8 +83,8 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
 
   let response;
   try {
-    // Хаб присылает файл договора (до 3 МБ в base64) — ему больше места, остальным 64 КБ.
-    const { body, raw } = await readBody(req, path.startsWith("/api/platform/") ? 4.4 * 1024 * 1024 : 64 * 1024);
+    // Большое тело — только загрузке файла договора (до 3 МБ в base64); остальное, и до проверки подписи, — до 64 КБ.
+    const { body, raw } = await readBody(req, /^\/api\/platform\/contracts\/\d+\/files$/.test(path) ? 4.4 * 1024 * 1024 : 64 * 1024);
     response = await getApp().handle({ method: req.method ?? "GET", path, query, headers, body, rawBody: raw, ip });
   } catch (error) {
     console.error(error);

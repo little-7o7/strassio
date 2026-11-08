@@ -1,7 +1,7 @@
 // Деньги Strassio (хаб little_7o7, владелец 2026-11-08): тарифы, договоры клиентов, закреплённая цена ключа, начисления и
 // поступления частями. Входные данные уже проверены (moneyInput.ts); здесь — правила и журнал. Отчёты — money.ts.
 import { clientKey } from "./insights.js";
-import { dayOf, derivedPrice, leftOf, nextPayDay, paymentView, sortTariffs, type PaymentView } from "./money.js";
+import { BLOCK_AFTER_DAYS, blockDay, dayOf, derivedPrice, partsByPayment, leftOf, nextPayDay, paymentView, sortTariffs, type PaymentView } from "./money.js";
 import { saneRate, type RateSource } from "./rates.js";
 import { formatSum, METHOD_LABEL } from "./sums.js";
 import type { ContractFileRow, ContractRow, Currency, KeyTermsRow, PayMethod, PaymentKind, PaymentRow, Store, TariffKind, TariffRow } from "./store.js";
@@ -12,7 +12,7 @@ export const INCLUDED_UPDATES_DAYS = 90;
 /** «Обновления на год» — столько дней. */
 export const UPDATES_DAYS = 365;
 /** Долг не оплачен столько дней после срока — ключ блокируется сам; оплатили — разблокируется (владелец 2026-11-08). */
-export const BLOCK_AFTER_DAYS = 5;
+export { BLOCK_AFTER_DAYS };
 /** Файлов у одного договора — не больше. */
 export const MAX_CONTRACT_FILES = 10;
 /** Сколько не спрашивать источники курса после того, как все промолчали. */
@@ -41,6 +41,8 @@ export interface ChargeInput {
   tariffId: number | null;
   contractId: number | null;
   unitPrice: number;
+  /** Валюта unitPrice, если цена тарифа в другой валюте, чем заплатили (тариф в $, заплатили сумами). */
+  unitCurrency?: Currency;
   days: number | null;
   /** "" — в долг. */
   method: PayMethod;
@@ -156,6 +158,11 @@ export class Billing {
     }
     if (ask) this.ratesFailedAt = now.getTime();
     return { day, rate: (await this.store.latestRate()) ?? 0, fresh: false };
+  }
+
+  /** Курс сегодня или последний известный — только из базы, без запросов наружу; нет — 0. */
+  async storedRate(): Promise<number> {
+    return (await this.store.rateFor(dayOf(this.clock()))) ?? (await this.store.latestRate()) ?? 0;
   }
 
   /** Курс дня, присланный хабом (хаб — общий источник курса для всех проектов). Только сегодня, вчера или завтра
@@ -275,7 +282,7 @@ export class Billing {
       name: c.tariff,
       days: c.days,
       price: c.unitPrice,
-      currency: c.currency,
+      currency: c.unitCurrency ?? c.currency,
       updatesUntil: old?.updatesUntil ?? (forever ? new Date(now.getTime() + INCLUDED_UPDATES_DAYS * DAY) : null),
       since: now,
     });
@@ -285,7 +292,7 @@ export class Billing {
    * Пришли деньги по начислению (можно частью). Другой валютой — засчитывается credit в валюте начисления.
    * «missing», «already» (закрыто), «too_much» (больше остатка).
    */
-  async pay(id: number, input: PartInput): Promise<PaymentView | "missing" | "already" | "too_much"> {
+  async pay(id: number, input: PartInput): Promise<PaymentView | "missing" | "already" | "too_much" | "no_rate"> {
     const row = Number.isInteger(id) && id > 0 ? await this.store.findPayment(id) : null;
     if (!row) return "missing";
     if (row.paidAt) return "already";
@@ -293,18 +300,21 @@ export class Billing {
     const left = leftOf(row, parts);
     const currency = input.currency ?? row.currency;
     const same = currency === row.currency;
-    // Курс — ручной (договорённый) или ЦБ на сегодня; он же нужен итогам «всё в сумах / всё в $».
-    const rate = input.rate ?? (await this.rateToday()).rate;
-    // Без суммы другой валютой — весь остаток по курсу.
-    const amount = input.amount ?? (same ? left : rate ? convert(left, row.currency, rate) : null);
-    if (amount === null) return "too_much";
-    const credit = same ? amount : input.credit ?? (rate ? convert(amount, currency, rate) : left);
+    // Курс — ручной (договорённый) или ЦБ на сегодня. Своей валютой курс нужен только итогам «всё в сумах / всё в $» —
+    // берётся сохранённый, без запросов наружу. Другой валютой без курса и без «засчитать» — не угадываем.
+    const rate = input.rate ?? (same ? await this.storedRate() : (await this.rateToday()).rate);
+    if (!same && !rate && (input.credit === null || input.amount === null)) return "no_rate";
+    // Без суммы — весь остаток (другой валютой — по курсу).
+    const amount = input.amount ?? (same ? left : convert(left, row.currency, rate));
+    let credit = same || input.amount === null ? (same ? amount : left) : input.credit ?? convert(amount, currency, rate);
+    // Пересчёт округляет до цента или сума: разница меньше «копейки» платёжной валюты — это ровно остаток.
+    const tolerance = same ? 0.001 : row.currency === "UZS" ? Math.max(1, rate * 0.01) : 0.01;
+    if (Math.abs(credit - left) <= tolerance) credit = left;
     if (credit > left + 0.001 || amount <= 0) return "too_much";
     const now = this.clock();
     const part = await this.store.insertPart({ paymentId: row.id, amount, currency, rate, credit: Math.min(round2(credit), left), method: input.method, note: input.note, paidAt: now });
     if (round2(left - part.credit) <= 0) {
       row.paidAt = now;
-      row.dueOn = "";
       await this.store.updatePayment(row);
     }
     await this.log("paid", row.serial, [formatSum(amount, currency), same ? "" : `засчитано ${formatSum(part.credit, row.currency)}${rate ? ` по курсу ${formatSum(rate, "UZS")}` : ""}`, METHOD_LABEL[input.method], row.paidAt ? "оплачено полностью" : `осталось ${formatSum(round2(left - part.credit), row.currency)}`, input.note].filter(Boolean).join(", "));
@@ -313,10 +323,7 @@ export class Billing {
   }
 
   /** День блокировки за долг: срок оплаты (или день начисления) + 5 дней, ГГГГ-ММ-ДД. */
-  static blockDay(p: PaymentRow): string {
-    const start = p.dueOn || dayOf(p.createdAt);
-    return new Date(Date.parse(start + "T00:00:00Z") + BLOCK_AFTER_DAYS * DAY).toISOString().slice(0, 10);
-  }
+  static blockDay = blockDay;
 
   /**
    * Заблокировать ключи с долгом, у которых прошёл день блокировки. Ключ, который владелец разблокировал руками после
@@ -326,10 +333,10 @@ export class Billing {
     const now = this.clock();
     const today = dayOf(now);
     const payments = await this.store.listPayments(20000);
-    const parts = await this.store.partsOf(payments.filter((p) => !p.paidAt).map((p) => p.id));
+    const parts = partsByPayment(await this.store.partsOf(payments.filter((p) => !p.paidAt).map((p) => p.id)));
     const out: Array<{ serial: string; left: number; currency: Currency }> = [];
     for (const p of payments) {
-      const left = leftOf(p, parts.filter((x) => x.paymentId === p.id));
+      const left = leftOf(p, parts.get(p.id) ?? []);
       const day = Billing.blockDay(p);
       if (left <= 0 || today < day || out.some((x) => x.serial === p.serial)) continue;
       const license = await this.store.findLicense(p.serial);
@@ -348,8 +355,8 @@ export class Billing {
     const license = await this.store.findLicense(serial);
     if (!license || license.status !== "blocked") return;
     const payments = (await this.store.paymentsFor(serial)).filter((p) => !p.paidAt);
-    const parts = await this.store.partsOf(payments.map((p) => p.id));
-    if (payments.some((p) => leftOf(p, parts.filter((x) => x.paymentId === p.id)) > 0)) return;
+    const parts = partsByPayment(await this.store.partsOf(payments.map((p) => p.id)));
+    if (payments.some((p) => leftOf(p, parts.get(p.id) ?? []) > 0)) return;
     const last = (await this.store.auditSearch({ serial }, 200)).find((e) => e.action === "auto_block" || e.action === "block" || e.action === "unblock");
     if (last?.action !== "auto_block") return;
     await this.store.updateLicense({ ...license, status: "active" });

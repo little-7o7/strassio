@@ -529,8 +529,14 @@ export function weeklyDigest(d: WeeklyInput): string | null {
 
 /** Напомнить клиенту о продлении — за столько дней до конца ключа (владелец 2026-11-08). */
 export const REMIND_CLIENT_DAYS = 3;
-/** Долг блокирует ключ через столько дней после срока (billing.ts, BLOCK_AFTER_DAYS). */
-const BLOCK_DAYS = 5;
+/** Долг блокирует ключ через столько дней после срока оплаты (владелец 2026-11-08). */
+export const BLOCK_AFTER_DAYS = 5;
+
+/** Срок оплаты долга: свой или день начисления (долг без срока — сразу), ГГГГ-ММ-ДД. */
+export const dueDay = (p: Pick<PaymentRow, "dueOn" | "createdAt">) => p.dueOn || dayOf(p.createdAt);
+
+/** День блокировки за долг: срок оплаты + 5 дней, ГГГГ-ММ-ДД. */
+export const blockDay = (p: Pick<PaymentRow, "dueOn" | "createdAt">) => new Date(Date.parse(dueDay(p) + "T00:00:00Z") + BLOCK_AFTER_DAYS * DAY).toISOString().slice(0, 10);
 
 /**
  * Деньги в утренней сводке: ключи, заблокированные за долг этой ночью, поступления за сутки, долги со сроком сегодня и
@@ -549,13 +555,13 @@ export function dailyMoneyLines(d: { now: Date; payments: PaymentRow[]; parts: P
   const paid = d.parts.filter((p) => p.paidAt.getTime() > t - DAY && p.paidAt.getTime() <= t);
   if (paid.length) lines.push(`💰 Оплаты за сутки: ${paid.length} · ${sumsText(paid.reduce((s, p) => add(s, p.currency, p.amount), zero()))}`);
   const by = partsByPayment(d.parts);
-  const debts = d.payments.map((p) => ({ p, left: leftOf(p, by.get(p.id) ?? []) })).filter((x) => x.left > 0 && x.p.dueOn && x.p.dueOn <= today);
+  // Долг без срока — к оплате в день начисления: его тоже блокирует autoBlock, значит и предупредить о нём нужно.
+  const debts = d.payments.map((p) => ({ p, left: leftOf(p, by.get(p.id) ?? []) })).filter((x) => x.left > 0 && dueDay(x.p) <= today);
   if (debts.length) {
-    const due = debts.filter((x) => x.p.dueOn === today);
-    const late = debts.filter((x) => x.p.dueOn < today);
-    const blockOn = (day: string) => dayRu(new Date(Date.parse(day + "T00:00:00Z") + BLOCK_DAYS * DAY).toISOString().slice(0, 10));
+    const due = debts.filter((x) => dueDay(x.p) === today);
+    const late = debts.filter((x) => dueDay(x.p) < today);
     if (due.length) lines.push("", "💸 <b>Сегодня срок оплаты</b>", ...due.slice(0, 10).map((x) => `• ${who(x.p.serial)} — ${formatSum(x.left, x.p.currency)}`));
-    if (late.length) lines.push("", `⚠️ <b>Просрочено: ${late.length}</b> · ${sumsText(late.reduce((s, x) => add(s, x.p.currency, x.left), zero()))}`, ...late.slice(0, 10).map((x) => `• ${who(x.p.serial)} — ${formatSum(x.left, x.p.currency)}, срок ${dayRu(x.p.dueOn)}, блокировка ${blockOn(x.p.dueOn)}`));
+    if (late.length) lines.push("", `⚠️ <b>Просрочено: ${late.length}</b> · ${sumsText(late.reduce((s, x) => add(s, x.p.currency, x.left), zero()))}`, ...late.slice(0, 10).map((x) => `• ${who(x.p.serial)} — ${formatSum(x.left, x.p.currency)}, срок ${dayRu(dueDay(x.p))}, блокировка ${dayRu(blockDay(x.p))}`));
   }
   const remindDay = dayOf(new Date(t + REMIND_CLIENT_DAYS * DAY));
   const remind = d.licenses.filter((l) => l.status !== "blocked" && l.expiresAt && l.expiresAt.getTime() > t && dayOf(l.expiresAt) === remindDay);

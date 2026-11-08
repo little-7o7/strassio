@@ -2,6 +2,7 @@
 // Всё, что не прошло проверку, — null (маршрут отвечает 400). Правила и запись — billing.ts.
 import type { Billing, ChargeInput, ContractInput, PartInput, TariffInput, TermsInput } from "./billing.js";
 import { parseDiscount } from "./money.js";
+import { saneRate } from "./rates.js";
 import { CURRENCIES } from "./sums.js";
 import type { Currency, KeyTermsRow, PayMethod, TariffKind, TariffRow } from "./store.js";
 
@@ -113,7 +114,9 @@ export async function chargeFrom(b: Body, o: { billing: Billing; terms: KeyTerms
       tariff: tariff?.name ?? terms?.name ?? "",
       tariffId: tariff?.id ?? terms?.tariffId ?? null,
       contractId: tariff?.contractId ?? terms?.contractId ?? null,
-      unitPrice: same ? unit! : amount,
+      // Цена одного периода — цена тарифа или ключа в её валюте, даже если заплатили другой валютой или со скидкой.
+      unitPrice: unit ?? amount,
+      unitCurrency: unit !== null ? priceCurrency : currency,
       days: termDays !== undefined ? termDays : ownDays === undefined ? null : ownDays || null,
       method: method === "debt" ? "" : (method as PayMethod),
       paidNow,
@@ -132,6 +135,8 @@ export function partFrom(b: Body): PartInput | null {
   if (!isPaidMethod(b.method) || (given(b.currency) && !isCurrency(b.currency))) return null;
   const [amount, rate, credit] = (["amount", "rate", "credit"] as const).map((k) => (given(b[k]) ? parseAmount(b[k]) : null));
   if ((["amount", "rate", "credit"] as const).some((k, i) => given(b[k]) && [amount, rate, credit][i] === null)) return null;
+  // Свой курс с опечаткой («120» вместо «12 000») не принимаем: тот же разумный предел, что у курса ЦБ.
+  if (rate !== null && !saneRate(rate)) return null;
   return { amount, currency: isCurrency(b.currency) ? b.currency : null, rate, credit, method: b.method, note: text(b.note, 200) };
 }
 

@@ -323,6 +323,73 @@ test("оплата частями, сумами по курсу дня и сво
   assert.ok(money.debts.list[0].reminder.includes("$10"));
 });
 
+test("оплата другой валютой: без курса — отказ, а не «закрыть весь долг»; весь остаток — ровно, без копеек; свой курс с опечаткой — нет", async () => {
+  const s = setup(); // источники курса молчат, курсов в базе нет
+  const month = (await s.call("POST", `${s.P}tariffs`, { name: "Месяц", days: 30, price: 100, currency: "USD" })).json.tariff;
+  const k = (await s.call("POST", `${s.P}licenses`, { tariff: String(month.id), method: "debt", dueOn: "2026-11-20", ...ALI })).json.keys[0];
+  const id = (await s.key(k)).payments[0].id;
+  for (const body of [{ method: "cash", currency: "UZS", amount: "1000" }, { method: "cash", currency: "UZS" }, { method: "cash", currency: "UZS", credit: "5" }]) {
+    const r = await s.call("POST", `${s.P}payments/${id}/paid`, body);
+    assert.deepEqual([r.status, r.json.error], [409, "no_rate"], JSON.stringify(body));
+  }
+  assert.equal((await s.key(k)).payments[0].left, 100, "долг на месте");
+  // Своей валютой курс не нужен (и источники не спрашиваются).
+  assert.equal((await s.call("POST", `${s.P}payments/${id}/paid`, { method: "cash", amount: "10" })).status, 200);
+  // Свой курс «120» вместо «12 000» — опечатка.
+  assert.equal((await s.call("POST", `${s.P}payments/${id}/paid`, { method: "cash", currency: "UZS", amount: "12000", rate: "120" })).status, 400);
+  // Сумы засчитываются по своему курсу; сумма в «засчитать» без курса — тоже можно.
+  assert.equal((await s.call("POST", `${s.P}payments/${id}/paid`, { method: "cash", currency: "UZS", amount: "126500", credit: "10" })).status, 200);
+  assert.equal((await s.key(k)).payments[0].left, 80);
+  // Долг в сумах, весь остаток долларами по курсу: $8.34 за 100 060 сум — закрыт ровно, без «больше остатка» и хвоста.
+  await s.call("POST", `${s.P}rates`, { date: "2026-11-08", source: "cbu", rates: { USD: 12000 } });
+  for (const left of [100060, 100000]) {
+    const sum = (await s.call("POST", `${s.P}licenses/${k}/payments`, { amount: String(left), currency: "UZS", method: "debt" })).json.payment;
+    const r = await s.call("POST", `${s.P}payments/${sum.id}/paid`, { method: "card", currency: "USD" });
+    assert.equal(r.status, 200, String(left));
+    assert.deepEqual([r.json.payment.paid, r.json.payment.left, r.json.payment.parts[0].credit], [true, 0, left]);
+  }
+  // Своей суммой долларами за долг в сумах, на копейку больше остатка по курсу, — тоже весь остаток.
+  const sum = (await s.call("POST", `${s.P}licenses/${k}/payments`, { amount: "100000", currency: "UZS", method: "debt" })).json.payment;
+  const r = await s.call("POST", `${s.P}payments/${sum.id}/paid`, { method: "card", currency: "USD", amount: "8.34" });
+  assert.deepEqual([r.status, r.json.payment?.left], [200, 0]);
+});
+
+test("удалили ошибочное поступление — долг снова со своим сроком, ключ до срока не блокируется", async () => {
+  const s = setup();
+  const month = (await s.call("POST", `${s.P}tariffs`, { name: "Месяц", days: 30, price: 50, currency: "USD" })).json.tariff;
+  const k = (await s.call("POST", `${s.P}licenses`, { tariff: String(month.id), method: "debt", dueOn: "2026-11-30", ...ALI })).json.keys[0];
+  s.advance(10);
+  const id = (await s.key(k)).payments[0].id;
+  const paid = (await s.call("POST", `${s.P}payments/${id}/paid`, { method: "cash" })).json.payment;
+  assert.equal(paid.dueOn, "2026-11-30", "срок остаётся и у оплаченного");
+  assert.equal((await s.call("POST", `${s.P}parts/${paid.parts[0].id}/delete`, { adminPassword: PASSWORD })).status, 200);
+  assert.deepEqual([(await s.key(k)).payments[0].paid, (await s.key(k)).payments[0].dueOn], [false, "2026-11-30"]);
+  s.advance(1);
+  await s.cron();
+  assert.equal((await s.key(k)).status, "active", "18 ноября — до срока 30-го ещё далеко");
+});
+
+test("своя сумма другой валютой за 3 срока: за ключом — цена тарифа за один срок в его валюте", async () => {
+  const s = setup(12000);
+  const month = (await s.call("POST", `${s.P}tariffs`, { name: "Месяц", days: 30, price: 10, currency: "USD" })).json.tariff;
+  const k = (await s.call("POST", `${s.P}licenses`, { tariff: String(month.id), periods: 3, amount: "360 000", currency: "UZS", method: "cash", ...ALI })).json.keys[0];
+  const v = await s.key(k);
+  assert.deepEqual([v.terms.price, v.terms.currency, v.terms.days], [10, "USD", 30]);
+  assert.deepEqual([v.payments[0].amount, v.payments[0].currency], [360000, "UZS"]);
+  assert.equal(daysLeft(v.expiresAt), 90);
+});
+
+test("утренняя сводка: долг без срока — тоже в «просрочено» с днём блокировки (его блокирует так же)", async () => {
+  const s = setup();
+  const k = (await s.call("POST", `${s.P}licenses`, { amount: "50", currency: "USD", method: "debt", ...ALI })).json.keys[0];
+  s.advance(2);
+  await s.cron();
+  assert.ok(s.sent.some((m) => /Просрочено: 1/.test(m) && /срок 08\.11\.2026, блокировка 13\.11\.2026/.test(m)), s.sent.join("\n---\n"));
+  s.advance(3);
+  await s.cron();
+  assert.equal((await s.key(k)).status, "blocked");
+});
+
 test("бесплатно, своя скидка, заплатил вперёд за 3 месяца; продлить все ключи клиента разом", async () => {
   const s = setup();
   const c = await withContract(s);

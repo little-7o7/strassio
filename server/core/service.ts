@@ -514,10 +514,11 @@ export class LicenseService {
   }
 
   /** Продлить ключ (days; 0 — бессрочно) и, если есть, записать оплату продления. Ключ без цены получает её. */
-  async extendKey(serialText: unknown, days: number, payment: ChargeInput | null = null): Promise<LicenseRow | null> {
+  /** live — сколько рабочих ключей у клиента, если уже посчитано (продление всех ключей клиента считает один раз). */
+  async extendKey(serialText: unknown, days: number, payment: ChargeInput | null = null, live?: number): Promise<LicenseRow | null> {
     const license = await this.adminLicense(serialText, "extend", days);
     if (license && payment) {
-      const charge = await this.billing.withVolume(payment, await this.liveKeysOf(license.client));
+      const charge = await this.billing.withVolume(payment, live ?? (await this.liveKeysOf(license.client)));
       await this.billing.charge(license.serial, { ...charge, kind: payment.kind ?? "renewal", lockTerms: !(await this.store.keyTerms(license.serial)) });
     }
     return license;
@@ -588,12 +589,14 @@ export class LicenseService {
     const key = await this.clientKeyOf(id);
     if (!key) return null;
     const done: string[] = [];
-    for (const l of await this.store.allLicenses(ALL)) {
-      if (clientKey(l.client) !== key || l.status === "blocked") continue;
-      const t = await this.store.keyTerms(l.serial);
+    // Ключи клиента и их цены — один раз, а не на каждый ключ (у клиента их может быть десятки).
+    const mine = (await this.store.allLicenses(ALL)).filter((l) => clientKey(l.client) === key && l.status !== "blocked");
+    const terms = new Map((await this.store.allKeyTerms()).map((t) => [t.serial, t]));
+    for (const l of mine) {
+      const t = terms.get(l.serial);
       if (!t?.days) continue;
       const amount = Math.round(t.price * o.periods * 100) / 100;
-      await this.extendKey(l.serial, t.days * o.periods, { amount, currency: t.currency, listPrice: amount, tariff: t.name, tariffId: t.tariffId, contractId: t.contractId, unitPrice: t.price, days: t.days, method: o.method, paidNow: null, dueOn: o.dueOn, note: o.note });
+      await this.extendKey(l.serial, t.days * o.periods, { amount, currency: t.currency, listPrice: amount, tariff: t.name, tariffId: t.tariffId, contractId: t.contractId, unitPrice: t.price, days: t.days, method: o.method, paidNow: null, dueOn: o.dueOn, note: o.note }, mine.length);
       done.push(l.serial);
     }
     return done;
