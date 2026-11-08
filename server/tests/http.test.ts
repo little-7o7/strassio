@@ -116,3 +116,21 @@ test("сайт: подбор почты к чужому ключу упирае�
   const owner = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "owner@example.com" }, undefined, "5.5.5.5"));
   assert.equal(owner.status, 200);
 });
+
+test("сайт: галочка «нет интернета» доходит до сервера; «Освободить» из плагина на таком ПК — отказ", async () => {
+  const { app, service } = makeApp();
+  const [{ serial }] = await service.createKeys({ count: 1, client: { email: "owner@example.com" } });
+  const hwid = "a100000000000000.b100000000000000.c100000000000000.d100000000000000";
+  const r = await app.handle(req("POST", "/api/site/activate", { serial, hwid, email: "owner@example.com", offline: true }));
+  assert.equal(r.status, 200);
+  const json = r.json as { offline: boolean; code: string; file: { payload: string } };
+  assert.equal(json.offline, true);
+  assert.equal(JSON.parse(json.file.payload).offline, true);
+  assert.match(json.code, /^SA1\./);
+
+  const release = await app.handle(req("POST", "/api/deactivate", { serial, hwid }));
+  assert.equal(release.status, 403);
+  assert.equal((release.json as { error: string }).error, "offline_seat");
+  const offline = await app.handle(req("POST", "/api/mylicense/offline", { serial, hwid, email: "owner@example.com" }));
+  assert.match((offline.json as { code: string }).code, /^SA1\./);
+});

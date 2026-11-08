@@ -472,6 +472,11 @@ label.field input.mono, label.field textarea.mono {
 
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
+/* Галочка с пояснением под ней (страница «Активация»: «нет интернета»). */
+label.check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 16px; font-size: 16px; color: var(--text); cursor: pointer; }
+label.check input { flex: none; width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); }
+label.check small { display: block; margin-top: 2px; font-size: 14px; color: var(--faint); }
+
 /* ── Цены (главная) ────────────────────────────────────────────────────────── */
 .prices { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
 .card.price { display: flex; flex-direction: column; gap: 8px; }

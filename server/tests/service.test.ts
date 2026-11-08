@@ -167,7 +167,8 @@ test("офлайн-активация и журнал", async () => {
   assert.ok(doc && verifyDocument(doc, keys.publicKey));
   // Клиент без интернета не может сверяться каждый день — офлайн-лицензия помечена.
   assert.equal(JSON.parse(doc.payload).offline, true);
-  assert.equal(payload(await service.check({ serial, hwid: PC1 })).offline, undefined);
+  // Место осталось «без интернета»: если связь появится, сверка вернёт такую же лицензию, а не обычную на 14 дней.
+  assert.equal(payload(await service.check({ serial, hwid: PC1 })).offline, true);
   const log = await service.auditLog();
   assert.deepEqual(log.map((r) => r.action).slice(0, 2), ["offline", "create_keys"]);
   assert.equal((await service.search("аня")).length, 1);
@@ -260,7 +261,7 @@ test("«Моя лицензия»: файл лицензии для компью
   }
 
   assert.ok((await service.siteOffline(serial, PC1_NEW_DISK, EMAIL)).ok, "тот же компьютер — можно ещё раз");
-  assert.deepEqual(await service.siteOffline(serial, PC2, EMAIL), { ok: false, error: "occupied" });
+  assert.deepEqual(await service.siteOffline(serial, PC2, EMAIL), { ok: false, error: "offline_seat" }, "место занято компьютером без интернета");
   assert.deepEqual(await service.siteOffline(serial, "zz", EMAIL), { ok: false, error: "bad_request" });
 });
 
@@ -453,4 +454,148 @@ test("файл без интернета: место не освобождает
   const moved = await service.transfer({ serial, hwid: PC2 });
   assert.equal(moved.ok, false);
   assert.equal((await store.activations(license!.id)).filter((a) => a.status === "active").length, 1);
+});
+
+// ---------- Компьютер без интернета (SPEC 13.3b) ----------
+
+/** Ключ с почтой клиента — сайт без неё ничего не выдаёт. */
+async function keyWithEmail(service: LicenseService, days?: number) {
+  const [{ serial }] = await service.createKeys({ days, client: { firstName: "", lastName: "", phone: "", email: EMAIL, birthday: "", telegram: "" } });
+  return serial;
+}
+
+function codePayload(code: string) {
+  const [prefix, body] = code.split(".");
+  assert.equal(prefix, "SA1");
+  return JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
+}
+
+test("«Активация» с галочкой «нет интернета»: код без сверки, бессрочный ключ — без срока", async () => {
+  const { service, store } = setup();
+  const serial = await keyWithEmail(service);
+  const r = await service.siteActivate(serial, PC1, false, EMAIL, true);
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  assert.equal(r.offline, true);
+  const p = codePayload(r.code);
+  assert.equal(p.offline, true);
+  assert.equal(p.expiresAt, undefined, "куплен навсегда — работает всегда");
+  assert.ok(verifyDocument(r.file, keys.publicKey), "тот же код — файлом для флешки");
+  assert.equal(r.file.payload, Buffer.from(r.code.split(".")[1], "base64url").toString("utf8"));
+
+  const [seat] = await store.activations((await store.findLicense(serial))!.id);
+  assert.equal(seat.offline, true);
+  const audit = (await service.auditLog()).map((e) => e.action);
+  assert.ok(audit.includes("activate_offline"));
+});
+
+test("годовой ключ без интернета: код до конца срока; продлили — новый срок при первой же связи или новым кодом", async () => {
+  const { service, advance } = setup();
+  const serial = await keyWithEmail(service, 365);
+  const r = await service.siteActivate(serial, PC1, false, EMAIL, true);
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const first = codePayload(r.code);
+  assert.equal(first.offline, true);
+  assert.equal(new Date(first.expiresAt).getTime(), new Date("2026-09-22T10:00:00Z").getTime() + 365 * DAY);
+
+  advance(300);
+  await service.adminLicense(serial, "extend", 365);
+  // Компьютер на минуту вышел в интернет: плагин тихо сверился — пришёл новый срок, лицензия по-прежнему без сверки.
+  const renewed = payload(await service.check({ serial, hwid: PC1, offline: true }));
+  assert.equal(renewed.offline, true);
+  assert.equal(new Date(renewed.expiresAt).getTime(), new Date(first.expiresAt).getTime() + 365 * DAY);
+  // Интернета нет совсем: тот же компьютер берёт новый код на сайте — это не перенос.
+  const again = await service.siteActivate(serial, PC1_NEW_DISK, false, EMAIL, true);
+  assert.ok(again.ok);
+  if (again.ok) assert.equal(codePayload(again.code).expiresAt, renewed.expiresAt);
+  const view = await service.siteLookup(serial, EMAIL);
+  assert.ok(view.ok);
+  if (view.ok) assert.equal(view.license.transfersLeft, 1, "перенос не потрачен");
+});
+
+test("дыра закрыта: обычная активация, потом файл без интернета на тот же ПК — место уже не освободить и не перенести", async () => {
+  const { service, store, advance } = setup();
+  const serial = await keyWithEmail(service);
+  const online = await service.siteActivate(serial, PC1, false, EMAIL);
+  assert.ok(online.ok);
+  if (online.ok) assert.equal(codePayload(online.code).offline, undefined, "без галочки — обычный код");
+
+  assert.ok((await service.siteOffline(serial, PC1, EMAIL)).ok);
+  const licenseId = (await store.findLicense(serial))!.id;
+  const [seat] = await store.activations(licenseId);
+  assert.equal(seat.offline, true, "файл без сверки — место стало «без интернета»");
+
+  assert.deepEqual(await service.siteRelease(serial, seat.id, EMAIL), { ok: false, error: "offline_seat" });
+  assert.deepEqual(await service.deactivate({ serial, hwid: PC1 }), { ok: false, error: "offline_seat" }, "и из плагина тоже");
+  advance(8);
+  const moved = await service.siteActivate(serial, PC2, true, EMAIL);
+  assert.deepEqual(moved, { ok: false, error: "offline_seat" }, "сайт честно говорит, что перенос — только через автора");
+  assert.deepEqual(await service.siteActivate(serial, PC2, false, EMAIL), { ok: false, error: "offline_seat" });
+  assert.equal((await store.activations(licenseId)).filter((a) => a.status === "active").length, 1);
+
+  // Пришла сверка с этого компьютера (плагин обновился, лицензия — обычная) — всё равно лицензия без сверки.
+  const back = payload(await service.check({ serial, hwid: PC1 }));
+  assert.equal(back.offline, true);
+  const v = await service.siteLookup(serial, EMAIL);
+  assert.ok(v.ok);
+  if (v.ok) assert.deepEqual(v.license.computers.map((c) => [c.active, c.offline]), [[true, true]]);
+});
+
+test("обычный код, потом галочка «нет интернета» для того же ПК — место становится «без интернета»", async () => {
+  const { service, store } = setup();
+  const serial = await keyWithEmail(service);
+  assert.ok((await service.siteActivate(serial, PC1, false, EMAIL)).ok);
+  const r = await service.siteActivate(serial, PC1_NEW_DISK, false, EMAIL, true);
+  assert.ok(r.ok);
+  if (r.ok) assert.equal(codePayload(r.code).offline, true);
+  const seats = await store.activations((await store.findLicense(serial))!.id);
+  assert.deepEqual(seats.map((a) => [a.status, a.offline]), [["active", true]], "тот же компьютер — то же место");
+});
+
+test("плагин с файлом без интернета сверяется (связь появилась) — место помечается, даже если файл выдан раньше метки", async () => {
+  const { service, store } = setup();
+  const serial = await keyWithEmail(service);
+  payload(await service.activate({ serial, hwid: PC1 }));
+  const plain = payload(await service.check({ serial, hwid: PC1 }));
+  assert.equal(plain.offline, undefined);
+
+  const marked = payload(await service.check({ serial, hwid: PC1, offline: true }));
+  assert.equal(marked.offline, true);
+  const [seat] = await store.activations((await store.findLicense(serial))!.id);
+  assert.equal(seat.offline, true);
+  assert.equal(payload(await service.check({ serial, hwid: PC1 })).offline, true, "метка не снимается");
+  assert.deepEqual(await service.check({ serial, hwid: PC2, offline: true }), { ok: false, error: "not_activated" }, "чужой компьютер метку не ставит");
+});
+
+test("перенос на компьютер без интернета: старый (с интернетом) отключается, новый — без сверки", async () => {
+  const { service, store } = setup();
+  const serial = await keyWithEmail(service);
+  assert.ok((await service.siteActivate(serial, PC1, false, EMAIL)).ok);
+  const moved = await service.siteActivate(serial, PC2, true, EMAIL, true);
+  assert.ok(moved.ok);
+  if (moved.ok) assert.equal(codePayload(moved.code).offline, true);
+  assert.deepEqual(await service.check({ serial, hwid: PC1 }), { ok: false, error: "revoked" });
+  const seats = await store.activations((await store.findLicense(serial))!.id);
+  assert.deepEqual(seats.map((a) => [a.status, a.offline]), [["revoked", false], ["active", true]]);
+});
+
+test("автор (хаб) освобождает компьютер без интернета; этот компьютер при связи теряет лицензию", async () => {
+  const { service, store } = setup();
+  const serial = await keyWithEmail(service);
+  assert.ok((await service.siteOffline(serial, PC1, EMAIL)).ok);
+  const [seat] = await store.activations((await store.findLicense(serial))!.id);
+  assert.ok(await service.revokeActivation(seat.id));
+  assert.deepEqual(await service.check({ serial, hwid: PC1, offline: true }), { ok: false, error: "revoked" });
+  assert.ok((await service.siteActivate(serial, PC2, false, EMAIL)).ok, "место свободно");
+});
+
+test("хаб и «Моя лицензия» видят, какой компьютер без интернета", async () => {
+  const { service } = setup();
+  const serial = await keyWithEmail(service);
+  const file = await service.siteOffline(serial, PC1, EMAIL);
+  assert.ok(file.ok);
+  if (file.ok) assert.equal(codePayload(file.code).offline, true, "«Моя лицензия» даёт и код, не только файл");
+  const view = await service.licenseView(serial);
+  assert.deepEqual(view!.computers.map((c) => c.offline), [true]);
 });

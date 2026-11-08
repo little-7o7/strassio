@@ -213,6 +213,7 @@ test("отозвать компьютер и офлайн-файл", async () =>
   assert.equal(off.status, 200);
   assert.ok(verifyDocument(off.json.file, keys.publicKey), "файл подписан ключом лицензий");
   assert.equal(JSON.parse(off.json.file.payload).offline, true);
+  assert.match(off.json.code, /^SA1\./, "хаб получает и код — его можно отправить клиенту сообщением");
   assert.equal((await s.call("POST", `/api/platform/licenses/${serial}/offline`, { hwid: "плохо" })).json.error, "bad_request");
 
   const id = (await s.call("GET", `/api/platform/licenses/${serial}`)).json.license.computers[0].id;

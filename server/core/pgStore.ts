@@ -47,6 +47,9 @@ const SCHEMA = [
      plugin_version TEXT NOT NULL DEFAULT '',
      corel_version TEXT NOT NULL DEFAULT '')`,
   `CREATE INDEX IF NOT EXISTS activations_license ON activations(license_id)`,
+  `ALTER TABLE activations ADD COLUMN IF NOT EXISTS offline BOOLEAN NOT NULL DEFAULT FALSE`,
+  // До колонки компьютер без интернета узнавали по версии плагина «offline»/«site-offline».
+  `UPDATE activations SET offline = TRUE WHERE NOT offline AND plugin_version IN ('offline', 'site-offline')`,
   `CREATE TABLE IF NOT EXISTS trials (
      id SERIAL PRIMARY KEY,
      hwid TEXT NOT NULL,
@@ -259,17 +262,17 @@ export class PgStore implements Store {
 
   async insertActivation(r: NewActivation) {
     const rows = await this.q(
-      `INSERT INTO activations (license_id, hwid, status, first_at, last_check_at, plugin_version, corel_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-      [r.licenseId, r.hwid, r.status, r.firstAt, r.lastCheckAt, r.pluginVersion, r.corelVersion],
+      `INSERT INTO activations (license_id, hwid, status, first_at, last_check_at, plugin_version, corel_version, offline)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [r.licenseId, r.hwid, r.status, r.firstAt, r.lastCheckAt, r.pluginVersion, r.corelVersion, r.offline],
     );
     return activation(rows[0]);
   }
 
   async updateActivation(r: ActivationRow) {
     await this.q(
-      "UPDATE activations SET hwid=$2, status=$3, last_check_at=$4, plugin_version=$5, corel_version=$6 WHERE id=$1",
-      [r.id, r.hwid, r.status, r.lastCheckAt, r.pluginVersion, r.corelVersion],
+      "UPDATE activations SET hwid=$2, status=$3, last_check_at=$4, plugin_version=$5, corel_version=$6, offline=$7 WHERE id=$1",
+      [r.id, r.hwid, r.status, r.lastCheckAt, r.pluginVersion, r.corelVersion, r.offline],
     );
   }
 
@@ -719,6 +722,7 @@ function activation(r: Record<string, any>): ActivationRow {
     lastCheckAt: new Date(r.last_check_at),
     pluginVersion: r.plugin_version,
     corelVersion: r.corel_version,
+    offline: r.offline === true,
   };
 }
 

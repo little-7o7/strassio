@@ -333,7 +333,7 @@ test("утреннее сообщение: заявки и активации з
   const text = dailyDigest({
     now,
     licenses: [],
-    activations: [{ id: 1, licenseId: 1, hwid: PC1, status: "active", firstAt: hour(3), lastCheckAt: hour(3), pluginVersion: "1.0.0", corelVersion: "" }],
+    activations: [{ id: 1, licenseId: 1, hwid: PC1, status: "active", firstAt: hour(3), lastCheckAt: hour(3), pluginVersion: "1.0.0", corelVersion: "", offline: false }],
     requests: [{ id: 5, createdAt: hour(2), client: client({ firstName: "А" }), message: "", status: "new", serial: "" }],
     trials: [{ id: 7, hwid: PC2, startedAt: new Date(now.getTime() - 14 * DAY + 3600_000 * -1) }],
     clients: [],

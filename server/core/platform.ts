@@ -17,7 +17,7 @@ import { chargeFrom, contractFrom, dayFrom, daysFrom, fileFrom, given, isPaidMet
 import { fileView } from "./moneyViews.js";
 import { parseClient, shortCodes, type LicenseService } from "./service.js";
 import type { KeyTermsRow, TariffKind, UpdateRow } from "./store.js";
-import { normalizeSerial } from "./crypto.js";
+import { normalizeSerial, toActivationCode } from "./crypto.js";
 
 export const PREFIX = "/api/platform/";
 
@@ -211,7 +211,7 @@ export class Platform {
         const hwid = typeof b.hwid === "string" ? b.hwid.replace(/\s+/g, "") : b.hwid;
         if (!(await s.licenseView(serial))) return missing();
         const file = await s.offline(serial, hwid);
-        return file ? ok({ file }) : bad();
+        return file ? ok({ file, code: toActivationCode(file) }) : bad();
       }),
       route("POST", `licenses/${SERIAL}/delete`, async ([serial], b) => {
         const license = await s.licenseView(serial);

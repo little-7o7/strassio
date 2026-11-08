@@ -54,6 +54,11 @@ export interface ActivationRow {
   lastCheckAt: Date;
   pluginVersion: string;
   corelVersion: string;
+  /**
+   * Компьютер без интернета: ему выдан файл (код) лицензии, который работает без сверки. Метка не снимается —
+   * копию такого файла нельзя выключить, поэтому освободить место может только автор.
+   */
+  offline: boolean;
 }
 
 export interface TrialRow {

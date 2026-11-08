@@ -43,6 +43,8 @@ export interface ClientRequest {
   hwid?: unknown;
   pluginVersion?: unknown;
   corelVersion?: unknown;
+  /** Сверка (check) с компьютера, где лежит лицензия без интернета: его место помечается «без интернета». */
+  offline?: unknown;
 }
 
 /** Что видит владелец ключа на сайте (страница «Моя лицензия»). Коды компьютеров — только короткие. */
@@ -55,7 +57,8 @@ export interface SiteLicenseView {
   /** 1 — перенос можно сделать сейчас, 0 — только после nextTransferAt (или через админа). */
   transfersLeft: number;
   nextTransferAt: string | null;
-  computers: Array<{ id: number; code: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
+  /** offline — компьютер без интернета: освободить его может только автор. */
+  computers: Array<{ id: number; code: string; active: boolean; offline: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
 }
 
 export type SiteResult<T> = { ok: true } & T | { ok: false; error: ErrorCode };
@@ -84,7 +87,8 @@ export interface AdminLicenseView {
   client: ClientInfo;
   /** Карточка клиента в хабе; "" — клиент не указан. */
   clientId: string;
-  computers: Array<{ id: number; code: string; hwid: string; active: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
+  /** offline — компьютер без интернета (файл или код лицензии без сверки): освобождает только автор. */
+  computers: Array<{ id: number; code: string; hwid: string; active: boolean; offline: boolean; firstAt: string; lastCheckAt: string; pluginVersion: string; corelVersion: string }>;
   /**
    * Только в карточке ключа: начисления (новые сверху), готовое «предложить продлить» (null — ключ бессрочный или
    * заблокирован), закреплённая цена ключа, договор (по цене ключа или действующий договор клиента) и до какого числа
@@ -178,8 +182,12 @@ export class LicenseService {
 
   // ---------- Клиент (плагин) ----------
 
-  /** Ввод ключа. Тот же компьютер (в т. ч. после переустановки Windows) — активация восстанавливается. */
-  async activate(req: ClientRequest): Promise<ClientResult> {
+  /**
+   * Ввод ключа. Тот же компьютер (в т. ч. после переустановки Windows) — активация восстанавливается.
+   * offline — «на этом компьютере нет интернета» (только с сайта, вместе с почтой): лицензия без сверки,
+   * место помечается навсегда — освободить его может только автор.
+   */
+  async activate(req: ClientRequest, offline = false): Promise<ClientResult> {
     const input = this.parse(req);
     if (!input) return fail("bad_request");
     const license = await this.store.findLicense(input.serial);
@@ -190,24 +198,29 @@ export class LicenseService {
     const active = all.filter((a) => a.status === "active");
     const mine = active.find((a) => hwidMatches(parseHwid(a.hwid)!, input.parts));
     if (mine) {
+      if (offline) await this.markOffline(license!, mine, "site");
       return this.refresh(license!, mine, input, "reactivate");
     }
 
     if (active.length >= PCS_PER_KEY) {
       // Попытка на другом компьютере, когда место занято: по таким попыткам хаб замечает подозрительные ключи.
       await this.log("client", "occupied", license!.serial, input.hwid);
+      if (active.every((a) => a.offline)) return fail("offline_seat");
       return { ok: false, error: "occupied", ...this.transferInfo(license!) };
     }
 
-    const created = await this.store.insertActivation(this.newActivation(license!.id, input));
+    const created = await this.store.insertActivation(this.newActivation(license!.id, input, offline));
     if (await this.overLimit(created)) return { ok: false, error: "occupied", ...this.transferInfo(license!) };
-    await this.log("client", "activate", license!.serial, input.hwid);
+    await this.log("client", offline ? "activate_offline" : "activate", license!.serial, input.hwid);
     await this.notify(activationMessage(license!, created, this.hub));
-    return this.issue(license!, created.hwid);
+    return this.issue(license!, created.hwid, offline);
   }
 
-  /** «Перенести лицензию на этот компьютер»: самая давняя активация отзывается (не чаще раза в 7 дней). */
-  async transfer(req: ClientRequest): Promise<ClientResult> {
+  /**
+   * «Перенести лицензию на этот компьютер»: самая давняя активация отзывается (не чаще раза в 7 дней).
+   * Компьютер без интернета не отзывается никогда. offline — как у {@link activate}.
+   */
+  async transfer(req: ClientRequest, offline = false): Promise<ClientResult> {
     const input = this.parse(req);
     if (!input) return fail("bad_request");
     const license = await this.store.findLicense(input.serial);
@@ -216,15 +229,14 @@ export class LicenseService {
 
     const active = (await this.store.activations(license!.id)).filter((a) => a.status === "active");
     if (active.some((a) => hwidMatches(parseHwid(a.hwid)!, input.parts))) {
-      return this.activate(req); // уже здесь — переносить нечего
+      return this.activate(req, offline); // уже здесь — переносить нечего
     }
 
     if (active.length >= PCS_PER_KEY) {
-      if (!this.canTransfer(license!)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
-
       // Компьютер с файлом лицензии без интернета не отключить: файл работает и дальше — освобождает только автор.
-      const oldest = active.filter((a) => !isOfflineSeat(a)).sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
-      if (!oldest) return { ok: false, error: "occupied", ...this.transferInfo(license!) };
+      const oldest = active.filter((a) => !a.offline).sort((a, b) => a.lastCheckAt.getTime() - b.lastCheckAt.getTime())[0];
+      if (!oldest) return fail("offline_seat");
+      if (!this.canTransfer(license!)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
       oldest.status = "revoked";
       await this.store.updateActivation(oldest);
       this.countTransfer(license!);
@@ -232,10 +244,11 @@ export class LicenseService {
       await this.log("client", "transfer", license!.serial, `${oldest.hwid} → ${input.hwid}`);
     }
 
-    const created = await this.store.insertActivation(this.newActivation(license!.id, input));
+    const created = await this.store.insertActivation(this.newActivation(license!.id, input, offline));
     if (await this.overLimit(created)) return { ok: false, error: "transfer_limit", ...this.transferInfo(license!) };
+    if (offline) await this.log("client", "activate_offline", license!.serial, input.hwid);
     await this.notify(activationMessage(license!, created, this.hub));
-    return this.issue(license!, created.hwid);
+    return this.issue(license!, created.hwid, offline);
   }
 
   /**
@@ -262,8 +275,23 @@ export class LicenseService {
     const all = await this.store.activations(license!.id);
     const matching = all.filter((a) => hwidMatches(parseHwid(a.hwid)!, input.parts));
     const mine = matching.find((a) => a.status === "active");
-    if (mine) return this.refresh(license!, mine, input, null);
+    if (mine) {
+      // Плагин с лицензией без интернета сверяется, только когда связь случайно есть (продление подтянется само).
+      // Он держит файл без сверки — значит, и место такое, даже если файл выдали раньше метки.
+      if (req.offline === true) await this.markOffline(license!, mine, "client");
+      return this.refresh(license!, mine, input, null);
+    }
     return fail(matching.length ? "revoked" : "not_activated");
+  }
+
+  /**
+   * Место становится «без интернета» и остаётся таким: копию файла без сверки не выключить, поэтому
+   * освободить или перенести такой компьютер сам клиент не может — только автор. Запись — вызывающему.
+   */
+  private async markOffline(license: LicenseRow, activation: ActivationRow, actor: string): Promise<void> {
+    if (activation.offline) return;
+    activation.offline = true;
+    await this.log(actor, "offline", license.serial, activation.hwid);
   }
 
   /** Кнопка «Освободить этот компьютер» в плагине — не считается переносом. */
@@ -276,6 +304,8 @@ export class LicenseService {
       (a) => a.status === "active" && hwidMatches(parseHwid(a.hwid)!, input.parts),
     );
     if (!mine) return fail("not_activated");
+    // Файл без интернета мог остаться в копии — как и на сайте, освобождает только автор.
+    if (mine.offline) return fail("offline_seat");
     mine.status = "revoked";
     await this.store.updateActivation(mine);
     await this.log("client", "deactivate", license.serial, input.hwid);
@@ -315,15 +345,21 @@ export class LicenseService {
   /**
    * Страница /activate: ключ + код компьютера (кнопка «Копировать» в плагине) → код активации для
    * окна «Лицензия». Правила те же, что при вводе ключа в плагине: тот же компьютер восстанавливается,
-   * занято — ответ occupied, перенос (transfer = true) — не чаще раза в 7 дней. Лицензия обычная
-   * (не офлайн): плагин сверяет её с сервером каждый день.
+   * занято — ответ occupied (компьютером без интернета — offline_seat), перенос (transfer = true) — не чаще
+   * раза в 7 дней. Лицензия обычная: плагин сверяет её с сервером каждый день.
+   * offline — галочка «На этом компьютере нет интернета»: код (и тот же текст файлом) лицензии, которая не
+   * сверяется и работает до конца срока ключа (бессрочный — всегда). В ответе offline — какой лицензия
+   * получилась на самом деле: компьютер, уже помеченный «без интернета», всегда получает такую.
    */
-  async siteActivate(serial: unknown, hwid: unknown, transfer: boolean, email?: unknown): Promise<{ ok: true; code: string } | Exclude<ClientResult, { ok: true }>> {
+  async siteActivate(
+    serial: unknown, hwid: unknown, transfer: boolean, email?: unknown, offline = false,
+  ): Promise<{ ok: true; code: string; file: SignedDocument; offline: boolean } | Exclude<ClientResult, { ok: true }>> {
     const emailProblem = await this.verifyEmail(serial, email);
     if (emailProblem) return fail(emailProblem);
     const req: ClientRequest = { serial, hwid: typeof hwid === "string" ? hwid.replace(/\s+/g, "") : hwid, pluginVersion: "site", corelVersion: "" };
-    const result = transfer ? await this.transfer(req) : await this.activate(req);
-    return result.ok ? { ok: true, code: toActivationCode(result.license) } : result;
+    const result = transfer ? await this.transfer(req, offline) : await this.activate(req, offline);
+    if (!result.ok) return result;
+    return { ok: true, code: toActivationCode(result.license), file: result.license, offline: JSON.parse(result.license.payload).offline === true };
   }
 
   /**
@@ -637,7 +673,11 @@ export class LicenseService {
     const hwid = parts.join(".");
     const active = (await this.store.activations(license.id)).find((a) => a.status === "active" && hwidMatches(parseHwid(a.hwid)!, parts));
     if (!active) {
-      await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "offline", corelVersion: "" }));
+      await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "offline", corelVersion: "" }, true));
+    } else if (!active.offline) {
+      // Компьютер уже работал с интернетом — теперь у него файл без сверки, и место становится таким же.
+      active.offline = true;
+      await this.store.updateActivation(active);
     }
 
     await this.log(this.adminActor, "offline", license.serial, hwid);
@@ -692,6 +732,7 @@ export class LicenseService {
         code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
         hwid: a.hwid,
         active: a.status === "active",
+        offline: a.offline,
         firstAt: iso(a.firstAt),
         lastCheckAt: iso(a.lastCheckAt),
         pluginVersion: a.pluginVersion,
@@ -857,7 +898,7 @@ export class LicenseService {
     if (!activation || activation.licenseId !== license.id || activation.status !== "active") return { ok: false, error: "not_found" };
     // Файл лицензии без интернета продолжит работать и после «освобождения» — иначе один ключ давал бы
     // сколько угодно таких файлов. Такое место освобождает только автор (админка).
-    if (isOfflineSeat(activation)) return { ok: false, error: "offline_seat" };
+    if (activation.offline) return { ok: false, error: "offline_seat" };
 
     if (!this.canTransfer(license)) return { ok: false, error: "transfer_limit" };
 
@@ -873,7 +914,7 @@ export class LicenseService {
    * Файл лицензии для компьютера без интернета (сам клиент, без автора): код компьютера из окна
    * «Лицензия» → подписанный файл. Один ключ — один компьютер: место должно быть свободно.
    */
-  async siteOffline(serialText: unknown, hwidText: unknown, email?: unknown): Promise<SiteResult<{ file: SignedDocument }>> {
+  async siteOffline(serialText: unknown, hwidText: unknown, email?: unknown): Promise<SiteResult<{ file: SignedDocument; code: string }>> {
     const emailProblem = await this.verifyEmail(serialText, email);
     if (emailProblem) return { ok: false, error: emailProblem };
     const license = await this.siteLicense(serialText);
@@ -885,14 +926,22 @@ export class LicenseService {
 
     const hwid = parts.join(".");
     const active = (await this.store.activations(license.id)).filter((a) => a.status === "active");
-    if (!active.some((a) => hwidMatches(parseHwid(a.hwid)!, parts))) {
-      if (active.length >= PCS_PER_KEY) return { ok: false, error: "occupied" };
-      const created = await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }));
+    const mine = active.find((a) => hwidMatches(parseHwid(a.hwid)!, parts));
+    if (!mine) {
+      if (active.length >= PCS_PER_KEY) return { ok: false, error: active.every((a) => a.offline) ? "offline_seat" : "occupied" };
+      const created = await this.store.insertActivation(this.newActivation(license.id, { hwid, pluginVersion: "site-offline", corelVersion: "" }, true));
       if (await this.overLimit(created)) return { ok: false, error: "occupied" };
+      await this.notify(activationMessage(license, created, this.hub));
+    } else if (!mine.offline) {
+      // Этот компьютер работал с интернетом. Файл без сверки на нём — и место больше не освобождается с сайта
+      // и не уходит при переносе: иначе файл работал бы дальше, а ключ — ещё и на другом компьютере.
+      mine.offline = true;
+      await this.store.updateActivation(mine);
     }
 
     await this.log("site", "offline", license.serial, hwid);
-    return { ok: true, file: this.sign(license.serial, hwid, license.plan, license.expiresAt, true) };
+    const file = this.sign(license.serial, hwid, license.plan, license.expiresAt, true);
+    return { ok: true, file, code: toActivationCode(file) };
   }
 
   private async siteLicense(serialText: unknown): Promise<LicenseRow | null> {
@@ -913,6 +962,7 @@ export class LicenseService {
         id: a.id,
         code: hwidDisplay(parseHwid(a.hwid) ?? a.hwid.split(".")),
         active: a.status === "active",
+        offline: a.offline,
         firstAt: iso(a.firstAt),
         lastCheckAt: iso(a.lastCheckAt),
         pluginVersion: a.pluginVersion,
@@ -991,7 +1041,7 @@ export class LicenseService {
     return { transfersLeft: next ? 0 : 1, nextTransferAt: next ? iso(next) : null };
   }
 
-  private newActivation(licenseId: number, input: { hwid: string; pluginVersion: string; corelVersion: string }) {
+  private newActivation(licenseId: number, input: { hwid: string; pluginVersion: string; corelVersion: string }, offline = false) {
     const now = this.clock();
     return {
       licenseId,
@@ -1001,6 +1051,7 @@ export class LicenseService {
       lastCheckAt: now,
       pluginVersion: input.pluginVersion,
       corelVersion: input.corelVersion,
+      offline,
     };
   }
 
@@ -1022,16 +1073,17 @@ export class LicenseService {
     // в коде активации, а почта — второй секрет для переноса, поэтому сверка (action = null) отдаёт её скрытой.
     const client = { ...license.client };
     if (!action && client.email) client.email = maskEmail(client.email);
-    return { ...this.issue(license, activation.hwid), client };
+    return { ...this.issue(license, activation.hwid, activation.offline), client };
   }
 
-  private issue(license: LicenseRow, hwid: string): { ok: true; license: SignedDocument } {
-    return { ok: true, license: this.sign(license.serial, hwid, license.plan, license.expiresAt) };
+  /** Вид лицензии решает место: компьютер без интернета всегда получает лицензию без сверки. */
+  private issue(license: LicenseRow, hwid: string, offline = false): { ok: true; license: SignedDocument } {
+    return { ok: true, license: this.sign(license.serial, hwid, license.plan, license.expiresAt, offline) };
   }
 
   /**
-   * Текст лицензии — поля в том же порядке, что LicenseData в плагине. offline — файл для клиента
-   * без интернета (SPEC 13.6): плагин не требует ежедневной сверки, действует до expiresAt.
+   * Текст лицензии — поля в том же порядке, что LicenseData в плагине. offline — лицензия для компьютера
+   * без интернета (SPEC 13.3b): плагин не требует сверки, действует до expiresAt (нет срока — всегда).
    */
   private sign(serial: string, hwid: string, plan: string, expiresAt: Date | null, offline = false): SignedDocument {
     const now = this.clock();
@@ -1068,11 +1120,6 @@ function clamp(value: number, min: number, max: number): number {
 export function maskEmail(email: string): string {
   const at = email.indexOf("@");
   return at > 0 ? email[0] + "***" + email.substring(at) : "***";
-}
-
-/** Активация файлом лицензии без интернета (из админки или с сайта): плагин с ним сервер не спрашивает. */
-function isOfflineSeat(a: ActivationRow): boolean {
-  return a.pluginVersion === "offline" || a.pluginVersion === "site-offline";
 }
 
 /** Полные коды компьютеров в тексте журнала → короткие XXXX-XXXX-XXXX-XXXX, как в окне «Лицензия». */

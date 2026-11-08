@@ -184,7 +184,7 @@ export class App {
       if (req.method !== "POST") return { status: 405, json: { ok: false, error: "method" } };
       if (!this.clientLimiter.allow(req.ip)) return tooMany();
       if (this.lookupFailures.blocked(req.ip)) return tooMany();
-      const result = await this.service.siteActivate(body.serial, body.hwid, body.transfer === true, body.email);
+      const result = await this.service.siteActivate(body.serial, body.hwid, body.transfer === true, body.email, body.offline === true);
       if (!result.ok && (result.error === "wrong_email" || result.error === "not_found")) this.lookupFailures.fail(req.ip);
       return { status: result.ok ? 200 : result.error === "bad_request" ? 400 : 403, json: result };
     }

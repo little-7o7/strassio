@@ -127,8 +127,6 @@ export function keyBrief(l: LicenseRow, now: Date): KeyBrief {
   return { serial: l.serial, status: keyState(l, now), expiresAt: l.expiresAt ? iso(l.expiresAt) : null, daysLeft: daysLeft(l, now), note: l.note, createdAt: iso(l.createdAt) };
 }
 
-const isOffline = (a: ActivationRow) => a.pluginVersion === "offline" || a.pluginVersion === "site-offline";
-
 /** Подключённые компьютеры всех ключей: версии, «давно не открывали», «не обновился». */
 export function computerBriefs(licenses: LicenseRow[], activations: ActivationRow[], stable: string | null, now: Date): ComputerBrief[] {
   const byId = new Map(licenses.map((l) => [l.id, l]));
@@ -138,7 +136,7 @@ export function computerBriefs(licenses: LicenseRow[], activations: ActivationRo
     if (!l || a.status !== "active") continue;
     const state = keyState(l, now);
     const silentDays = Math.max(0, Math.floor((now.getTime() - a.lastCheckAt.getTime()) / DAY));
-    const offline = isOffline(a);
+    const offline = a.offline;
     const cmp = stable && !offline ? compareVersions(a.pluginVersion, stable) : null;
     out.push({
       id: a.id,
@@ -337,7 +335,8 @@ export function requestMessage(r: RequestRow, hubUrl: string): string {
 export function activationMessage(l: LicenseRow, a: ActivationRow, hubUrl: string): string {
   const who = nameOf(l.client);
   const lines = [`💎 <b>Новая активация</b>`, `${esc(who || "Клиент не указан")}${l.client.phone ? ", " + esc(l.client.phone) : ""}`, `Ключ ${esc(l.serial)}`];
-  if (a.pluginVersion || a.corelVersion) lines.push(`Плагин ${esc(a.pluginVersion || "—")} · CorelDRAW ${esc(a.corelVersion || "—")}`);
+  if (a.offline) lines.push("Компьютер без интернета — освободить его можно только в хабе");
+  else if (a.pluginVersion || a.corelVersion) lines.push(`Плагин ${esc(a.pluginVersion || "—")} · CorelDRAW ${esc(a.corelVersion || "—")}`);
   lines.push(`<a href="${hubUrl}/admin/strassio/k/${encodeURIComponent(l.serial)}">Открыть ключ</a>`);
   return lines.join("\n");
 }
@@ -364,7 +363,7 @@ export function dailyDigest(d: DigestInput): string | null {
   const dayAgo = t - DAY;
   const newRequests = d.requests.filter((r) => r.createdAt.getTime() > dayAgo);
   const waiting = d.requests.filter((r) => r.status === "new").length;
-  const newPcs = d.activations.filter((a) => a.firstAt.getTime() > dayAgo && !isOffline(a));
+  const newPcs = d.activations.filter((a) => a.firstAt.getTime() > dayAgo && !a.offline);
   const ended = d.trials.filter((x) => {
     const end = x.startedAt.getTime() + d.trialDays * DAY;
     return end <= t && end > dayAgo;
