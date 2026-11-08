@@ -335,6 +335,12 @@ test("журнал: действия хаба и сайта, limit", async () =>
   assert.equal(log[0].actor, "hub");
   assert.equal(log[0].action, "create_keys");
   assert.equal((await s.call("GET", "/api/platform/audit?limit=abc")).status, 200);
+  // Следующая страница — before: только записи старше (хаб берёт журнал целиком страницами).
+  await s.call("POST", "/api/platform/licenses", { count: 1 });
+  const all = (await s.call("GET", "/api/platform/audit?limit=500")).json.log as { id: number }[];
+  assert.ok(all.length >= 2);
+  const next = (await s.call("GET", `/api/platform/audit?limit=500&before=${all[0].id}`)).json.log as { id: number }[];
+  assert.deepEqual(next.map((e) => e.id), all.slice(1).map((e) => e.id));
 });
 
 test("nonce в памяти: устаревшие стираются", async () => {

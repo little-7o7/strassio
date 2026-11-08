@@ -408,6 +408,7 @@ export class PgStore implements Store {
     if (f.action) add("action = ?", f.action);
     if (f.from) add("at >= ?", f.from);
     if (f.to) add("at < ?", f.to);
+    if (f.before) add("id < ?", f.before);
     params.push(limit);
     const rows = await this.q(`SELECT * FROM audit_log ${where.length ? "WHERE " + where.join(" AND ") : ""} ORDER BY id DESC LIMIT $${params.length}`, params);
     return rows.map(AUDIT_ROW);

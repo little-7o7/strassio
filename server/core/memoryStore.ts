@@ -173,7 +173,7 @@ export class MemoryStore implements Store {
 
   async auditSearch(f: AuditFilter, limit: number) {
     return this.log
-      .filter((e) => (!f.serial || e.serial === f.serial) && (!f.actors?.length || f.actors.includes(e.actor)) && (!f.action || e.action === f.action) && (!f.from || e.at >= f.from) && (!f.to || e.at < f.to))
+      .filter((e) => (!f.serial || e.serial === f.serial) && (!f.actors?.length || f.actors.includes(e.actor)) && (!f.action || e.action === f.action) && (!f.from || e.at >= f.from) && (!f.to || e.at < f.to) && (!f.before || e.id < f.before))
       .reverse()
       .slice(0, limit)
       .map((e) => ({ ...e }));

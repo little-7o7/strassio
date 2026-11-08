@@ -378,14 +378,16 @@ export class Platform {
         const serial = q.get("serial") ? normalizeSerial(q.get("serial")) : null;
         if (q.get("serial") && !serial) return ok({ log: [] });
         const action = (q.get("action") ?? "").trim();
+        const before = Number.isSafeInteger(Number(q.get("before"))) ? Number(q.get("before")) : 0;
         const filter = {
           serial: serial ?? undefined,
           actors: WHO[q.get("who") ?? ""],
           action: /^[a-z_]{2,40}$/.test(action) ? action : undefined,
           from: tashkentDay(q.get("from")),
           to: tashkentDay(q.get("to"), true),
+          before: before > 0 ? before : undefined,
         };
-        const plain = !filter.serial && !filter.actors && !filter.action && !filter.from && !filter.to;
+        const plain = !filter.serial && !filter.actors && !filter.action && !filter.from && !filter.to && !filter.before;
         const log = plain ? await s.auditLog(limit) : await s.auditSearch(filter, limit);
         // Полные коды компьютеров (в журнале — для поиска подозрительных ключей) хабу — короткими, как в плагине.
         return ok({ log: log.map((e) => ({ ...e, details: shortCodes(e.details) })) });

@@ -23,6 +23,8 @@ const NAME = /^[a-z_][a-z0-9_]*$/;
 const SKIP = new Set(["platform_nonces"]);
 /** Строк за один запрос: файлы договоров (до 3 МБ каждый) не собираются в один огромный ответ базы. */
 const PAGE = 50;
+/** Таблицы с файлами (до 4 МБ в base64 на строку): по 2 строки, чтобы ответ базы не вырос за её предел. */
+const BIG = new Set(["contract_files"]);
 
 type Col = { t: string; c: string; serial: boolean };
 
@@ -50,28 +52,33 @@ export async function dumpSql(sql: Query, at: Date): Promise<string> {
   };
   for (const t of tables.keys()) visit(t);
 
-  // Таблица с id — пачками по id (файлы договоров большие), без id — целиком.
-  const data: { t: string; json: string }[] = [];
-  for (const t of order) {
+  // Таблица с id — пачками по id (файлы договоров большие — по 2), без id — целиком. Читаем с конца порядка: сначала
+  // строки, что ссылаются, потом те, на что ссылаются. Ключ и его активация, созданные посреди выгрузки, тогда не
+  // дадут строку без родителя (снимка у запросов по HTTP нет). В файл — в прямом порядке.
+  const got = new Map<string, string[]>();
+  const push = (t: string, json: string) => got.set(t, [...(got.get(t) ?? []), json]);
+  for (const t of [...order].reverse()) {
     const byId = tables.get(t)!.some((c) => c.c === "id");
     if (!byId) {
       const [row] = await sql(`SELECT count(*)::int AS n, coalesce(json_agg(x), '[]')::text AS json FROM "${t}" x`);
-      if (row.n) data.push({ t, json: row.json });
+      if (row.n) push(t, row.json);
       continue;
     }
+    const page = BIG.has(t) ? 2 : PAGE;
     let after = -1;
     for (;;) {
       const [row] = await sql(
         `SELECT count(*)::int AS n, max(id)::text AS last, coalesce(json_agg(x ORDER BY x.id), '[]')::text AS json
-         FROM (SELECT * FROM "${t}" WHERE id > $1 ORDER BY id LIMIT ${PAGE}) x`,
+         FROM (SELECT * FROM "${t}" WHERE id > $1 ORDER BY id LIMIT ${page}) x`,
         [after],
       );
       if (!row.n) break;
-      data.push({ t, json: row.json });
+      push(t, row.json);
       after = Number(row.last);
-      if (row.n < PAGE || !Number.isFinite(after)) break;
+      if (row.n < page || !Number.isFinite(after)) break;
     }
   }
+  const data = order.flatMap((t) => (got.get(t) ?? []).map((json) => ({ t, json })));
   let tag = "";
   do tag = `$st${randomBytes(6).toString("hex")}$`;
   while (data.some((d) => d.json.includes(tag)));

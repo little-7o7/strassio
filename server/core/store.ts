@@ -252,6 +252,8 @@ export interface AuditFilter {
   action?: string;
   from?: Date;
   to?: Date;
+  /** Только записи с id меньше этого — следующая страница (хаб берёт журнал целиком страницами по 500). */
+  before?: number;
 }
 
 export interface Store {
