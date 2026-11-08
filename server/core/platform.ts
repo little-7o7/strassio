@@ -288,6 +288,8 @@ export class Platform {
       // ---------- Деньги ----------
       route("GET", "money", async () => ok(await s.money())),
       route("GET", "rate", async () => ok({ rate: await s.billing.rateToday() })),
+      // Утро: автоблокировка долгов и сообщения владельцу — их шлёт хаб своим ботом (своего cron у Strassio нет).
+      route("POST", "daily", async () => ok(await s.dailyMessages())),
       // Курс дня от хаба: { date: "ГГГГ-ММ-ДД", source: "cbu", rates: { USD: 12650.5, … } } — сумов за единицу; берём доллар.
       route("POST", "rates", async (_m, b) => {
         const usd = b.rates && typeof b.rates === "object" ? Number((b.rates as Record<string, unknown>).USD) : NaN;

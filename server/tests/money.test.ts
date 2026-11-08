@@ -156,7 +156,7 @@ function setup() {
   const sent: string[] = [];
   hub.useNotifier(async (html) => (sent.push(html), true), "https://hub.test");
   const platform = new Platform({ service: hub, keys: platformKeys(KEY, SECRET), adminPassword: PASSWORD, spendNonce: (n, u, s) => store.spendNonce(n, u, s), now: () => now.getTime() });
-  const app = new App(hub).usePlatform(platform).useCron("c".repeat(20));
+  const app = new App(hub).usePlatform(platform);
   async function call(method: "GET" | "POST", pathAndQuery: string, body?: Record<string, unknown>) {
     const raw = method === "POST" ? JSON.stringify(body ?? {}) : "";
     const time = String(Math.floor(now.getTime() / 1000));
@@ -268,15 +268,12 @@ test("предложение продлить в карточке ключа и 
   const v = (await s.call("GET", `/api/platform/licenses/${serial}`)).json.license;
   assert.match(v.offer.text, /Иван, здравствуйте!/);
   assert.match(v.offer.text, /Год — 1 200 000 сум/);
-  const cron = (when: string) => {
+  const daily = async (when: string) => {
     s.setNow(new Date(when));
-    return s.app.handle({ method: "GET", path: "/api/cron/daily", query: new URLSearchParams(), headers: { authorization: "Bearer " + "c".repeat(20) }, body: null, ip: "1" });
+    return (await s.call("POST", "/api/platform/daily")).json.messages as string[];
   };
-  s.sent.length = 0;
-  const sunday = await cron("2026-11-15T04:00:00Z");
-  assert.equal((sunday.json as any).weekly, false);
-  assert.equal(s.sent.some((m) => /Итог недели/.test(m)), false);
-  const monday = await cron("2026-11-16T04:00:00Z");
-  assert.equal((monday.json as any).weekly, true);
-  assert.ok(s.sent.some((m) => /Итог недели/.test(m)));
+  const sunday = await daily("2026-11-15T04:00:00Z");
+  assert.equal(sunday.some((m) => /Итог недели/.test(m)), false);
+  const monday = await daily("2026-11-16T04:00:00Z");
+  assert.match(monday[0], /Итог недели/, "по понедельникам итог недели — первым");
 });

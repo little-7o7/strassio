@@ -4,12 +4,6 @@
   "outputDirectory": "public",
   "ignoreCommand": "if [ -n \"$VERCEL_GIT_PREVIOUS_SHA\" ] && [ \"$VERCEL_GIT_PREVIOUS_SHA\" != \"$VERCEL_GIT_COMMIT_SHA\" ] && git cat-file -e \"$VERCEL_GIT_PREVIOUS_SHA^{commit}\" 2>/dev/null && git diff --quiet \"$VERCEL_GIT_PREVIOUS_SHA\" HEAD -- .; then exit 0; else exit 1; fi",
   "cleanUrls": true,
-  "crons": [
-    {
-      "path": "/api/cron/daily",
-      "schedule": "0 4 * * *"
-    }
-  ],
   "redirects": [
     {
       "source": "/download",

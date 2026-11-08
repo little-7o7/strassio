@@ -10,7 +10,7 @@ import { Platform } from "../core/platform.js";
 import { platformKeys } from "../core/platformAuth.js";
 import { cbuRate } from "../core/rates.js";
 import { LicenseService } from "../core/service.js";
-import { hubUrl, telegram } from "../core/telegram.js";
+import { hubNotifier, hubUrl } from "../core/telegram.js";
 
 let app: App | null = null;
 
@@ -26,15 +26,18 @@ function getApp(): App {
   const store = new PgStore((text, params) => sql.query(text, params ?? []) as Promise<Record<string, any>[]>);
   const signer = new Signer(privateKey);
   // Хаб little_7o7 — закрытый API /api/platform: выключен (404), пока в Vercel нет PLATFORM_API_KEY и PLATFORM_API_SECRET.
+  const keys = platformKeys(process.env.PLATFORM_API_KEY, process.env.PLATFORM_API_SECRET);
+  // Сообщения владельцу (заявка, новая активация) — через хаб и его бота: своего бота и cron у Strassio нет.
+  const hub = hubUrl(process.env.HUB_URL);
+  const notifier = hubNotifier(hub, keys);
   const platform = new Platform({
-    service: new LicenseService(store, signer, undefined, "hub").useRates(cbuRate),
-    keys: platformKeys(process.env.PLATFORM_API_KEY, process.env.PLATFORM_API_SECRET),
+    service: new LicenseService(store, signer, undefined, "hub").useRates(cbuRate).useNotifier(notifier, hub),
+    keys,
     adminPassword: process.env.ADMIN_PASSWORD,
     spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
   });
-  // Telegram владельцу (заявка, новая активация, утренняя сводка): выключен, пока нет TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID.
-  const site = new LicenseService(store, signer).useRates(cbuRate).useNotifier(telegram(process.env.TELEGRAM_BOT_TOKEN, process.env.TELEGRAM_CHAT_ID), hubUrl(process.env.HUB_URL));
-  app = new App(site).usePlatform(platform).useCron(process.env.CRON_SECRET);
+  const site = new LicenseService(store, signer).useRates(cbuRate).useNotifier(notifier, hub);
+  app = new App(site).usePlatform(platform);
   return app;
 }
 

@@ -1,6 +1,6 @@
 // Дополнения для хаба (владелец 2026-11-08, «da dobav vse perechislenniye»): клиенты и дни рождения, компьютеры и
 // версии, «давно не открывали», уборка, подозрительные ключи, пробные без покупки, история ключа, журнал с фильтрами,
-// поиск по телефону в любом виде, Telegram (заявка, активация, утренняя сводка) и ежедневный cron.
+// поиск по телефону в любом виде, сообщения владельцу через хаб (заявка, активация) и утро по вызову хаба.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash, createHmac, randomBytes } from "node:crypto";
@@ -9,16 +9,15 @@ import { App, type HttpRequest } from "../core/http.js";
 import { clientKey, compareVersions, countVersions, dailyDigest, greeting, phoneDigits, phoneQuery, requestMessage } from "../core/insights.js";
 import { MemoryStore } from "../core/memoryStore.js";
 import { Platform } from "../core/platform.js";
-import { platformKeys } from "../core/platformAuth.js";
+import { platformKeys, verifySignature } from "../core/platformAuth.js";
 import { LicenseService } from "../core/service.js";
-import { hubUrl, telegram } from "../core/telegram.js";
+import { hubNotifier, hubUrl, NOTIFY_PATH } from "../core/telegram.js";
 import type { ClientInfo } from "../core/store.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const keys = generateKeys();
 const KEY = "k".repeat(40);
 const SECRET = "s".repeat(48);
-const CRON = "c".repeat(32);
 const pc = (x: string) => [x, x, x, x].map((c, i) => (c + String(i)).repeat(8)).join(".");
 const PC1 = pc("a");
 const PC2 = pc("b");
@@ -44,7 +43,7 @@ function setup() {
   const hub = new LicenseService(store, signer, clock, "hub");
   const site = new LicenseService(store, signer, clock).useNotifier(notifier, "https://hub.example");
   const platform = new Platform({ service: hub, keys: platformKeys(KEY, SECRET), adminPassword: "admin-pass-123", spendNonce: (n, u, s) => store.spendNonce(n, u, s), now: () => now.getTime() });
-  const app = new App(site).usePlatform(platform).useCron(CRON);
+  const app = new App(site).usePlatform(platform);
 
   async function call(method: string, pathAndQuery: string, body?: Record<string, unknown>) {
     const [path, q] = pathAndQuery.split("?");
@@ -273,21 +272,32 @@ test("Telegram не ответил — заявка всё равно сохра
   assert.equal(store.requests.length, 1);
 });
 
-test("telegram(): без токена или с плохим — выключен; запрос к Bot API; ошибки — false", async () => {
-  assert.equal(telegram(undefined, "123"), null);
-  assert.equal(telegram("bad", "123456"), null);
-  assert.equal(telegram("123456:" + "A".repeat(35), "chat"), null);
-  const calls: Array<{ url: string; body: any }> = [];
-  const ok = telegram("123456:" + "A".repeat(35), "-100123", async (url, init) => {
-    calls.push({ url: String(url), body: JSON.parse(String(init?.body)) });
+test("hubNotifier(): без пары ключей — выключен; подписанный POST в хаб; подпись не подходит к API Strassio", async () => {
+  assert.equal(hubNotifier("https://hub.example", null), null);
+  const pair = platformKeys(KEY, SECRET)!;
+  const T = Date.parse("2026-11-08T10:00:00Z");
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const ok = hubNotifier("https://hub.example", pair, async (url, init) => {
+    calls.push({ url: String(url), init: init! });
     return new Response("{}", { status: 200 });
-  })!;
+  }, 4000, () => T)!;
   assert.equal(await ok("<b>Привет</b>"), true);
-  assert.equal(calls[0].url, "https://api.telegram.org/bot123456:" + "A".repeat(35) + "/sendMessage");
-  assert.deepEqual(calls[0].body, { chat_id: "-100123", text: "<b>Привет</b>", parse_mode: "HTML", link_preview_options: { is_disabled: true } });
-  const refused = telegram("123456:" + "A".repeat(35), "1234", async () => new Response("{}", { status: 400 }))!;
+  assert.equal(calls[0].url, "https://hub.example/api/notify/strassio");
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal(calls[0].init.redirect, "error", "подписанный запрос не уходит по перенаправлению");
+  const body = String(calls[0].init.body);
+  assert.deepEqual(JSON.parse(body), { text: "<b>Привет</b>" });
+  const headers = calls[0].init.headers as Record<string, string>;
+  assert.equal(headers["x-hub-key"], KEY);
+  assert.equal(JSON.stringify(headers).includes(SECRET), false, "secret по сети не ходит");
+  assert.ok(verifySignature(pair, { method: "POST", pathAndQuery: NOTIFY_PATH, headers, body }, T / 1000), "хаб проверит подпись той же парой");
+  assert.equal(verifySignature(pair, { method: "POST", pathAndQuery: "/api/platform/daily", headers, body }, T / 1000), null, "подпись сообщения не подходит к /api/platform");
+
+  await ok("я".repeat(5000));
+  assert.equal(JSON.parse(String(calls[1].init.body)).text.length, 4000, "длинное сообщение обрезается под Telegram");
+  const refused = hubNotifier("https://hub.example", pair, async () => new Response("{}", { status: 404 }))!;
   assert.equal(await refused("x"), false);
-  const broken = telegram("123456:" + "A".repeat(35), "1234", async () => {
+  const broken = hubNotifier("https://hub.example", pair, async () => {
     throw new Error("offline");
   })!;
   assert.equal(await broken("x"), false);
@@ -296,30 +306,25 @@ test("telegram(): без токена или с плохим — выключе�
   assert.equal(hubUrl("https://evil.uz/x?y"), "https://little-7o7.vercel.app");
 });
 
-test("cron: без секрета или с чужим — 404; с секретом — утреннее сообщение; нечего сказать — бот молчит", async () => {
+test("утро: своего cron нет; /api/platform/daily — только с подписью хаба, сообщения отдаются хабу", async () => {
   const s = setup();
-  assert.equal((await s.plain("GET", "/api/cron/daily")).status, 404);
-  assert.equal((await s.plain("GET", "/api/cron/daily", null, { authorization: "Bearer wrong" })).status, 404);
-  const auth = { authorization: "Bearer " + CRON };
-  assert.deepEqual((await s.plain("GET", "/api/cron/daily", null, auth)).json, { ok: true, sent: false, empty: true, weekly: false });
-  assert.equal(s.sent.length, 0);
+  assert.equal((await s.plain("GET", "/api/cron/daily", null, { authorization: "Bearer " + "c".repeat(32) })).status, 404, "старого cron больше нет");
+  assert.equal((await s.plain("POST", "/api/platform/daily", {})).status, 404, "без подписи — как будто адреса нет");
+  assert.deepEqual((await s.call("POST", "/api/platform/daily")).json, { ok: true, messages: [], blocked: 0 }, "нечего сказать — пусто");
 
   await key(s, 5, client({ firstName: "Сардор", phone: "+998 99 321 00 99" }));
   await key(s, 20, client({ firstName: "Нескоро" }));
   await key(s, 365, client({ firstName: "Именинник", birthday: "1990-11-08", telegram: "imen" }));
-  const r = await s.plain("GET", "/api/cron/daily", null, auth);
-  assert.deepEqual(r.json, { ok: true, sent: true, empty: false, weekly: false });
-  const text = s.sent.at(-1)!;
+  const r = await s.call("POST", "/api/platform/daily");
+  assert.equal(r.json.messages.length, 1, "не понедельник — только утренняя сводка");
+  const text: string = r.json.messages[0];
   assert.match(text, /Ключи на исходе \(7 дней и меньше\)/);
   assert.match(text, /Сардор, \+998 99 321 00 99 — 5 дн\./);
   assert.equal(text.includes("Нескоро"), false);
   assert.match(text, /День рождения сегодня/);
   assert.match(text, /Именинник \(36\), @imen/);
   assert.match(text, /с днём рождения/);
-
-  const app = new App(new LicenseService(new MemoryStore(), new Signer(keys.privateKey))).useCron("short");
-  const r2 = await app.handle({ method: "GET", path: "/api/cron/daily", query: new URLSearchParams(), headers: { authorization: "Bearer short" }, body: null, ip: "1" });
-  assert.equal(r2.status, 404, "секрет короче 16 знаков — cron выключен");
+  assert.equal(s.sent.length, 0, "сводку шлёт хаб, сам Strassio её не отправляет");
 });
 
 test("утреннее сообщение: заявки и активации за сутки, закончившиеся пробные", () => {

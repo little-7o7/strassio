@@ -164,7 +164,7 @@ export class LicenseService {
     return key ? (await this.store.allLicenses(ALL)).filter((l) => l.status !== "blocked" && clientKey(l.client) === key).length : 0;
   }
 
-  /** Telegram владельцу: новая заявка, новая активация, утренняя сводка. null — бот выключен. */
+  /** Сообщения владельцу (через хаб): новая заявка, новая активация; hubUrl — и для ссылок. null — сообщений нет. */
   useNotifier(notifier: Notifier | null, hubUrl: string): this {
     this.notifier = notifier;
     this.hub = hubUrl;
@@ -793,10 +793,10 @@ export class LicenseService {
   }
 
   /**
-   * Утреннее сообщение владельцу (cron в 9:00 по Ташкенту), по понедельникам — ещё итог недели. Нечего сказать или бот
-   * выключен — не отправляется. weekly — ушёл ли итог недели.
+   * Утро (хаб вызывает POST /api/platform/daily в 9:10 по Ташкенту): сначала автоблокировка долгов, потом сообщения
+   * владельцу — по понедельникам итог недели, затем утренняя сводка. Шлёт их хаб своим ботом; нечего сказать — пусто.
    */
-  async sendDailyDigest(): Promise<{ sent: boolean; empty: boolean; weekly: boolean }> {
+  async dailyMessages(): Promise<{ messages: string[]; blocked: number }> {
     const d = await this.everything();
     const [payments, parts, terms] = await Promise.all([this.store.listPayments(ALL), this.store.listParts(ALL * 5), this.store.allKeyTerms()]);
     const clients = clientViews(d.licenses, d.activations, d.requests, d.stable, d.now);
@@ -805,9 +805,7 @@ export class LicenseService {
     const money = dailyMoneyLines({ now: d.now, payments, parts, licenses, terms, requests: d.requests, blocked, hubUrl: this.hub });
     const text = dailyDigest({ now: d.now, licenses: d.licenses, activations: d.activations, requests: d.requests, trials: d.trials, clients, trialDays: TRIAL_DAYS, hubUrl: this.hub, money });
     const week = isMonday(d.now) ? weeklyDigest({ now: d.now, payments, parts, licenses: d.licenses, requests: d.requests, hubUrl: this.hub }) : null;
-    const weekly = week ? await this.notify(week) : false;
-    if (!text) return { sent: false, empty: true, weekly };
-    return { sent: await this.notify(text), empty: false, weekly };
+    return { messages: [week, text].filter((m): m is string => !!m), blocked: blocked.length };
   }
 
   /** Главная хаба: числа, «требует внимания» (ключи, кончающиеся за 30 дней, и новые заявки), что опубликовано. */

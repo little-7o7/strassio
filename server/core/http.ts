@@ -1,6 +1,5 @@
 // Маршруты API (SPEC 15) без привязки к платформе: адаптер (Vercel, Cloudflare, локальный сервер)
 // переводит свой запрос в HttpRequest и отдаёт HttpResponse как есть.
-import { createHash, timingSafeEqual } from "node:crypto";
 import type { Platform } from "./platform.js";
 import type { LicenseService } from "./service.js";
 
@@ -92,16 +91,6 @@ export class App {
   ) {}
 
   private platform: Platform | null = null;
-  private cronSecret = "";
-
-  /**
-   * Ежедневная задача (Vercel Cron, 9:00 по Ташкенту): утреннее сообщение владельцу в Telegram. Vercel присылает
-   * «Authorization: Bearer CRON_SECRET»; без секрета (короче 16 знаков) или с чужим — 404, как несуществующий адрес.
-   */
-  useCron(secret: string | undefined): this {
-    this.cronSecret = (secret ?? "").trim();
-    return this;
-  }
 
   /** Закрытый API для хаба little_7o7 (/api/platform/*). Без него эти адреса отвечают 404, как любые несуществующие. */
   usePlatform(platform: Platform): this {
@@ -130,12 +119,8 @@ export class App {
     // Старой админки (/adminpanel, /api/admin/*) больше нет: всё в хабе little_7o7 (владелец 2026-11-08), здесь
     // эти адреса отвечают «нет такого адреса». Главная «/» — статический сайт.
 
-    if (path === "/api/cron/daily") {
-      if (req.method !== "GET" || this.cronSecret.length < 16 || !sameText(req.headers["authorization"] ?? "", "Bearer " + this.cronSecret)) {
-        return { status: 404, json: { ok: false, error: "not_found" } };
-      }
-      return { status: 200, json: { ok: true, ...(await this.service.sendDailyDigest()) } };
-    }
+    // Своего cron у Strassio нет (владелец 2026-11-08 09:35: всё через хаб): утреннюю сводку и автоблокировку
+    // запускает хаб каждое утро подписанным POST /api/platform/daily.
 
     if (req.method === "GET" && path === "/api/health") {
       return { status: 200, json: { ok: true } };
@@ -206,12 +191,6 @@ export class App {
 
     return NO_ROUTE;
   }
-}
-
-function sameText(a: string, b: string): boolean {
-  const x = createHash("sha256").update(a).digest();
-  const y = createHash("sha256").update(b).digest();
-  return timingSafeEqual(x, y);
 }
 
 function ok(data: Record<string, unknown>): HttpResponse {

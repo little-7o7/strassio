@@ -34,7 +34,7 @@ function setup(rate: number | null = null) {
   const sent: string[] = [];
   site.useNotifier(async (html) => (sent.push(html), true), "https://hub.test");
   const platform = new Platform({ service: hub, keys: platformKeys(KEY, SECRET), adminPassword: PASSWORD, spendNonce: (n, u, s) => store.spendNonce(n, u, s), now: () => now.getTime() });
-  const app = new App(site).usePlatform(platform).useCron("c".repeat(20));
+  const app = new App(site).usePlatform(platform);
   async function call(method: "GET" | "POST", pathAndQuery: string, body?: Record<string, unknown>) {
     const raw = method === "POST" ? JSON.stringify(body ?? {}) : "";
     const time = String(Math.floor(now.getTime() / 1000));
@@ -45,7 +45,12 @@ function setup(rate: number | null = null) {
     const r = await app.handle({ method, path, query: new URLSearchParams(q ?? ""), headers, body: raw ? JSON.parse(raw) : null, rawBody: raw, ip: "1.1.1.1" });
     return { status: r.status, json: r.json as Record<string, any> };
   }
-  const cron = () => app.handle({ method: "GET", path: "/api/cron/daily", query: new URLSearchParams(), headers: { authorization: "Bearer " + "c".repeat(20) }, body: null, ip: "1" });
+  // Утро: хаб вызывает /api/platform/daily и сам шлёт сообщения своим ботом.
+  const cron = async () => {
+    const r = await call("POST", "/api/platform/daily");
+    sent.push(...(r.json.messages as string[]));
+    return r;
+  };
   const P = "/api/platform/";
   const key = async (serial: string) => (await call("GET", `${P}licenses/${serial}`)).json.license;
   return { app, store, call, cron, sent, key, P, advance: (days: number) => (now = new Date(now.getTime() + days * DAY)) };
