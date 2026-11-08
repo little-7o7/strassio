@@ -7,6 +7,7 @@ import { App } from "../core/http.js";
 import { PgStore } from "../core/pgStore.js";
 import { requestTarget } from "../core/requestTarget.js";
 import { Platform } from "../core/platform.js";
+import { pgBackup } from "../core/backup.js";
 import { platformKeys } from "../core/platformAuth.js";
 import { cbuRate } from "../core/rates.js";
 import { LicenseService } from "../core/service.js";
@@ -35,6 +36,8 @@ function getApp(): App {
     keys,
     adminPassword: process.env.ADMIN_PASSWORD,
     spendNonce: (nonce, until, now) => store.spendNonce(nonce, until, now),
+    // Копия всей базы для компьютеров владельца (Little Hub через хаб): core/backup.ts.
+    backup: pgBackup((text, params) => sql.query(text, params ?? []) as Promise<Record<string, any>[]>),
   });
   const site = new LicenseService(store, signer).useRates(cbuRate).useNotifier(notifier, hub);
   app = new App(site).usePlatform(platform);
@@ -97,7 +100,16 @@ export default async function handler(req: IncomingMessage & { body?: unknown },
   res.statusCode = response.status;
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  if (response.html !== undefined) {
+  if (response.status === 204) {
+    res.end();
+  } else if (response.file) {
+    // Копия базы для хаба — кусками по 1 МБ: ответ идёт потоком.
+    res.setHeader("Content-Type", response.file.type);
+    for (const [k, v] of Object.entries(response.file.headers)) res.setHeader(k, v);
+    const b = response.file.body;
+    for (let i = 0; i < b.length; i += 1 << 20) res.write(b.subarray(i, i + (1 << 20)));
+    res.end();
+  } else if (response.html !== undefined) {
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("X-Frame-Options", "DENY");
     res.end(response.html);

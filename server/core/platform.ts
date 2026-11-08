@@ -18,6 +18,7 @@ import { fileView } from "./moneyViews.js";
 import { parseClient, shortCodes, type LicenseService } from "./service.js";
 import type { KeyTermsRow, TariffKind, UpdateRow } from "./store.js";
 import { normalizeSerial, toActivationCode } from "./crypto.js";
+import { backupName, type Backup } from "./backup.js";
 
 export const PREFIX = "/api/platform/";
 
@@ -31,6 +32,8 @@ export interface PlatformOptions {
   now?: () => number;
   /** Неверный пароль админки: 10 раз за 15 минут — дальше ждать. */
   passwordFailures?: FailureLimiter;
+  /** Копия всей базы для компьютеров владельца (core/backup.ts); нет — pc/backup отвечает 404. */
+  backup?: Backup;
 }
 
 type Body = Record<string, unknown>;
@@ -72,6 +75,7 @@ export class Platform {
   private readonly fetchRelease: (channel: string) => Promise<ReleaseResult>;
   private readonly now: () => number;
   private readonly passwordFailures: FailureLimiter;
+  private readonly backup: Backup | null;
   private readonly routes: Route[];
 
   constructor(o: PlatformOptions) {
@@ -82,6 +86,7 @@ export class Platform {
     this.fetchRelease = o.fetchRelease ?? ((channel) => latestRelease(channel));
     this.now = o.now ?? Date.now;
     this.passwordFailures = o.passwordFailures ?? new FailureLimiter(10, 15 * 60_000, this.now);
+    this.backup = o.backup ?? null;
     this.routes = this.buildRoutes();
   }
 
@@ -352,6 +357,18 @@ export class Platform {
         await s.publishUpdate({ channel, version, minVersion, url, sha256, notesRu: String(b.notesRu ?? "").slice(0, 4000), notesEn: String(b.notesEn ?? "").slice(0, 4000) });
         return ok();
       }, true),
+
+      // ---------- Копия базы для компьютеров (Little Hub) ----------
+      // live=1&have=<время> — та же, что у компьютера (в журнале с тех пор ничего), — 204 без выгрузки. Время копии —
+      // последняя запись журнала (не моложе 13 знаков: хаб принимает только такое).
+      route("GET", "pc/backup", async (_m, _b, req) => {
+        if (!this.backup) return missing();
+        const made = Math.max(await this.backup.made(), 1_000_000_000_000);
+        if (req.query.get("have") === String(made)) return { status: 204 };
+        const body = await this.backup.dump(new Date(this.now()));
+        const headers = { "x-backup-name": backupName(this.now()), "x-backup-bytes": String(body.length), "x-backup-made": String(made) };
+        return { status: 200, file: { body, type: "application/gzip", headers } };
+      }),
 
       // ---------- Журнал ----------
       route("GET", "audit", async (_m, _b, req) => {

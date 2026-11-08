@@ -18,6 +18,8 @@ export interface HttpResponse {
   status: number;
   json?: unknown;
   html?: string;
+  /** Файл (копия базы для хаба): тип и свои заголовки — в file. */
+  file?: { body: Buffer; type: string; headers: Record<string, string> };
 }
 
 /**
