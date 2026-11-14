@@ -414,11 +414,12 @@
 
     <Style TargetType="TabItem">
         <Setter Property="Foreground" Value="{DynamicResource Strassio.MutedForeground}"/>
+        <Setter Property="Padding" Value="11,5"/>
         <Setter Property="Cursor" Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
-                    <Border x:Name="Bd" Padding="11,5" Margin="1" CornerRadius="7" Background="Transparent" SnapsToDevicePixels="True">
+                    <Border x:Name="Bd" Padding="{TemplateBinding Padding}" Margin="1" CornerRadius="7" Background="Transparent" SnapsToDevicePixels="True">
                         <ContentPresenter ContentSource="Header" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
                     <ControlTemplate.Triggers>
@@ -429,6 +430,104 @@
                             <Setter Property="Foreground" Value="{DynamicResource Strassio.Foreground}"/>
                             <Setter Property="FontWeight" Value="SemiBold"/>
                             <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Strassio.CardBackground}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!--
+      Вкладки докера: ровная сетка в три столбца, по шагам работы (2026-11-14, «плагин слишком перемешанный»):
+      Векторы · Линия · Заливка / Текст · Мотивы · Ткань / Правка · Цвет · Шаблон. Вкладки не переносятся
+      неровными рядами и не прыгают при узком докере.
+    -->
+    <Style x:Key="Strassio.SectionTabs" TargetType="TabControl" BasedOn="{StaticResource {x:Type TabControl}}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="TabControl">
+                    <DockPanel>
+                        <Border DockPanel.Dock="Top" Background="{DynamicResource Strassio.ControlBackground}"
+                                CornerRadius="9" Padding="3" SnapsToDevicePixels="True">
+                            <UniformGrid IsItemsHost="True" Columns="3"/>
+                        </Border>
+                        <ContentPresenter ContentSource="SelectedContent" Margin="{TemplateBinding Padding}"/>
+                    </DockPanel>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="TabItem" BasedOn="{StaticResource {x:Type TabItem}}">
+                    <Setter Property="Padding" Value="3,5"/>
+                </Style>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ── Группа внутри вкладки: сворачивается, как блоки в докерах CorelDRAW ── -->
+
+    <!-- Заголовок группы: название слева, стрелка справа (вправо — свёрнута, вниз — открыта). -->
+    <Style x:Key="Strassio.GroupHeader" TargetType="ToggleButton">
+        <Setter Property="Foreground" Value="{DynamicResource Strassio.Foreground}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Bd" Background="Transparent" Padding="4,8" CornerRadius="{StaticResource Strassio.Radius}"
+                            SnapsToDevicePixels="True">
+                        <DockPanel>
+                            <!-- Стрелка рисуется линиями, а не значком шрифта: на любой Windows выглядит одинаково. -->
+                            <Path x:Name="Chevron" DockPanel.Dock="Right" Data="M 0,0 L 4,4 L 0,8" Width="6" Height="9"
+                                  Stretch="None" Stroke="{DynamicResource Strassio.MutedForeground}" StrokeThickness="1.4"
+                                  VerticalAlignment="Center" Margin="8,0,2,0" RenderTransformOrigin="0.35,0.5">
+                                <Path.RenderTransform>
+                                    <RotateTransform Angle="0"/>
+                                </Path.RenderTransform>
+                            </Path>
+                            <TextBlock Text="{Binding Content, RelativeSource={RelativeSource TemplatedParent}}"
+                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                <Setter.Value>
+                                    <RotateTransform Angle="90"/>
+                                </Setter.Value>
+                            </Setter>
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource Strassio.ControlBackground}"/>
+                            <Setter TargetName="Chevron" Property="Stroke" Value="{DynamicResource Strassio.Accent}"/>
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Chevron" Property="Stroke" Value="{DynamicResource Strassio.Accent}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Группа: тонкая линия сверху, под заголовком — содержимое, пока группа открыта. -->
+    <Style x:Key="Strassio.Group" TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource Strassio.Foreground}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <Border BorderBrush="{DynamicResource Strassio.Separator}" BorderThickness="0,1,0,0" SnapsToDevicePixels="True">
+                        <StackPanel>
+                            <ToggleButton Style="{StaticResource Strassio.GroupHeader}" Content="{TemplateBinding Header}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"/>
+                            <ContentPresenter x:Name="Body" Margin="0,2,0,12" Visibility="Collapsed"/>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="Body" Property="Visibility" Value="Visible"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

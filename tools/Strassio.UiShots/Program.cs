@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -50,12 +51,17 @@ namespace Strassio.UiShots
                     string theme = dark ? "-dark" : string.Empty;
                     SetTheme(dark);
 
-                    SnapDocker(outDir, "docker-line" + theme, DockerLayout.Vertical, fillTab: false, 300, 900);
-                    SnapDocker(outDir, "docker-fill" + theme, DockerLayout.Vertical, fillTab: true, 300, 900);
-                    SnapDocker(outDir, "docker-horizontal" + theme, DockerLayout.Horizontal, fillTab: true, 960, 420);
-                    SnapDocker(outDir, "docker-edit" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 2);
-                    SnapDocker(outDir, "docker-color" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 3);
-                    SnapDocker(outDir, "docker-vector" + theme, DockerLayout.Vertical, fillTab: false, 300, 900, tab: 4);
+                    // Каждая вкладка, как её видят при первом открытии (группы — по умолчанию), и она же со всеми
+                    // открытыми группами — чтобы было видно всё, что в ней есть.
+                    for (int i = 0; i < DockerTabs.Length; i++)
+                    {
+                        string tab = DockerTabs[i];
+                        string shot = "docker-" + (i + 1) + "-" + tab.Replace("Tab", string.Empty).ToLowerInvariant();
+                        SnapDocker(outDir, shot + theme, DockerLayout.Vertical, 300, 900, tab);
+                        SnapDocker(outDir, shot + "-open" + theme, DockerLayout.Vertical, 300, 0, tab, allOpen: true);
+                    }
+
+                    SnapDocker(outDir, "docker-horizontal" + theme, DockerLayout.Horizontal, 960, 420, "FillTab");
                     SnapWindow(outDir, "stones" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6", false, SampleCatalog(), null));
                     SnapWindow(outDir, "catalog-drills" + theme, Make("Strassio.Corel.StonesWindow", null, "ss6", true, SampleCatalog(), null));
                     SnapWindow(outDir, "settings" + theme, Make("Strassio.Corel.SettingsWindow", new object?[] { null }));
@@ -157,30 +163,57 @@ namespace Strassio.UiShots
             return config;
         }
 
+        /// <summary>Вкладки докера по порядку (сетка 3×3, Docker.xaml).</summary>
+        private static readonly string[] DockerTabs =
+        {
+            "VectorTab", "LineTab", "FillTab", "TextTab", "MotifTab", "FabricTab", "EditTab", "ColorTab", "OutputTab",
+        };
+
+        /// <summary>Снимки — вдвое крупнее экрана, чтобы их было удобно смотреть на телефоне.</summary>
+        private const double Scale = 2;
+
         private static Window Make(string typeName, params object?[] args) =>
             (Window)Activator.CreateInstance(Addon.GetType(typeName), args);
 
-        private static void SnapDocker(string outDir, string name, DockerLayout layout, bool fillTab, int width, int height, int tab = -1)
+        /// <summary>
+        /// Докер на вкладке <paramref name="tab"/>. <paramref name="height"/> 0 — окно по высоте содержимого
+        /// (для снимка со всеми открытыми группами).
+        /// </summary>
+        private static void SnapDocker(string outDir, string name, DockerLayout layout, int width, int height, string tab, bool allOpen = false)
         {
             Settings.Layout = layout;
-            Settings.LastMethod = string.Empty; // иначе докер сам откроет метод с прошлого снимка
+            Settings.LastMethod = string.Empty; // иначе докер сам откроет метод и вкладку с прошлого снимка
+            Settings.LastTab = string.Empty;
+            Settings.OpenGroups = null;         // группы — как в Docker.xaml по умолчанию
             var docker = new Strassio.Corel.Docker(null);
-            if (fillTab)
+            ((TabControl)docker.FindName("MethodTabs")).SelectedItem = docker.FindName(tab);
+            if (tab == "FillTab")
             {
-                ((TabControl)docker.FindName("MethodTabs")).SelectedIndex = 1;
                 ((ComboBox)docker.FindName("MethodCombo")).SelectedIndex = 3;
             }
 
-            if (tab >= 0)
+            if (allOpen)
             {
-                ((TabControl)docker.FindName("MethodTabs")).SelectedIndex = tab;
+                foreach (Expander group in Descendants(docker).OfType<Expander>())
+                {
+                    group.IsExpanded = true;
+                }
             }
 
             var window = new Window
             {
-                Content = docker, Width = width, Height = height, Left = -5000, Top = 0,
+                Content = docker, Width = width, Left = -5000, Top = 0,
                 ShowInTaskbar = false, WindowStyle = WindowStyle.None,
             };
+            if (height > 0)
+            {
+                window.Height = height;
+            }
+            else
+            {
+                window.SizeToContent = SizeToContent.Height;
+            }
+
             window.Show();
             Save(outDir, name, docker, docker.ActualWidth, docker.ActualHeight, null);
             window.Close();
@@ -205,7 +238,8 @@ namespace Strassio.UiShots
             element.UpdateLayout();
             element.Dispatcher.Invoke(() => { }, DispatcherPriority.ApplicationIdle);
 
-            var bitmap = new RenderTargetBitmap((int)Math.Ceiling(width), (int)Math.Ceiling(height), 96, 96, PixelFormats.Pbgra32);
+            var bitmap = new RenderTargetBitmap(
+                (int)Math.Ceiling(width * Scale), (int)Math.Ceiling(height * Scale), 96 * Scale, 96 * Scale, PixelFormats.Pbgra32);
             var visual = new DrawingVisual();
             using (DrawingContext dc = visual.RenderOpen())
             {
@@ -224,6 +258,22 @@ namespace Strassio.UiShots
             encoder.Frames.Add(BitmapFrame.Create(bitmap));
             using FileStream file = File.Create(Path.Combine(outDir, name + ".png"));
             encoder.Save(file);
+        }
+
+        /// <summary>Все элементы внутри, включая скрытые (логическое дерево не зависит от видимости).</summary>
+        private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
+        {
+            foreach (object child in LogicalTreeHelper.GetChildren(root))
+            {
+                if (child is DependencyObject node)
+                {
+                    yield return node;
+                    foreach (DependencyObject inner in Descendants(node))
+                    {
+                        yield return inner;
+                    }
+                }
+            }
         }
 
         private static string FindRepoRoot()

@@ -82,6 +82,31 @@ public class SettingsStoreTests : IDisposable
     }
 
     [Fact]
+    public void DockerTabAndGroups_SaveThenLoad()
+    {
+        var store = new SettingsStore(dir);
+        store.SaveSettings(new PluginSettings { LastTab = "FabricTab", OpenGroups = new List<string> { "FabricRepeatGroup", "EditGapsGroup" } });
+
+        PluginSettings back = new SettingsStore(dir).LoadSettings();
+
+        Assert.Equal("FabricTab", back.LastTab);
+        Assert.Equal(new[] { "FabricRepeatGroup", "EditGapsGroup" }, back.OpenGroups);
+    }
+
+    [Fact]
+    public void OldFile_HasNoOpenGroups_SoDockerUsesItsDefaults()
+    {
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "settings.json"), "{\"language\":\"ru\",\"lastMethod\":\"f3\"}");
+
+        PluginSettings s = new SettingsStore(dir).LoadSettings();
+
+        Assert.Null(s.OpenGroups);         // группы ещё не трогали — открыты те, что открыты в докере по умолчанию
+        Assert.Equal(string.Empty, s.LastTab);
+        Assert.Equal("f3", s.LastMethod);
+    }
+
+    [Fact]
     public void DesignSwitches_SaveThenLoad()
     {
         var store = new SettingsStore(dir);

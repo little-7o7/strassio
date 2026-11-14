@@ -80,6 +80,17 @@ namespace Strassio.Core.Settings
         [DataMember(Name = "lastMethod")]
         public string LastMethod { get; set; } = string.Empty;
 
+        /// <summary>Вкладка докера, на которой работали в прошлый раз ("FabricTab"…); пусто — по последнему методу.</summary>
+        [DataMember(Name = "lastTab")]
+        public string LastTab { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Открытые группы во вкладках докера (имена групп). null — группы ещё не открывали и не закрывали:
+        /// открыты те, что открыты в докере по умолчанию.
+        /// </summary>
+        [DataMember(Name = "openGroups")]
+        public List<string>? OpenGroups { get; set; }
+
         /// <summary>Живой предпросмотр: картинка в докере пересчитывается сама при каждом изменении (раздел 5, [NEW]).</summary>
         [DataMember(Name = "livePreview")]
         public bool LivePreview { get; set; }
@@ -149,6 +160,8 @@ namespace Strassio.Core.Settings
             CheckUpdates = true;
             Compact = false;
             LastMethod = string.Empty;
+            LastTab = string.Empty;
+            OpenGroups = null;
             LivePreview = false;
             AvoidExisting = true;
             ColorFromShape = false;

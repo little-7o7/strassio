@@ -123,6 +123,26 @@ jobs:
           path: ${{ steps.hash.outputs.exe }}
           retention-days: 30
 
+      # Снимки докера и окон без CorelDRAW (tools/Strassio.UiShots → out/ui) — только при запуске вручную и не
+      # для выпуска: так автор видит новый вид докера до проверки в CorelDRAW. Скачать: Artifacts → ui-shots.
+      - name: Снимки окон
+        if: github.event_name == 'workflow_dispatch' && steps.version.outputs.release != 'true'
+        shell: pwsh
+        run: |
+          dotnet build tools/Strassio.UiShots -c Release --nologo
+          if ($LASTEXITCODE -ne 0) { throw 'UiShots не собрался' }
+          $exe = Get-ChildItem tools/Strassio.UiShots/bin/Release -Recurse -Filter Strassio.UiShots.exe | Select-Object -First 1
+          $log = Join-Path $env:RUNNER_TEMP 'uishots.txt'
+          $p = Start-Process $exe.FullName -Wait -PassThru -RedirectStandardError $log -RedirectStandardOutput "$log.out"
+          Get-Content "$log.out", $log -ErrorAction SilentlyContinue
+          if ($p.ExitCode -ne 0) { throw "Снимки не получились (код $($p.ExitCode))" }
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'workflow_dispatch' && steps.version.outputs.release != 'true'
+        with:
+          name: ui-shots
+          path: out/ui/*.png
+          retention-days: 14
+
       - name: Выпуск на GitHub
         if: steps.version.outputs.release == 'true'
         shell: pwsh

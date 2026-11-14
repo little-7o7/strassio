@@ -79,495 +79,579 @@
           </StackPanel>
 
           <StackPanel x:Name="MethodSection">
-            <!-- Метод -->
-            <TabControl x:Name="MethodTabs" SelectionChanged="MethodTabs_SelectionChanged">
-                <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}"/>
-                <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}"/>
-                <TabItem x:Name="TextTab" Header="{Binding [docker.tab.text]}"/>
-                <TabItem x:Name="MotifTab" Header="{Binding [docker.tab.motif]}"/>
-                <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}"/>
-                <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}"/>
-                <TabItem x:Name="VectorTab" Header="{Binding [docker.tab.vector]}"/>
+            <!--
+              Вкладки — сеткой 3×3 по шагам работы (2026-11-14, «плагин слишком перемешанный»):
+              подготовить линии и поставить стразы → надписи, мотивы, ткань → правка, цвет, шаблон для производства.
+              Внутри длинных вкладок — сворачиваемые группы (Docker.Groups.cs): докер помнит, какие открыты.
+            -->
+            <TabControl x:Name="MethodTabs" Style="{StaticResource Strassio.SectionTabs}" SelectionChanged="MethodTabs_SelectionChanged">
+                <TabItem x:Name="VectorTab" Header="{Binding [docker.tab.vector]}" ToolTip="{Binding [docker.tab.vector.tooltip]}"/>
+                <TabItem x:Name="LineTab" Header="{Binding [docker.tab.line]}" ToolTip="{Binding [docker.tab.line.tooltip]}" IsSelected="True"/>
+                <TabItem x:Name="FillTab" Header="{Binding [docker.tab.fill]}" ToolTip="{Binding [docker.tab.fill.tooltip]}"/>
+                <TabItem x:Name="TextTab" Header="{Binding [docker.tab.text]}" ToolTip="{Binding [docker.tab.text.tooltip]}"/>
+                <TabItem x:Name="MotifTab" Header="{Binding [docker.tab.motif]}" ToolTip="{Binding [docker.tab.motif.tooltip]}"/>
+                <TabItem x:Name="FabricTab" Header="{Binding [docker.tab.fabric]}" ToolTip="{Binding [docker.tab.fabric.tooltip]}"/>
+                <TabItem x:Name="EditTab" Header="{Binding [docker.tab.edit]}" ToolTip="{Binding [docker.tab.edit.tooltip]}"/>
+                <TabItem x:Name="ColorTab" Header="{Binding [docker.tab.color]}" ToolTip="{Binding [docker.tab.color.tooltip]}"/>
+                <TabItem x:Name="OutputTab" Header="{Binding [docker.tab.output]}" ToolTip="{Binding [docker.tab.output.tooltip]}"/>
             </TabControl>
 
-            <!-- «Текст» (docs/SPEC.md, раздел 10.1): надпись стразами одной кнопкой — Docker.Text.cs -->
-            <StackPanel x:Name="TextPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [text.title]}" Style="{StaticResource Strassio.Section}"/>
-                <TextBlock Text="{Binding [text.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
-                <ComboBox x:Name="TextModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
-                          SelectionChanged="TextModeCombo_SelectionChanged" ToolTip="{Binding [text.mode.tooltip]}"/>
-                <TextBlock x:Name="TextModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid x:Name="TextThinRow" Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding [param.thinSize]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [param.thinSize.tooltip]}"/>
-                    <ContentControl x:Name="TextThinHost" Grid.Column="1"/>
-                </Grid>
-                <Button Content="{Binding [text.check]}" Click="TextCheck_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [text.check.tooltip]}"/>
-                <Button Content="{Binding [text.make]}" Click="TextMake_Click" Margin="0,0,0,8"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.make.tooltip]}"/>
-                <TextBlock Text="{Binding [text.note]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+            <!-- «Векторы» (docs/SPEC.md, раздел 10): подготовка линий до страз — Docker.Vector.cs -->
+            <StackPanel x:Name="VectorPanel" Visibility="Collapsed">
+                <Expander x:Name="VecContourGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.vecContour]}" IsExpanded="True">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [vec.offset]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.offsetOut]}" Click="OffsetOut_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [vec.offsetIn]}" Click="OffsetIn_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
+                            <TextBox x:Name="OffsetBox" Grid.Column="4" ToolTip="{Binding [vec.distance.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.parallel]}" Click="Parallel_Click" ToolTip="{Binding [vec.parallel.tooltip]}"/>
+                            <TextBox x:Name="ParallelCountBox" Grid.Column="2" Text="3" ToolTip="{Binding [vec.count.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <CheckBox x:Name="ParallelBothBox" Content="{Binding [vec.bothSides]}" IsChecked="True" VerticalAlignment="Center"/>
+                            <TextBox x:Name="ParallelStepBox" Grid.Column="2" ToolTip="{Binding [vec.step.tooltip]}"/>
+                        </Grid>
+                        <CheckBox x:Name="SharpCornersBox" Content="{Binding [vec.sharp]}" ToolTip="{Binding [vec.sharp.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
-                <!-- Монограмма: 1–3 буквы в рамке — Docker.Monogram.cs -->
-                <TextBlock Text="{Binding [text.monogram.title]}" Style="{StaticResource Strassio.Section}"/>
-                <TextBlock Text="{Binding [text.monogram.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="6"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="6"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="6"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <TextBlock Text="{Binding [text.monogram.letters.label]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
-                    <TextBox x:Name="MonogramLettersBox" Grid.Column="1" MaxLength="3"
-                             ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
-                    <TextBlock Grid.Row="2" Text="{Binding [text.monogram.font]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [text.monogram.font.tooltip]}"/>
-                    <ComboBox x:Name="MonogramFontCombo" Grid.Row="2" Grid.Column="1" IsTextSearchEnabled="True"
-                              ToolTip="{Binding [text.monogram.font.tooltip]}"/>
-                    <TextBlock Grid.Row="4" Text="{Binding [text.monogram.frame]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
-                    <ComboBox x:Name="MonogramFrameCombo" Grid.Row="4" Grid.Column="1" DisplayMemberPath="Text"
-                              ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
-                    <TextBlock Grid.Row="6" Text="{Binding [text.monogram.height]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [text.monogram.height.tooltip]}"/>
-                    <TextBox x:Name="MonogramHeightBox" Grid.Row="6" Grid.Column="1" TextChanged="MonogramHeightBox_TextChanged"
-                             ToolTip="{Binding [text.monogram.height.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [text.monogram.make]}" Click="Monogram_Click" Margin="0,0,0,8"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.monogram.make.tooltip]}"/>
+                <Expander x:Name="VecEditGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.vecEdit]}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.split]}" Click="Split_Click" ToolTip="{Binding [vec.split.tooltip]}"/>
+                            <TextBox x:Name="SplitBox" Grid.Column="2" Text="2" ToolTip="{Binding [vec.parts.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.join]}" Click="Join_Click" ToolTip="{Binding [vec.join.tooltip]}"/>
+                            <TextBox x:Name="JoinToleranceBox" Grid.Column="2" ToolTip="{Binding [vec.tolerance.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.close]}" Click="Close_Click" ToolTip="{Binding [vec.close.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [vec.gaps]}" Click="Gaps_Click" ToolTip="{Binding [vec.gaps.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.reverse]}" Click="Reverse_Click" ToolTip="{Binding [vec.reverse.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [vec.start]}" Click="ShowStart_Click" ToolTip="{Binding [vec.start.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [vec.smooth]}" Click="Smooth_Click" ToolTip="{Binding [vec.smooth.tooltip]}"/>
+                            <TextBox x:Name="SmoothBox" Grid.Column="2" ToolTip="{Binding [vec.smoothTolerance.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [vec.centerline]}" Click="Centerline_Click" ToolTip="{Binding [vec.centerline.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
+
+                <Expander x:Name="VecCheckGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [vec.checkTitle]}">
+                    <StackPanel>
+                        <Button Content="{Binding [vec.check]}" Click="Check_Click" ToolTip="{Binding [vec.check.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
+                <TextBlock Text="{Binding [vec.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,8"/>
             </StackPanel>
 
-            <!-- «Мотивы» (docs/SPEC.md, раздел 9): библиотека, по линии, рамкой, по кругу — Docker.Motifs.cs -->
+            <!-- «Текст» (docs/SPEC.md, разделы 10.1 и 10.2): надпись стразами и монограмма — Docker.Text.cs, Docker.Monogram.cs -->
+            <StackPanel x:Name="TextPanel" Visibility="Collapsed">
+                <Expander x:Name="TextLetteringGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [text.title]}" IsExpanded="True">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [text.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                        <ComboBox x:Name="TextModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                                  SelectionChanged="TextModeCombo_SelectionChanged" ToolTip="{Binding [text.mode.tooltip]}"/>
+                        <TextBlock x:Name="TextModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid x:Name="TextThinRow" Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding [param.thinSize]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [param.thinSize.tooltip]}"/>
+                            <ContentControl x:Name="TextThinHost" Grid.Column="1"/>
+                        </Grid>
+                        <Button Content="{Binding [text.check]}" Click="TextCheck_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [text.check.tooltip]}"/>
+                        <Button Content="{Binding [text.make]}" Click="TextMake_Click" Margin="0,0,0,8"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.make.tooltip]}"/>
+                        <TextBlock Text="{Binding [text.note]}" Style="{StaticResource Strassio.Muted}"/>
+                    </StackPanel>
+                </Expander>
+
+                <Expander x:Name="TextMonogramGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [text.monogram.title]}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [text.monogram.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="6"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="{Binding [text.monogram.letters.label]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
+                            <TextBox x:Name="MonogramLettersBox" Grid.Column="1" MaxLength="3"
+                                     ToolTip="{Binding [text.monogram.letters.tooltip]}"/>
+                            <TextBlock Grid.Row="2" Text="{Binding [text.monogram.font]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [text.monogram.font.tooltip]}"/>
+                            <ComboBox x:Name="MonogramFontCombo" Grid.Row="2" Grid.Column="1" IsTextSearchEnabled="True"
+                                      ToolTip="{Binding [text.monogram.font.tooltip]}"/>
+                            <TextBlock Grid.Row="4" Text="{Binding [text.monogram.frame]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
+                            <ComboBox x:Name="MonogramFrameCombo" Grid.Row="4" Grid.Column="1" DisplayMemberPath="Text"
+                                      ToolTip="{Binding [text.monogram.frame.tooltip]}"/>
+                            <TextBlock Grid.Row="6" Text="{Binding [text.monogram.height]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [text.monogram.height.tooltip]}"/>
+                            <TextBox x:Name="MonogramHeightBox" Grid.Row="6" Grid.Column="1" TextChanged="MonogramHeightBox_TextChanged"
+                                     ToolTip="{Binding [text.monogram.height.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [text.monogram.make]}" Click="Monogram_Click"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [text.monogram.make.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
+
+            <!-- «Мотивы» (docs/SPEC.md, разделы 9 и 9.2): библиотека, по линии, рамкой, по кругу — Docker.Motifs.cs, Docker.Starter.cs -->
             <StackPanel x:Name="MotifPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [motif.title]}" Style="{StaticResource Strassio.Section}"/>
-                <TextBlock Text="{Binding [motif.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="MotifCombo" DisplayMemberPath="Text" ToolTip="{Binding [motif.list.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [motif.delete]}" Click="MotifDelete_Click" Padding="10,4"
-                            ToolTip="{Binding [motif.delete.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" ToolTip="{Binding [motif.save.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [motif.folder]}" Click="MotifFolder_Click" Padding="10,4"
-                            ToolTip="{Binding [motif.folder.tooltip]}"/>
-                </Grid>
-                <!-- Готовые мотивы в комплекте и одна копия в центр страницы — Docker.Starter.cs -->
-                <Grid Margin="0,-8,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [motif.drop]}" Click="MotifDrop_Click" ToolTip="{Binding [motif.drop.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [motif.starter.add]}" Click="StarterAdd_Click"
-                            ToolTip="{Binding [motif.starter.add.tooltip]}"/>
-                </Grid>
+                <Expander x:Name="MotifLibraryGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.motifLibrary]}" IsExpanded="True">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox x:Name="MotifCombo" DisplayMemberPath="Text" ToolTip="{Binding [motif.list.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [motif.delete]}" Click="MotifDelete_Click" Padding="10,4"
+                                    ToolTip="{Binding [motif.delete.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" ToolTip="{Binding [motif.save.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [motif.folder]}" Click="MotifFolder_Click" Padding="10,4"
+                                    ToolTip="{Binding [motif.folder.tooltip]}"/>
+                        </Grid>
+                        <!-- Готовые мотивы в комплекте и одна копия в центр страницы — Docker.Starter.cs -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [motif.drop]}" Click="MotifDrop_Click" ToolTip="{Binding [motif.drop.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [motif.starter.add]}" Click="StarterAdd_Click"
+                                    ToolTip="{Binding [motif.starter.add.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
 
-                <TextBlock Text="{Binding [motif.layout]}" Style="{StaticResource Strassio.Section}"/>
-                <ComboBox x:Name="MotifModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
-                          SelectionChanged="MotifModeCombo_SelectionChanged" ToolTip="{Binding [motif.mode.tooltip]}"/>
-                <TextBlock x:Name="MotifModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="MotifSecondCaption" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.second.tooltip]}"/>
-                    <ComboBox x:Name="MotifSecondCombo" Grid.Column="1" DisplayMemberPath="Text"
-                              ToolTip="{Binding [motif.second.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding [motif.count]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.count.tooltip]}"/>
-                    <TextBox x:Name="MotifCountBox" Grid.Column="1" ToolTip="{Binding [motif.count.tooltip]}"/>
-                    <TextBlock Grid.Column="3" Text="{Binding [motif.spacing]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.spacing.tooltip]}"/>
-                    <TextBox x:Name="MotifSpacingBox" Grid.Column="4" TextChanged="MotifSpacingBox_TextChanged"
-                             ToolTip="{Binding [motif.spacing.tooltip]}"/>
-                </Grid>
-                <CheckBox x:Name="MotifRotateBox" Content="{Binding [motif.rotate]}" IsChecked="True" Margin="0,0,0,4"
-                          ToolTip="{Binding [motif.rotate.tooltip]}"/>
-                <CheckBox x:Name="MotifFlipBox" Content="{Binding [motif.flip]}" Margin="0,0,0,6"
-                          ToolTip="{Binding [motif.flip.tooltip]}"/>
-                <Button Content="{Binding [motif.place]}" Click="MotifPlace_Click" Margin="0,0,0,14"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.place.tooltip]}"/>
+                <Expander x:Name="MotifLayoutGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [motif.layout]}" IsExpanded="True">
+                    <StackPanel>
+                        <ComboBox x:Name="MotifModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                                  SelectionChanged="MotifModeCombo_SelectionChanged" ToolTip="{Binding [motif.mode.tooltip]}"/>
+                        <TextBlock x:Name="MotifModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="MotifSecondCaption" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.second.tooltip]}"/>
+                            <ComboBox x:Name="MotifSecondCombo" Grid.Column="1" DisplayMemberPath="Text"
+                                      ToolTip="{Binding [motif.second.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding [motif.count]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.count.tooltip]}"/>
+                            <TextBox x:Name="MotifCountBox" Grid.Column="1" ToolTip="{Binding [motif.count.tooltip]}"/>
+                            <TextBlock Grid.Column="3" Text="{Binding [motif.spacing]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.spacing.tooltip]}"/>
+                            <TextBox x:Name="MotifSpacingBox" Grid.Column="4" TextChanged="MotifSpacingBox_TextChanged"
+                                     ToolTip="{Binding [motif.spacing.tooltip]}"/>
+                        </Grid>
+                        <CheckBox x:Name="MotifRotateBox" Content="{Binding [motif.rotate]}" IsChecked="True" Margin="0,0,0,4"
+                                  ToolTip="{Binding [motif.rotate.tooltip]}"/>
+                        <CheckBox x:Name="MotifFlipBox" Content="{Binding [motif.flip]}" Margin="0,0,0,8"
+                                  ToolTip="{Binding [motif.flip.tooltip]}"/>
+                        <Button Content="{Binding [motif.place]}" Click="MotifPlace_Click"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.place.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
-                <TextBlock Text="{Binding [motif.around]}" Style="{StaticResource Strassio.Section}"/>
-                <TextBlock Text="{Binding [motif.around.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [motif.around.make]}" Click="MotifAround_Click" ToolTip="{Binding [motif.around.make.tooltip]}"/>
-                    <TextBox x:Name="MotifAroundBox" Grid.Column="2" ToolTip="{Binding [motif.around.count.tooltip]}"/>
-                </Grid>
+                <Expander x:Name="MotifAroundGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [motif.around]}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.around.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [motif.around.make]}" Click="MotifAround_Click" ToolTip="{Binding [motif.around.make.tooltip]}"/>
+                            <TextBox x:Name="MotifAroundBox" Grid.Column="2" ToolTip="{Binding [motif.around.count.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+            </StackPanel>
 
-                <TextBlock Text="{Binding [motif.splash]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
-                <TextBlock Text="{Binding [motif.splash.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [motif.splash.make]}" Click="Splash_Click" ToolTip="{Binding [motif.splash.make.tooltip]}"/>
-                    <TextBox x:Name="SplashWidthBox" Grid.Column="2" TextChanged="SplashWidthBox_TextChanged"
-                             ToolTip="{Binding [motif.splash.width.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [motif.streaks.make]}" Click="StreaksAround_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [motif.streaks.make.tooltip]}"/>
+            <!-- «Ткань» (docs/SPEC.md, раздел 9.1): раппорт, лист без шва, камни на метр, фон вокруг мотива, обрезка — Docker.Repeat.cs, Docker.Motifs.cs -->
+            <StackPanel x:Name="FabricPanel" Visibility="Collapsed">
+                <Expander x:Name="FabricRepeatGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [motif.repeat]}" IsExpanded="True">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.repeat.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <ComboBox x:Name="RepeatShiftCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
+                                  ToolTip="{Binding [motif.repeat.shift.tooltip]}"/>
+                        <ComboBox x:Name="RepeatAlternateCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
+                                  ToolTip="{Binding [motif.repeat.alternate.tooltip]}"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding [motif.repeat.columns]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.repeat.columns.tooltip]}"/>
+                            <TextBox x:Name="RepeatColumnsBox" Grid.Column="1" ToolTip="{Binding [motif.repeat.columns.tooltip]}"/>
+                            <TextBlock Grid.Column="3" Text="{Binding [motif.repeat.rows]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.repeat.rows.tooltip]}"/>
+                            <TextBox x:Name="RepeatRowsBox" Grid.Column="4" ToolTip="{Binding [motif.repeat.rows.tooltip]}"/>
+                        </Grid>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding [motif.repeat.stepX]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
+                            <TextBox x:Name="RepeatStepXBox" Grid.Column="1" ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
+                            <TextBlock Grid.Column="3" Text="{Binding [motif.repeat.stepY]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
+                            <TextBox x:Name="RepeatStepYBox" Grid.Column="4" ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [motif.repeat.make]}" Click="Repeat_Click"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.repeat.make.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
-                <!-- Раппорт: повтор плитки по ткани без наложений на стыках — Docker.Repeat.cs -->
-                <TextBlock Text="{Binding [motif.repeat]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
-                <TextBlock Text="{Binding [motif.repeat.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <ComboBox x:Name="RepeatShiftCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
-                          ToolTip="{Binding [motif.repeat.shift.tooltip]}"/>
-                <ComboBox x:Name="RepeatAlternateCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
-                          ToolTip="{Binding [motif.repeat.alternate.tooltip]}"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding [motif.repeat.columns]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.repeat.columns.tooltip]}"/>
-                    <TextBox x:Name="RepeatColumnsBox" Grid.Column="1" ToolTip="{Binding [motif.repeat.columns.tooltip]}"/>
-                    <TextBlock Grid.Column="3" Text="{Binding [motif.repeat.rows]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.repeat.rows.tooltip]}"/>
-                    <TextBox x:Name="RepeatRowsBox" Grid.Column="4" ToolTip="{Binding [motif.repeat.rows.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding [motif.repeat.stepX]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
-                    <TextBox x:Name="RepeatStepXBox" Grid.Column="1" ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
-                    <TextBlock Grid.Column="3" Text="{Binding [motif.repeat.stepY]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
-                    <TextBox x:Name="RepeatStepYBox" Grid.Column="4" ToolTip="{Binding [motif.repeat.step.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [motif.repeat.make]}" Click="Repeat_Click" Margin="0,0,0,8"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [motif.repeat.make.tooltip]}"/>
+                <!-- Лист без шва и камней на метр — та же плитка и те же настройки повтора, что у раппорта -->
+                <Expander x:Name="FabricSheetGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.fabricSheet]}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.sheet.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding [motif.sheet.width]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                            <TextBox x:Name="SheetWidthBox" Grid.Column="1" TextChanged="SheetWidthBox_TextChanged"
+                                     ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                            <TextBlock Grid.Column="3" Text="{Binding [motif.sheet.height]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                            <TextBox x:Name="SheetHeightBox" Grid.Column="4" TextChanged="SheetHeightBox_TextChanged"
+                                     ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [motif.sheet.make]}" Click="Sheet_Click" Margin="0,0,0,8"
+                                ToolTip="{Binding [motif.sheet.make.tooltip]}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [motif.metre.make]}" Click="PerMetre_Click" ToolTip="{Binding [motif.metre.make.tooltip]}"/>
+                            <TextBlock Grid.Column="2" Text="{Binding [motif.metre.width]}" Style="{StaticResource Strassio.Caption}"
+                                       ToolTip="{Binding [motif.metre.width.tooltip]}"/>
+                            <TextBox x:Name="FabricWidthBox" Grid.Column="3" TextChanged="FabricWidthBox_TextChanged"
+                                     ToolTip="{Binding [motif.metre.width.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
 
-                <!-- Лист без шва и камней на метр — та же плитка и те же настройки повтора — Docker.Repeat.cs -->
-                <TextBlock Text="{Binding [motif.sheet]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
-                <TextBlock Text="{Binding [motif.sheet.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Text="{Binding [motif.sheet.width]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
-                    <TextBox x:Name="SheetWidthBox" Grid.Column="1" TextChanged="SheetWidthBox_TextChanged"
-                             ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
-                    <TextBlock Grid.Column="3" Text="{Binding [motif.sheet.height]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
-                    <TextBox x:Name="SheetHeightBox" Grid.Column="4" TextChanged="SheetHeightBox_TextChanged"
-                             ToolTip="{Binding [motif.sheet.size.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [motif.sheet.make]}" Click="Sheet_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [motif.sheet.make.tooltip]}"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [motif.metre.make]}" Click="PerMetre_Click" ToolTip="{Binding [motif.metre.make.tooltip]}"/>
-                    <TextBlock Grid.Column="2" Text="{Binding [motif.metre.width]}" Style="{StaticResource Strassio.Caption}"
-                               ToolTip="{Binding [motif.metre.width.tooltip]}"/>
-                    <TextBox x:Name="FabricWidthBox" Grid.Column="3" TextChanged="FabricWidthBox_TextChanged"
-                             ToolTip="{Binding [motif.metre.width.tooltip]}"/>
-                </Grid>
+                <!-- Фон вокруг мотива: россыпь (брызги) и штрихи — Docker.Motifs.cs -->
+                <Expander x:Name="FabricAroundGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.fabricAround]}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.splash.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [motif.splash.make]}" Click="Splash_Click" ToolTip="{Binding [motif.splash.make.tooltip]}"/>
+                            <TextBox x:Name="SplashWidthBox" Grid.Column="2" TextChanged="SplashWidthBox_TextChanged"
+                                     ToolTip="{Binding [motif.splash.width.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [motif.streaks.make]}" Click="StreaksAround_Click"
+                                ToolTip="{Binding [motif.streaks.make.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
                 <!-- Обрезать по рамке: стразы за рамкой убираются — Docker.Repeat.cs -->
-                <TextBlock Text="{Binding [motif.trim]}" Style="{StaticResource Strassio.Section}" Margin="0,8,0,0"/>
-                <TextBlock Text="{Binding [motif.trim.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <ComboBox x:Name="TrimModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
-                          ToolTip="{Binding [motif.trim.mode.tooltip]}"/>
-                <Button Content="{Binding [motif.trim.make]}" Click="TrimFrame_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [motif.trim.make.tooltip]}"/>
+                <Expander x:Name="FabricTrimGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [motif.trim]}">
+                    <StackPanel>
+                        <TextBlock Text="{Binding [motif.trim.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <ComboBox x:Name="TrimModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6"
+                                  ToolTip="{Binding [motif.trim.mode.tooltip]}"/>
+                        <Button Content="{Binding [motif.trim.make]}" Click="TrimFrame_Click"
+                                ToolTip="{Binding [motif.trim.make.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
 
-            <!-- «Правка» (docs/SPEC.md, раздел 7): режимы удаления, дубли, закрепление — Docker.Edit.cs -->
+            <!-- «Правка» (docs/SPEC.md, раздел 7): наложения, просветы, симметрия, размер камней — Docker.Edit.cs, Docker.Gaps.cs, Docker.Symmetry.cs -->
             <StackPanel x:Name="EditPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [edit.delete]}" Style="{StaticResource Strassio.Section}"/>
-                <ComboBox x:Name="DeleteModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
-                          SelectionChanged="DeleteModeCombo_SelectionChanged"/>
-                <TextBlock x:Name="DeleteModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <CheckBox x:Name="TouchingBox" Content="{Binding [edit.touching]}" ToolTip="{Binding [edit.touching.tooltip]}"
-                          Margin="0,0,0,6"/>
-                <Button Content="{Binding [edit.apply]}" Click="ApplyDelete_Click" Margin="0,0,0,14"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [edit.apply.tooltip]}"/>
+                <Expander x:Name="EditOverlapGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.editOverlap]}" IsExpanded="True">
+                    <StackPanel>
+                        <ComboBox x:Name="DeleteModeCombo" DisplayMemberPath="Text" Margin="0,0,0,4"
+                                  SelectionChanged="DeleteModeCombo_SelectionChanged"/>
+                        <TextBlock x:Name="DeleteModeHint" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
+                        <CheckBox x:Name="TouchingBox" Content="{Binding [edit.touching]}" ToolTip="{Binding [edit.touching.tooltip]}"
+                                  Margin="0,0,0,8"/>
+                        <Button Content="{Binding [edit.apply]}" Click="ApplyDelete_Click" Margin="0,0,0,6"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [edit.apply.tooltip]}"/>
+                        <Button Content="{Binding [edit.duplicates]}" Click="Duplicates_Click"
+                                ToolTip="{Binding [edit.duplicates.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
-                <TextBlock Text="{Binding [edit.tools]}" Style="{StaticResource Strassio.Section}"/>
-                <Button Content="{Binding [edit.duplicates]}" Click="Duplicates_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.duplicates.tooltip]}"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [edit.lock]}" Click="Lock_Click" ToolTip="{Binding [edit.lock.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [edit.unlock]}" Click="Unlock_Click" ToolTip="{Binding [edit.unlock.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [edit.restoreSize]}" Click="RestoreSize_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.restoreSize.tooltip]}"/>
-                <Button Content="{Binding [edit.fillHoles]}" Click="FillHoles_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.fillHoles.tooltip]}"/>
-                <Button Content="{Binding [edit.showUneven]}" Click="ShowUneven_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.showUneven.tooltip]}"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [edit.evenGaps]}" Click="EvenGaps_Click" ToolTip="{Binding [edit.evenGaps.tooltip]}"/>
-                    <TextBox x:Name="EvenShiftBox" Grid.Column="2" TextChanged="EvenShiftBox_TextChanged" ToolTip="{Binding [edit.evenShift.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-                    <ComboBox x:Name="MirrorSideCombo" DisplayMemberPath="Text" ToolTip="{Binding [edit.mirror.side.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [edit.mirror]}" Click="Mirror_Click" Padding="10,4" ToolTip="{Binding [edit.mirror.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.updateLive.tooltip]}"/>
-                <Button Content="{Binding [edit.resizeLive]}" Click="ResizeLive_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [edit.resizeLive.tooltip]}"/>
-                <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+                <Expander x:Name="EditGapsGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.editGaps]}">
+                    <StackPanel>
+                        <Button Content="{Binding [edit.showUneven]}" Click="ShowUneven_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [edit.showUneven.tooltip]}"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [edit.evenGaps]}" Click="EvenGaps_Click" ToolTip="{Binding [edit.evenGaps.tooltip]}"/>
+                            <TextBox x:Name="EvenShiftBox" Grid.Column="2" TextChanged="EvenShiftBox_TextChanged" ToolTip="{Binding [edit.evenShift.tooltip]}"/>
+                        </Grid>
+                        <Button Content="{Binding [edit.fillHoles]}" Click="FillHoles_Click"
+                                ToolTip="{Binding [edit.fillHoles.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
 
-                <!-- Производство (раздел 11) -->
-                <TextBlock Text="{Binding [prod.title]}" Style="{StaticResource Strassio.Section}"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [prod.bridges]}" Click="CheckBridges_Click" ToolTip="{Binding [prod.bridges.tooltip]}"/>
-                    <TextBox x:Name="BridgeBox" Grid.Column="2" TextChanged="BridgeBox_TextChanged" ToolTip="{Binding [prod.bridgeMin.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [prod.count]}" Click="CountStones_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [prod.count.tooltip]}"/>
-                <Button Content="{Binding [prod.layers]}" Click="LayersBySize_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [prod.layers.tooltip]}"/>
-                <Button Content="{Binding [prod.layersColor]}" Click="LayersBySizeColor_Click" Margin="0,0,0,6"
-                        ToolTip="{Binding [prod.layersColor.tooltip]}"/>
-                <Grid Margin="0,0,0,6">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [prod.label]}" Click="LabelTemplate_Click" ToolTip="{Binding [prod.label.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [prod.labelLayers]}" Click="LabelLayers_Click"
-                            ToolTip="{Binding [prod.labelLayers.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [prod.clean.tooltip]}"/>
-                <!-- Сверление шаблона на станке: G-code (.tap) по свёрлам — Docker.Drill.cs -->
-                <Button Content="{Binding [drill.open]}" Click="DrillExport_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [drill.open.tooltip]}"/>
+                <Expander x:Name="EditMirrorGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.editMirror]}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="6"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <ComboBox x:Name="MirrorSideCombo" DisplayMemberPath="Text" ToolTip="{Binding [edit.mirror.side.tooltip]}"/>
+                        <Button Grid.Column="2" Content="{Binding [edit.mirror]}" Click="Mirror_Click" Padding="10,4" ToolTip="{Binding [edit.mirror.tooltip]}"/>
+                    </Grid>
+                </Expander>
+
+                <Expander x:Name="EditStonesGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.editStones]}">
+                    <StackPanel>
+                        <Button Content="{Binding [edit.resizeLive]}" Click="ResizeLive_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [edit.resizeLive.tooltip]}"/>
+                        <Button Content="{Binding [edit.restoreSize]}" Click="RestoreSize_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [edit.restoreSize.tooltip]}"/>
+                        <Button Content="{Binding [edit.updateLive]}" Click="UpdateLive_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [edit.updateLive.tooltip]}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [edit.lock]}" Click="Lock_Click" ToolTip="{Binding [edit.lock.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [edit.unlock]}" Click="Unlock_Click" ToolTip="{Binding [edit.unlock.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+                <TextBlock Text="{Binding [edit.scope]}" Style="{StaticResource Strassio.Muted}" Margin="0,8,0,8"/>
             </StackPanel>
-
-            <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска и выделение по размеру/цвету — Docker.Edit.cs -->
+            <!-- «Цвет» (docs/SPEC.md, раздел 3.4): перекраска, цвет по рисунку, смешение, выделение — Docker.Edit.cs, Docker.EdgeColor.cs, Docker.Artwork.cs -->
             <StackPanel x:Name="ColorPanel" Visibility="Collapsed">
-                <Button Content="{Binding [color.pipette]}" Click="Pipette_Click" Margin="0,0,0,10"
-                        ToolTip="{Binding [color.pipette.tooltip]}"/>
-                <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
-                        Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
-                <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,10"/>
-
-                <!-- Цвет крайних рядов: кант другим цветом у любой раскладки — Docker.EdgeColor.cs -->
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button x:Name="EdgeRecolorButton" Click="EdgeRecolor_Click" ToolTip="{Binding [color.edge.tooltip]}"/>
-                    <TextBox x:Name="EdgeRowsBox" Grid.Column="2" Text="1" ToolTip="{Binding [color.edge.rows.tooltip]}"/>
-                </Grid>
-                <TextBlock Text="{Binding [color.edge.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+                <Expander x:Name="ColorRecolorGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.colorRecolor]}" IsExpanded="True">
+                    <StackPanel>
+                        <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
+                        <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                        <Button Content="{Binding [color.pipette]}" Click="Pipette_Click" Margin="0,0,0,8"
+                                ToolTip="{Binding [color.pipette.tooltip]}"/>
+                        <!-- Цвет крайних рядов: кант другим цветом у любой раскладки — Docker.EdgeColor.cs -->
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="EdgeRecolorButton" Click="EdgeRecolor_Click" ToolTip="{Binding [color.edge.tooltip]}"/>
+                            <TextBox x:Name="EdgeRowsBox" Grid.Column="2" Text="1" ToolTip="{Binding [color.edge.rows.tooltip]}"/>
+                        </Grid>
+                        <TextBlock Text="{Binding [color.edge.hint]}" Style="{StaticResource Strassio.Muted}"/>
+                    </StackPanel>
+                </Expander>
 
                 <!-- Цвет по рисунку: стразы берут цвета фигур рисунка — Docker.Artwork.cs -->
-                <TextBlock Text="{Binding [color.artwork.title]}" Style="{StaticResource Strassio.Section}"/>
-                <Button Content="{Binding [color.artwork]}" Click="ArtworkRecolor_Click" Margin="0,0,0,4"
-                        ToolTip="{Binding [color.artwork.tooltip]}"/>
-                <TextBlock Text="{Binding [color.artwork.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+                <Expander x:Name="ColorArtworkGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [color.artwork.title]}">
+                    <StackPanel>
+                        <Button Content="{Binding [color.artwork]}" Click="ArtworkRecolor_Click" Margin="0,0,0,4"
+                                ToolTip="{Binding [color.artwork.tooltip]}"/>
+                        <TextBlock Text="{Binding [color.artwork.hint]}" Style="{StaticResource Strassio.Muted}"/>
+                    </StackPanel>
+                </Expander>
 
-                <TextBlock Text="{Binding [color.select]}" Style="{StaticResource Strassio.Section}"/>
-                <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
-                <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
-                <Button x:Name="SelectBothButton" Click="SelectBoth_Click" Margin="0,0,0,6"/>
-                <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
+                <!-- Смешение цветов и омбре (раздел 3.4): 2–3 цвета, доли в процентах или «по очереди» -->
+                <Expander x:Name="ColorMixGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.colorMix]}">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="56"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <ComboBox x:Name="MixColor1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
+                            <TextBox x:Name="MixValue1" Grid.Column="2" Text="70" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                            <ComboBox x:Name="MixColor2" Grid.Row="1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
+                            <TextBox x:Name="MixValue2" Grid.Row="1" Grid.Column="2" Text="30" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                            <ComboBox x:Name="MixColor3" Grid.Row="2" DisplayMemberPath="Name" Margin="0,0,0,6"/>
+                            <TextBox x:Name="MixValue3" Grid.Row="2" Grid.Column="2" Text="0" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
+                        </Grid>
+                        <ComboBox x:Name="MixModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6" ToolTip="{Binding [color.mix.mode.tooltip]}"/>
+                        <Button Content="{Binding [color.mix.apply]}" Click="Mix_Click" Margin="0,0,0,4" ToolTip="{Binding [color.mix.apply.tooltip]}"/>
+                        <TextBlock Text="{Binding [color.mix.hint]}" Style="{StaticResource Strassio.Muted}"/>
+                    </StackPanel>
+                </Expander>
 
-                <!-- Смешение цветов (раздел 3.4): 2–3 цвета, доли в процентах или «по очереди» -->
-                <TextBlock Text="{Binding [color.mix]}" Style="{StaticResource Strassio.Section}"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="56"/>
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-                    <ComboBox x:Name="MixColor1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
-                    <TextBox x:Name="MixValue1" Grid.Column="2" Text="70" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
-                    <ComboBox x:Name="MixColor2" Grid.Row="1" DisplayMemberPath="Name" Margin="0,0,0,6"/>
-                    <TextBox x:Name="MixValue2" Grid.Row="1" Grid.Column="2" Text="30" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
-                    <ComboBox x:Name="MixColor3" Grid.Row="2" DisplayMemberPath="Name" Margin="0,0,0,6"/>
-                    <TextBox x:Name="MixValue3" Grid.Row="2" Grid.Column="2" Text="0" Margin="0,0,0,4" ToolTip="{Binding [color.mix.value.tooltip]}"/>
-                </Grid>
-                <ComboBox x:Name="MixModeCombo" DisplayMemberPath="Text" Margin="0,0,0,6" ToolTip="{Binding [color.mix.mode.tooltip]}"/>
-                <Button Content="{Binding [color.mix.apply]}" Click="Mix_Click" Margin="0,0,0,4" ToolTip="{Binding [color.mix.apply.tooltip]}"/>
-                <TextBlock Text="{Binding [color.mix.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,14"/>
-
-                <Button Content="{Binding [color.palette]}" Click="Palette_Click" Margin="0,0,0,8"
-                        ToolTip="{Binding [color.palette.tooltip]}"/>
+                <Expander x:Name="ColorSelectGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.colorSelect]}">
+                    <StackPanel>
+                        <Button x:Name="SelectSizeButton" Click="SelectSize_Click" Margin="0,0,0,6"/>
+                        <Button x:Name="SelectColorButton" Click="SelectColor_Click" Margin="0,0,0,6"/>
+                        <Button x:Name="SelectBothButton" Click="SelectBoth_Click" Margin="0,0,0,4"/>
+                        <TextBlock Text="{Binding [color.select.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                        <Button Content="{Binding [color.palette]}" Click="Palette_Click"
+                                ToolTip="{Binding [color.palette.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
 
-            <!-- «Векторы» (docs/SPEC.md, раздел 10): подготовка линий — Docker.Vector.cs -->
-            <StackPanel x:Name="VectorPanel" Visibility="Collapsed">
-                <TextBlock Text="{Binding [vec.lines]}" Style="{StaticResource Strassio.Section}"/>
-                <TextBlock Text="{Binding [vec.offset]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,6"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.offsetOut]}" Click="OffsetOut_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [vec.offsetIn]}" Click="OffsetIn_Click" ToolTip="{Binding [vec.offset.tooltip]}"/>
-                    <TextBox x:Name="OffsetBox" Grid.Column="4" ToolTip="{Binding [vec.distance.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.parallel]}" Click="Parallel_Click" ToolTip="{Binding [vec.parallel.tooltip]}"/>
-                    <TextBox x:Name="ParallelCountBox" Grid.Column="2" Text="3" ToolTip="{Binding [vec.count.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <CheckBox x:Name="ParallelBothBox" Content="{Binding [vec.bothSides]}" IsChecked="True" VerticalAlignment="Center"/>
-                    <TextBox x:Name="ParallelStepBox" Grid.Column="2" ToolTip="{Binding [vec.step.tooltip]}"/>
-                </Grid>
-                <CheckBox x:Name="SharpCornersBox" Content="{Binding [vec.sharp]}" ToolTip="{Binding [vec.sharp.tooltip]}" Margin="0,0,0,10"/>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.split]}" Click="Split_Click" ToolTip="{Binding [vec.split.tooltip]}"/>
-                    <TextBox x:Name="SplitBox" Grid.Column="2" Text="2" ToolTip="{Binding [vec.parts.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.join]}" Click="Join_Click" ToolTip="{Binding [vec.join.tooltip]}"/>
-                    <TextBox x:Name="JoinToleranceBox" Grid.Column="2" ToolTip="{Binding [vec.tolerance.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.close]}" Click="Close_Click" ToolTip="{Binding [vec.close.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [vec.gaps]}" Click="Gaps_Click" ToolTip="{Binding [vec.gaps.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="*"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.reverse]}" Click="Reverse_Click" ToolTip="{Binding [vec.reverse.tooltip]}"/>
-                    <Button Grid.Column="2" Content="{Binding [vec.start]}" Click="ShowStart_Click" ToolTip="{Binding [vec.start.tooltip]}"/>
-                </Grid>
-                <Grid Margin="0,0,0,8">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="6"/>
-                        <ColumnDefinition Width="60"/>
-                    </Grid.ColumnDefinitions>
-                    <Button Content="{Binding [vec.smooth]}" Click="Smooth_Click" ToolTip="{Binding [vec.smooth.tooltip]}"/>
-                    <TextBox x:Name="SmoothBox" Grid.Column="2" ToolTip="{Binding [vec.smoothTolerance.tooltip]}"/>
-                </Grid>
-                <Button Content="{Binding [vec.centerline]}" Click="Centerline_Click" Margin="0,0,0,14"
-                        ToolTip="{Binding [vec.centerline.tooltip]}"/>
+            <!-- «Шаблон» (docs/SPEC.md, раздел 11): подсчёт, проверка, слои, подписи, резка и сверление — Docker.Production.cs, Docker.Labels.cs, Docker.Drill.cs -->
+            <StackPanel x:Name="OutputPanel" Visibility="Collapsed">
+                <Expander x:Name="OutputCountGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.outputCount]}" IsExpanded="True">
+                    <StackPanel>
+                        <Button Content="{Binding [prod.count]}" Click="CountStones_Click" Margin="0,0,0,8"
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [prod.count.tooltip]}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="60"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [prod.bridges]}" Click="CheckBridges_Click" ToolTip="{Binding [prod.bridges.tooltip]}"/>
+                            <TextBox x:Name="BridgeBox" Grid.Column="2" TextChanged="BridgeBox_TextChanged" ToolTip="{Binding [prod.bridgeMin.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
 
-                <TextBlock Text="{Binding [vec.checkTitle]}" Style="{StaticResource Strassio.Section}"/>
-                <Button Content="{Binding [vec.check]}" Click="Check_Click" Margin="0,0,0,6" ToolTip="{Binding [vec.check.tooltip]}"/>
-                <TextBlock Text="{Binding [vec.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
+                <Expander x:Name="OutputLayersGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.outputLayers]}" IsExpanded="True">
+                    <StackPanel>
+                        <Button Content="{Binding [prod.layers]}" Click="LayersBySize_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [prod.layers.tooltip]}"/>
+                        <Button Content="{Binding [prod.layersColor]}" Click="LayersBySizeColor_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [prod.layersColor.tooltip]}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="6"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button Content="{Binding [prod.label]}" Click="LabelTemplate_Click" ToolTip="{Binding [prod.label.tooltip]}"/>
+                            <Button Grid.Column="2" Content="{Binding [prod.labelLayers]}" Click="LabelLayers_Click"
+                                    ToolTip="{Binding [prod.labelLayers.tooltip]}"/>
+                        </Grid>
+                    </StackPanel>
+                </Expander>
+
+                <Expander x:Name="OutputCutGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.outputCut]}" IsExpanded="True">
+                    <StackPanel>
+                        <Button Content="{Binding [prod.clean]}" Click="CleanCircles_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [prod.clean.tooltip]}"/>
+                        <!-- Сверление шаблона на станке: G-code (.tap) по свёрлам — Docker.Drill.cs -->
+                        <Button Content="{Binding [drill.open]}" Click="DrillExport_Click"
+                                ToolTip="{Binding [drill.open.tooltip]}"/>
+                    </StackPanel>
+                </Expander>
             </StackPanel>
 
             <StackPanel x:Name="MethodPanel">

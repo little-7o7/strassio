@@ -92,6 +92,8 @@ namespace Strassio.Corel
             RebuildAll();
             ApplyCompact();
             SelectLastMethod();
+            RestoreGroups();
+            RestoreLastTab();
         }
 
         // Нужен WPF-дизайнеру.
@@ -296,12 +298,13 @@ namespace Strassio.Corel
             if (ReferenceEquals(e.OriginalSource, MethodTabs) && !refreshing)
             {
                 ShowTabPanels();
-                SetStatus(MethodTabs.SelectedItem == EditTab ? "edit.ready" : MethodTabs.SelectedItem == ColorTab ? "color.ready" :
-                    MethodTabs.SelectedItem == VectorTab ? "vec.ready" : MethodTabs.SelectedItem == TextTab ? "text.ready" : MethodTabs.SelectedItem == MotifTab ? "motif.ready" : "status.ready");
+                SetStatus(ReadyKey(MethodTabs.SelectedItem as TabItem));
                 if (IsMethodTab)
                 {
                     RebuildMethods();
                 }
+
+                RememberTab();
             }
         }
 

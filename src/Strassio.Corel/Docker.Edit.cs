@@ -36,7 +36,7 @@ namespace Strassio.Corel
 
         private List<string> KnownSizes => StoneNames.SizesOf(context.Stones).ToList();
 
-        /// <summary>Показывает то, что нужно выбранной вкладке: методы и «Создать» — или панель правки/цвета.</summary>
+        /// <summary>Показывает то, что нужно выбранной вкладке: методы и «Создать» — или панель этой вкладки.</summary>
         private void ShowTabPanels()
         {
             bool edit = MethodTabs.SelectedItem == EditTab;
@@ -44,10 +44,14 @@ namespace Strassio.Corel
             bool vector = MethodTabs.SelectedItem == VectorTab;
             bool text = MethodTabs.SelectedItem == TextTab;
             bool motif = MethodTabs.SelectedItem == MotifTab;
-            bool method = !edit && !color && !vector && !text && !motif;
+            bool fabric = MethodTabs.SelectedItem == FabricTab;
+            bool output = MethodTabs.SelectedItem == OutputTab;
+            bool method = !edit && !color && !vector && !text && !motif && !fabric && !output;
             VectorPanel.Visibility = vector ? Visibility.Visible : Visibility.Collapsed;
             TextPanel.Visibility = text ? Visibility.Visible : Visibility.Collapsed;
             MotifPanel.Visibility = motif ? Visibility.Visible : Visibility.Collapsed;
+            FabricPanel.Visibility = fabric ? Visibility.Visible : Visibility.Collapsed;
+            OutputPanel.Visibility = output ? Visibility.Visible : Visibility.Collapsed;
 
             MethodPanel.Visibility = method ? Visibility.Visible : Visibility.Collapsed;
             CreateRow.Visibility = MethodPanel.Visibility;
