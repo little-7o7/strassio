@@ -79,7 +79,7 @@ namespace Strassio.Corel
 
             string size = (SizeCombo.SelectedItem as SizeOption)?.Size.Name ?? "—";
             string colorName = (ColorList.SelectedItem as ColorOption)?.Name ?? "—";
-            RecolorButton.Content = Loc.Format("color.recolor", colorName);
+            RecolorText.Text = Loc.Format("color.recolor", colorName);
             EdgeRecolorButton.Content = Loc.Format("color.edge", colorName);
             RebuildMirrorSides();
             RebuildTextModes();

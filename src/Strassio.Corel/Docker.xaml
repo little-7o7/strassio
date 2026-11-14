@@ -277,10 +277,13 @@
                             <ComboBox x:Name="MotifCombo" DisplayMemberPath="Text" ToolTip="{Binding [motif.list.tooltip]}"/>
                             <Button Grid.Column="2" Content="{Binding [motif.delete]}" Click="MotifDelete_Click" Padding="10,4"
                                     ToolTip="{Binding [motif.delete.tooltip]}"/>
-                            <!-- Папка с мотивами — значком: длинная подпись не помещалась в узкий докер -->
+                            <!-- Папка с мотивами — значком (нарисован линиями): подпись не помещалась в узкий докер -->
                             <Button Grid.Column="4" Style="{StaticResource Strassio.IconButton}" Click="MotifFolder_Click"
-                                    ToolTip="{Binding [motif.folder.tooltip]}"
-                                    FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE8B7;"/>
+                                    ToolTip="{Binding [motif.folder.tooltip]}">
+                                <Path Data="M 0.5,2.5 L 5,2.5 L 6.5,4 L 13.5,4 L 13.5,12.5 L 0.5,12.5 Z" Width="14" Height="13"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.2" StrokeLineJoin="Round"/>
+                            </Button>
                         </Grid>
                         <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" Margin="0,0,0,6"
                                 ToolTip="{Binding [motif.save.tooltip]}"/>
@@ -532,7 +535,10 @@
                 <Expander x:Name="ColorRecolorGroup" Style="{StaticResource Strassio.Group}" Header="{Binding [docker.group.colorRecolor]}" IsExpanded="True">
                     <StackPanel>
                         <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
-                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
+                                Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}">
+                            <!-- Длинное название цвета не обрезается, а переносится (текст — Docker.Edit.cs) -->
+                            <TextBlock x:Name="RecolorText" TextWrapping="Wrap" TextAlignment="Center"/>
+                        </Button>
                         <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
                         <Button Click="Pipette_Click" Margin="0,0,0,8" ToolTip="{Binding [color.pipette.tooltip]}">
                             <TextBlock Text="{Binding [color.pipette]}" TextWrapping="Wrap" TextAlignment="Center"/>
