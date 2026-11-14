@@ -182,7 +182,9 @@
                             <Button Content="{Binding [vec.smooth]}" Click="Smooth_Click" ToolTip="{Binding [vec.smooth.tooltip]}"/>
                             <TextBox x:Name="SmoothBox" Grid.Column="2" ToolTip="{Binding [vec.smoothTolerance.tooltip]}"/>
                         </Grid>
-                        <Button Content="{Binding [vec.centerline]}" Click="Centerline_Click" ToolTip="{Binding [vec.centerline.tooltip]}"/>
+                        <Button Click="Centerline_Click" ToolTip="{Binding [vec.centerline.tooltip]}">
+                            <TextBlock Text="{Binding [vec.centerline]}" TextWrapping="Wrap" TextAlignment="Center"/>
+                        </Button>
                     </StackPanel>
                 </Expander>
 
@@ -269,32 +271,24 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="6"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="4"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <ComboBox x:Name="MotifCombo" DisplayMemberPath="Text" ToolTip="{Binding [motif.list.tooltip]}"/>
                             <Button Grid.Column="2" Content="{Binding [motif.delete]}" Click="MotifDelete_Click" Padding="10,4"
                                     ToolTip="{Binding [motif.delete.tooltip]}"/>
+                            <!-- Папка с мотивами — значком: длинная подпись не помещалась в узкий докер -->
+                            <Button Grid.Column="4" Style="{StaticResource Strassio.IconButton}" Click="MotifFolder_Click"
+                                    ToolTip="{Binding [motif.folder.tooltip]}"
+                                    FontFamily="Segoe MDL2 Assets, Segoe UI Symbol" Content="&#xE8B7;"/>
                         </Grid>
-                        <Grid Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="6"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" ToolTip="{Binding [motif.save.tooltip]}"/>
-                            <Button Grid.Column="2" Content="{Binding [motif.folder]}" Click="MotifFolder_Click" Padding="10,4"
-                                    ToolTip="{Binding [motif.folder.tooltip]}"/>
-                        </Grid>
+                        <Button Content="{Binding [motif.save]}" Click="MotifSave_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [motif.save.tooltip]}"/>
                         <!-- Готовые мотивы в комплекте и одна копия в центр страницы — Docker.Starter.cs -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="6"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Content="{Binding [motif.drop]}" Click="MotifDrop_Click" ToolTip="{Binding [motif.drop.tooltip]}"/>
-                            <Button Grid.Column="2" Content="{Binding [motif.starter.add]}" Click="StarterAdd_Click"
-                                    ToolTip="{Binding [motif.starter.add.tooltip]}"/>
-                        </Grid>
+                        <Button Content="{Binding [motif.drop]}" Click="MotifDrop_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [motif.drop.tooltip]}"/>
+                        <Button Content="{Binding [motif.starter.add]}" Click="StarterAdd_Click"
+                                ToolTip="{Binding [motif.starter.add.tooltip]}"/>
                     </StackPanel>
                 </Expander>
 
@@ -316,10 +310,10 @@
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="*" MaxWidth="60"/>
                                 <ColumnDefinition Width="10"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="*" MaxWidth="60"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding [motif.count]}" Style="{StaticResource Strassio.Caption}"
                                        ToolTip="{Binding [motif.count.tooltip]}"/>
@@ -421,19 +415,17 @@
                         </Grid>
                         <Button Content="{Binding [motif.sheet.make]}" Click="Sheet_Click" Margin="0,0,0,8"
                                 ToolTip="{Binding [motif.sheet.make.tooltip]}"/>
-                        <Grid>
+                        <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="6"/>
                                 <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="70"/>
                             </Grid.ColumnDefinitions>
-                            <Button Content="{Binding [motif.metre.make]}" Click="PerMetre_Click" ToolTip="{Binding [motif.metre.make.tooltip]}"/>
-                            <TextBlock Grid.Column="2" Text="{Binding [motif.metre.width]}" Style="{StaticResource Strassio.Caption}"
+                            <TextBlock Text="{Binding [motif.metre.width]}" Style="{StaticResource Strassio.Caption}"
                                        ToolTip="{Binding [motif.metre.width.tooltip]}"/>
-                            <TextBox x:Name="FabricWidthBox" Grid.Column="3" TextChanged="FabricWidthBox_TextChanged"
+                            <TextBox x:Name="FabricWidthBox" Grid.Column="1" TextChanged="FabricWidthBox_TextChanged"
                                      ToolTip="{Binding [motif.metre.width.tooltip]}"/>
                         </Grid>
+                        <Button Content="{Binding [motif.metre.make]}" Click="PerMetre_Click" ToolTip="{Binding [motif.metre.make.tooltip]}"/>
                     </StackPanel>
                 </Expander>
 
@@ -542,8 +534,9 @@
                         <Button x:Name="RecolorButton" Click="Recolor_Click" Margin="0,0,0,4"
                                 Style="{StaticResource Strassio.PrimaryButton}" ToolTip="{Binding [color.recolor.tooltip]}"/>
                         <TextBlock Text="{Binding [color.recolor.hint]}" Style="{StaticResource Strassio.Muted}" Margin="0,0,0,8"/>
-                        <Button Content="{Binding [color.pipette]}" Click="Pipette_Click" Margin="0,0,0,8"
-                                ToolTip="{Binding [color.pipette.tooltip]}"/>
+                        <Button Click="Pipette_Click" Margin="0,0,0,8" ToolTip="{Binding [color.pipette.tooltip]}">
+                            <TextBlock Text="{Binding [color.pipette]}" TextWrapping="Wrap" TextAlignment="Center"/>
+                        </Button>
                         <!-- Цвет крайних рядов: кант другим цветом у любой раскладки — Docker.EdgeColor.cs -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
@@ -630,16 +623,10 @@
                                 ToolTip="{Binding [prod.layers.tooltip]}"/>
                         <Button Content="{Binding [prod.layersColor]}" Click="LayersBySizeColor_Click" Margin="0,0,0,6"
                                 ToolTip="{Binding [prod.layersColor.tooltip]}"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="6"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Button Content="{Binding [prod.label]}" Click="LabelTemplate_Click" ToolTip="{Binding [prod.label.tooltip]}"/>
-                            <Button Grid.Column="2" Content="{Binding [prod.labelLayers]}" Click="LabelLayers_Click"
-                                    ToolTip="{Binding [prod.labelLayers.tooltip]}"/>
-                        </Grid>
+                        <Button Content="{Binding [prod.label]}" Click="LabelTemplate_Click" Margin="0,0,0,6"
+                                ToolTip="{Binding [prod.label.tooltip]}"/>
+                        <Button Content="{Binding [prod.labelLayers]}" Click="LabelLayers_Click"
+                                ToolTip="{Binding [prod.labelLayers.tooltip]}"/>
                     </StackPanel>
                 </Expander>
 

@@ -58,7 +58,7 @@ namespace Strassio.UiShots
                         string tab = DockerTabs[i];
                         string shot = "docker-" + (i + 1) + "-" + tab.Replace("Tab", string.Empty).ToLowerInvariant();
                         SnapDocker(outDir, shot + theme, DockerLayout.Vertical, 300, 900, tab);
-                        SnapDocker(outDir, shot + "-open" + theme, DockerLayout.Vertical, 300, 0, tab, allOpen: true);
+                        SnapDocker(outDir, shot + "-open" + theme, DockerLayout.Vertical, 300, 900, tab, allOpen: true);
                     }
 
                     SnapDocker(outDir, "docker-horizontal" + theme, DockerLayout.Horizontal, 960, 420, "FillTab");
@@ -176,8 +176,8 @@ namespace Strassio.UiShots
             (Window)Activator.CreateInstance(Addon.GetType(typeName), args);
 
         /// <summary>
-        /// Докер на вкладке <paramref name="tab"/>. <paramref name="height"/> 0 — окно по высоте содержимого
-        /// (для снимка со всеми открытыми группами).
+        /// Докер на вкладке <paramref name="tab"/>; <paramref name="allOpen"/> — все группы открыты и снимается
+        /// всё содержимое докера, а не только видимая часть.
         /// </summary>
         private static void SnapDocker(string outDir, string name, DockerLayout layout, int width, int height, string tab, bool allOpen = false)
         {
@@ -202,20 +202,25 @@ namespace Strassio.UiShots
 
             var window = new Window
             {
-                Content = docker, Width = width, Left = -5000, Top = 0,
+                Content = docker, Width = width, Height = height, Left = -5000, Top = 0,
                 ShowInTaskbar = false, WindowStyle = WindowStyle.None,
             };
-            if (height > 0)
+
+            window.Show();
+            if (allOpen)
             {
-                window.Height = height;
+                // Всё содержимое докера целиком, без прокрутки: окно выше экрана Windows не сделать,
+                // поэтому снимается сама сетка докера (она всегда во всю высоту содержимого) на фоне докера.
+                var grid = (FrameworkElement)docker.FindName("LayoutGrid");
+                docker.UpdateLayout();
+                Save(outDir, name, grid, grid.ActualWidth + grid.Margin.Left + grid.Margin.Right,
+                    grid.ActualHeight + grid.Margin.Top + grid.Margin.Bottom, docker.Background);
             }
             else
             {
-                window.SizeToContent = SizeToContent.Height;
+                Save(outDir, name, docker, docker.ActualWidth, docker.ActualHeight, null);
             }
 
-            window.Show();
-            Save(outDir, name, docker, docker.ActualWidth, docker.ActualHeight, null);
             window.Close();
             Settings.Layout = DockerLayout.Vertical;
         }
